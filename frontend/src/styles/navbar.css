@@ -1,0 +1,63 @@
+/* Navbar styling */
+.navbar {
+  background-color: rgba(26, 26, 46, 0.95) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.navbar-brand {
+  font-weight: 700;
+  color: white;
+  transition: transform 0.3s ease;
+}
+
+.navbar-brand:hover {
+  transform: scale(1.05);
+}
+
+.navbar-dark .navbar-nav .nav-link {
+  color: rgba(255, 255, 255, 0.8);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.navbar-dark .navbar-nav .nav-link:hover {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.navbar-dark .navbar-nav .active > .nav-link {
+  color: white;
+  background-color: rgba(63, 81, 181, 0.2);
+}
+
+.navbar .badge {
+  font-size: 0.7rem;
+  padding: 0.25em 0.6em;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+/* Responsive navbar */
+@media (max-width: 992px) {
+  .navbar-collapse {
+    background-color: rgba(26, 26, 46, 0.98);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  
+  .navbar-nav .nav-link {
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.25rem;
+  }
+  
+  .navbar-nav .btn {
+    margin-top: 0.5rem;
+    width: 100%;
+    text-align: left;
+    justify-content: flex-start;
+  }
+} 

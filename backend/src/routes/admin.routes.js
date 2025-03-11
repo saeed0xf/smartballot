@@ -1,0 +1,40 @@
+const express = require('express');
+const router = express.Router();
+const adminController = require('../controllers/admin.controller');
+const { verifyToken, isAdmin } = require('../middleware/auth.middleware');
+const upload = require('../middleware/upload.middleware');
+
+// Get all voters (protected route)
+router.get('/voters', verifyToken, isAdmin, adminController.getAllVoters);
+
+// Get voter details (protected route)
+router.get('/voters/:voterId', verifyToken, isAdmin, adminController.getVoterDetails);
+
+// Approve voter (protected route)
+router.put('/voters/:voterId/approve', verifyToken, isAdmin, adminController.approveVoter);
+
+// Reject voter (protected route)
+router.put('/voters/:voterId/reject', verifyToken, isAdmin, adminController.rejectVoter);
+
+// Add candidate (protected route)
+router.post(
+  '/candidates',
+  verifyToken,
+  isAdmin,
+  upload.single('image'),
+  adminController.addCandidate
+);
+
+// Get all candidates (protected route)
+router.get('/candidates', verifyToken, isAdmin, adminController.getAllCandidates);
+
+// Start election (protected route)
+router.post('/election/start', verifyToken, isAdmin, adminController.startElection);
+
+// End election (protected route)
+router.put('/election/end', verifyToken, isAdmin, adminController.endElection);
+
+// Get election status (protected route)
+router.get('/election/status', verifyToken, isAdmin, adminController.getElectionStatus);
+
+module.exports = router; 
