@@ -1,12 +1,46 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Container, Row, Col, Card, Button, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { AuthContext } from '../context/AuthContext';
 import { FaVoteYea, FaUserShield, FaLock, FaEthereum, FaCheckCircle, FaUserPlus, FaSearch, FaShieldAlt, FaGlobe, FaClipboardCheck, FaMobileAlt, FaChartLine } from 'react-icons/fa';
+import env from '../utils/env';
 
 const Home = () => {
   const { isAuthenticated, isAdmin, isVoter, isOfficer } = useContext(AuthContext);
+  const [walletType, setWalletType] = useState(null);
+
+  // Check if the current wallet is admin or officer
+  useEffect(() => {
+    const checkWalletType = async () => {
+      try {
+        if (window.ethereum) {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts && accounts.length > 0) {
+            const currentAddress = accounts[0].toLowerCase();
+            const adminAddress = (env.ADMIN_ADDRESS || '').toLowerCase();
+            
+            // Get officer addresses
+            const officerAddresses = env.OFFICER_ADDRESSES ? 
+              env.OFFICER_ADDRESSES.split(',').map(addr => addr.toLowerCase()) : 
+              [];
+            
+            if (currentAddress === adminAddress) {
+              setWalletType('admin');
+            } else if (officerAddresses.includes(currentAddress)) {
+              setWalletType('officer');
+            } else {
+              setWalletType('voter');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking wallet type:', err);
+      }
+    };
+    
+    checkWalletType();
+  }, []);
 
   // Redirect authenticated users to their respective dashboards
   if (isAuthenticated) {
@@ -32,9 +66,12 @@ const Home = () => {
               security, transparency, and integrity in the electoral process. Vote with confidence knowing your ballot is immutable and verifiable.
             </p>
             <div className="d-flex gap-3 hero-buttons">
-              <Button as={Link} to="/register" variant="primary" size="lg" className="d-flex align-items-center px-4 py-2">
-                <FaUserPlus className="me-2" /> Register Now
-              </Button>
+              {/* Hide Register Now button for admin and officer wallets */}
+              {walletType !== 'admin' && walletType !== 'officer' && (
+                <Button as={Link} to="/register" variant="primary" size="lg" className="d-flex align-items-center px-4 py-2">
+                  <FaUserPlus className="me-2" /> Register Now
+                </Button>
+              )}
               <Button as={Link} to="/login" variant="outline-light" size="lg" className="d-flex align-items-center px-4 py-2">
                 <FaEthereum className="me-2" /> Connect Wallet
               </Button>
@@ -191,9 +228,16 @@ const Home = () => {
               <Card.Body className="p-5 text-center text-white">
                 <h2 className="cta-title">Ready to participate in secure blockchain voting?</h2>
                 <p className="cta-description">Join VoteSure today and experience the future of democratic elections.</p>
-                <Button as={Link} to="/register" variant="light" size="lg" className="cta-button">
-                  Register as a Voter
-                </Button>
+                {/* Hide Register as a Voter button for admin and officer wallets */}
+                {walletType !== 'admin' && walletType !== 'officer' ? (
+                  <Button as={Link} to="/register" variant="light" size="lg" className="cta-button">
+                    Register as a Voter
+                  </Button>
+                ) : (
+                  <Button as={Link} to="/login" variant="light" size="lg" className="cta-button">
+                    Connect Wallet
+                  </Button>
+                )}
               </Card.Body>
             </Card>
           </Col>
