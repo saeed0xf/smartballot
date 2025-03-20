@@ -3,3 +3,4 @@ frontend/node_modules
 blockchain/node_modules
 blockchain/build
 blockchain/deployment.json
+backend/uploads/*
