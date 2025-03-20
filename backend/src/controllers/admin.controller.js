@@ -7,7 +7,8 @@ const {
   rejectVoterOnBlockchain,
   addCandidateOnBlockchain,
   startElectionOnBlockchain,
-  endElectionOnBlockchain
+  endElectionOnBlockchain,
+  getVoterStatusFromBlockchain
 } = require('../utils/blockchain.util');
 const { sendVoterApprovalEmail, sendVoterRejectionEmail } = require('../utils/email.util');
 
@@ -23,15 +24,10 @@ exports.getAllVoters = async (req, res) => {
     }
     
     // Find voters
-    const voters = await Voter.find(query).sort({ createdAt: -1 });
-    
-    // Get user emails
-    const userIds = voters.map(voter => voter.user);
-    const users = await User.find({ _id: { $in: userIds } }).select('email walletAddress');
+    const voters = await Voter.find(query).populate('user', 'email walletAddress').sort({ createdAt: -1 });
     
     // Map users to voters
-    const votersWithEmail = voters.map(voter => {
-      const user = users.find(u => u._id.toString() === voter.user.toString());
+    const votersWithDetails = voters.map(voter => {
       return {
         id: voter._id,
         firstName: voter.firstName,
@@ -45,13 +41,16 @@ exports.getAllVoters = async (req, res) => {
         voterIdImage: voter.voterIdImage,
         status: voter.status,
         rejectionReason: voter.rejectionReason,
-        email: user ? user.email : null,
-        walletAddress: user ? user.walletAddress : null,
-        createdAt: voter.createdAt
+        email: voter.user ? voter.user.email : null,
+        walletAddress: voter.user ? voter.user.walletAddress : null,
+        createdAt: voter.createdAt,
+        blockchainRegistered: voter.blockchainRegistered,
+        blockchainTxHash: voter.blockchainTxHash
       };
     });
     
-    res.json({ voters: votersWithEmail });
+    console.log(`Returning ${votersWithDetails.length} voters with status: ${status || 'all'}`);
+    res.json({ voters: votersWithDetails });
   } catch (error) {
     console.error('Get all voters error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -63,43 +62,71 @@ exports.getVoterDetails = async (req, res) => {
   try {
     const { voterId } = req.params;
     
+    console.log(`Getting details for voter ID: ${voterId}`);
+    
     // Find voter
     const voter = await Voter.findById(voterId);
     if (!voter) {
+      console.log(`Voter not found with ID: ${voterId}`);
       return res.status(404).json({ message: 'Voter not found' });
     }
+    
+    console.log(`Found voter: ${voter._id}, user ID: ${voter.user}`);
     
     // Get user
     const user = await User.findById(voter.user).select('email walletAddress');
     if (!user) {
+      console.log(`User not found for voter: ${voterId}, user ID: ${voter.user}`);
       return res.status(404).json({ message: 'User not found' });
     }
     
-    res.json({
-      voter: {
-        id: voter._id,
-        firstName: voter.firstName,
-        middleName: voter.middleName,
-        lastName: voter.lastName,
-        fatherName: voter.fatherName,
-        gender: voter.gender,
-        age: voter.age,
-        dateOfBirth: voter.dateOfBirth,
-        voterId: voter.voterId,
-        voterIdImage: voter.voterIdImage,
-        status: voter.status,
-        rejectionReason: voter.rejectionReason,
-        email: user.email,
-        walletAddress: user.walletAddress,
-        blockchainRegistered: voter.blockchainRegistered,
-        blockchainTxHash: voter.blockchainTxHash,
-        createdAt: voter.createdAt,
-        updatedAt: voter.updatedAt
+    console.log(`Found user with email: ${user.email || voter.email || 'none'}, wallet: ${user.walletAddress || 'none'}`);
+    
+    // Format voter ID image path
+    let voterIdImage = voter.voterIdImage;
+    if (voterIdImage) {
+      // Remove any leading slash
+      if (voterIdImage.startsWith('/')) {
+        voterIdImage = voterIdImage.substring(1);
       }
+      
+      // Add /uploads prefix if not present and not an absolute URL
+      if (!voterIdImage.startsWith('uploads/') && !voterIdImage.startsWith('http')) {
+        voterIdImage = `uploads/${voterIdImage}`;
+      }
+      
+      console.log(`Formatted voter ID image path: ${voterIdImage}`);
+    }
+    
+    const voterDetails = {
+      id: voter._id,
+      firstName: voter.firstName,
+      middleName: voter.middleName,
+      lastName: voter.lastName,
+      fatherName: voter.fatherName,
+      gender: voter.gender,
+      age: voter.age,
+      dateOfBirth: voter.dateOfBirth,
+      voterId: voter.voterId,
+      voterIdImage: voterIdImage,
+      status: voter.status,
+      rejectionReason: voter.rejectionReason,
+      email: user.email || voter.email || null, // Try to get email from user first, then from voter
+      walletAddress: user.walletAddress,
+      blockchainRegistered: voter.blockchainRegistered,
+      blockchainTxHash: voter.blockchainTxHash,
+      createdAt: voter.createdAt,
+      updatedAt: voter.updatedAt
+    };
+    
+    console.log(`Sending voter details with email: ${voterDetails.email || 'none'}`);
+    
+    res.json({
+      voter: voterDetails
     });
   } catch (error) {
     console.error('Get voter details error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -108,40 +135,144 @@ exports.approveVoter = async (req, res) => {
   try {
     const { voterId } = req.params;
     
+    console.log(`Approving voter with ID: ${voterId}`);
+    
     // Find voter
     const voter = await Voter.findById(voterId);
     if (!voter) {
+      console.log(`Voter not found with ID: ${voterId}`);
       return res.status(404).json({ message: 'Voter not found' });
     }
     
-    // Check if voter is already approved
+    console.log(`Found voter: ${voter._id}, status: ${voter.status}`);
+    
+    // Check if voter is already approved in our database
     if (voter.status === 'approved') {
+      console.log(`Voter ${voterId} is already approved in database`);
       return res.status(400).json({ message: 'Voter is already approved' });
     }
     
     // Get user
     const user = await User.findById(voter.user);
     if (!user) {
+      console.log(`User not found for voter: ${voterId}, user ID: ${voter.user}`);
       return res.status(404).json({ message: 'User not found' });
+    }
+    
+    console.log(`Found user with wallet address: ${user.walletAddress || 'none'}`);
+    
+    // Validate wallet address
+    if (!user.walletAddress) {
+      console.log(`No wallet address for user: ${user._id}`);
+      return res.status(400).json({ message: 'User has no wallet address' });
+    }
+    
+    // Update user email if it exists in voter but not in user
+    if (!user.email && voter.email) {
+      console.log(`Updating user ${user._id} with email from voter: ${voter.email}`);
+      user.email = voter.email;
+      await user.save();
+    }
+    
+    console.log(`Attempting to approve voter on blockchain with wallet: ${user.walletAddress}`);
+    
+    // Check if voter is already approved on blockchain
+    try {
+      console.log(`Checking if voter is already approved on blockchain: ${user.walletAddress}`);
+      const statusResult = await getVoterStatusFromBlockchain(user.walletAddress);
+      
+      if (statusResult.success && statusResult.data.isApproved) {
+        console.log(`Voter ${user.walletAddress} is already approved on blockchain`);
+        
+        // Update voter status in our database to match blockchain
+        voter.status = 'approved';
+        voter.rejectionReason = null;
+        voter.blockchainRegistered = true;
+        // No transaction hash since we didn't perform a new transaction
+        
+        await voter.save();
+        
+        console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
+        
+        return res.json({
+          message: 'Voter was already approved on blockchain, database updated',
+          voter: {
+            id: voter._id,
+            firstName: voter.firstName,
+            lastName: voter.lastName,
+            status: voter.status
+          }
+        });
+      }
+    } catch (checkError) {
+      console.warn(`Error checking voter approval status: ${checkError.message}`);
+      // Continue with approval process as normal
     }
     
     // Approve voter on blockchain
     const blockchainResult = await approveVoterOnBlockchain(user.walletAddress);
     
+    console.log(`Blockchain approval result:`, blockchainResult);
+    
+    // Special handling for "Voter already approved" error
+    if (!blockchainResult.success && 
+        blockchainResult.error && 
+        blockchainResult.error.includes('Voter already approved')) {
+      console.log(`Voter ${user.walletAddress} was already approved on blockchain`);
+      
+      // Update voter status in our database
+      voter.status = 'approved';
+      voter.rejectionReason = null;
+      voter.blockchainRegistered = true;
+      
+      await voter.save();
+      
+      console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
+      
+      return res.json({
+        message: 'Voter was already approved on blockchain, database updated',
+        voter: {
+          id: voter._id,
+          firstName: voter.firstName,
+          lastName: voter.lastName,
+          status: voter.status
+        }
+      });
+    }
+    
+    // Handle other blockchain errors
     if (!blockchainResult.success) {
+      console.error(`Failed to approve voter ${voterId} on blockchain:`, blockchainResult.error);
       return res.status(500).json({ 
         message: 'Failed to approve voter on blockchain',
-        error: blockchainResult.error
+        error: blockchainResult.error,
+        details: blockchainResult.details || blockchainResult.stack
       });
     }
     
     // Update voter status
     voter.status = 'approved';
     voter.rejectionReason = null;
+    voter.blockchainRegistered = true;
+    voter.blockchainTxHash = blockchainResult.txHash;
+    
     await voter.save();
     
+    console.log(`Voter ${voterId} status updated to approved`);
+    
     // Send approval email
-    await sendVoterApprovalEmail(user.email, voter.firstName);
+    const userEmail = user.email || voter.email;
+    try {
+      if (userEmail) {
+        const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName);
+        console.log(`Approval email sent to ${userEmail}:`, emailResult);
+      } else {
+        console.log(`No email available for voter ${voterId}, skipping notification`);
+      }
+    } catch (emailError) {
+      console.error(`Error sending approval email to ${userEmail}:`, emailError);
+      // Continue despite email error
+    }
     
     res.json({
       message: 'Voter approved successfully',
@@ -155,7 +286,11 @@ exports.approveVoter = async (req, res) => {
     });
   } catch (error) {
     console.error('Approve voter error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
@@ -165,38 +300,72 @@ exports.rejectVoter = async (req, res) => {
     const { voterId } = req.params;
     const { reason } = req.body;
     
+    console.log(`Rejecting voter with ID: ${voterId}, reason: ${reason}`);
+    
     // Validate reason
     if (!reason) {
+      console.log('No rejection reason provided');
       return res.status(400).json({ message: 'Rejection reason is required' });
     }
     
     // Find voter
     const voter = await Voter.findById(voterId);
     if (!voter) {
+      console.log(`Voter not found with ID: ${voterId}`);
       return res.status(404).json({ message: 'Voter not found' });
     }
     
+    console.log(`Found voter: ${voter._id}, status: ${voter.status}`);
+    
     // Check if voter is already approved
     if (voter.status === 'approved') {
+      console.log(`Cannot reject approved voter ${voterId}`);
       return res.status(400).json({ message: 'Cannot reject an approved voter' });
     }
     
     // Get user
     const user = await User.findById(voter.user);
     if (!user) {
+      console.log(`User not found for voter: ${voterId}, user ID: ${voter.user}`);
       return res.status(404).json({ message: 'User not found' });
     }
     
-    // Reject voter on blockchain
+    console.log(`Found user with wallet address: ${user.walletAddress || 'none'}, email: ${user.email || 'none'}`);
+    
+    // Update user email if it exists in voter but not in user
+    if (!user.email && voter.email) {
+      console.log(`Updating user ${user._id} with email from voter: ${voter.email}`);
+      user.email = voter.email;
+      await user.save();
+    }
+    
+    // Note: We're NOT calling the blockchain for rejection as per requirements
+    // We're just using the simulated function which returns a success result
     const blockchainResult = await rejectVoterOnBlockchain(user.walletAddress);
+    
+    console.log(`Rejection simulation result:`, blockchainResult);
     
     // Update voter status
     voter.status = 'rejected';
     voter.rejectionReason = reason;
+    
     await voter.save();
     
+    console.log(`Voter ${voterId} status updated to rejected`);
+    
     // Send rejection email
-    await sendVoterRejectionEmail(user.email, voter.firstName, reason);
+    const userEmail = user.email || voter.email;
+    try {
+      if (userEmail) {
+        const emailResult = await sendVoterRejectionEmail(userEmail, voter.firstName, reason);
+        console.log(`Rejection email sent to ${userEmail}:`, emailResult);
+      } else {
+        console.log(`No email available for voter ${voterId}, skipping notification`);
+      }
+    } catch (emailError) {
+      console.error(`Error sending rejection email to ${userEmail}:`, emailError);
+      // Continue despite email error
+    }
     
     res.json({
       message: 'Voter rejected successfully',
@@ -206,12 +375,17 @@ exports.rejectVoter = async (req, res) => {
         lastName: voter.lastName,
         status: voter.status,
         rejectionReason: voter.rejectionReason,
+        // Note: This txHash is simulated, not an actual blockchain transaction
         blockchainTxHash: blockchainResult.success ? blockchainResult.txHash : null
       }
     });
   } catch (error) {
     console.error('Reject voter error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

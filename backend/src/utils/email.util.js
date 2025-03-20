@@ -1,17 +1,38 @@
 const nodemailer = require('nodemailer');
+require('dotenv').config();
 
 // Create transporter
-const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
-  }
-});
+let transporter;
+
+try {
+  console.log('Setting up email transporter with service:', process.env.EMAIL_SERVICE);
+  transporter = nodemailer.createTransport({
+    service: process.env.EMAIL_SERVICE || 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD // Use app password if available
+    }
+  });
+  console.log('Email transporter setup successful');
+} catch (error) {
+  console.error('Failed to setup email transporter:', error);
+}
 
 // Send voter approval email
 const sendVoterApprovalEmail = async (email, firstName) => {
   try {
+    if (!email) {
+      console.warn('No email provided for voter approval notification');
+      return false;
+    }
+    
+    if (!transporter) {
+      console.error('Email transporter not initialized');
+      return false;
+    }
+    
+    console.log(`Preparing to send approval email to ${email}`);
+    
     const mailOptions = {
       from: process.env.EMAIL_FROM,
       to: email,
@@ -29,11 +50,17 @@ const sendVoterApprovalEmail = async (email, firstName) => {
       `
     };
     
-    await transporter.sendMail(mailOptions);
-    console.log(`Approval email sent to ${email}`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Approval email sent to ${email}: ${info.messageId}`);
     return true;
   } catch (error) {
     console.error('Error sending approval email:', error);
+    console.error('Email configuration:', {
+      service: process.env.EMAIL_SERVICE,
+      user: process.env.EMAIL_USER,
+      from: process.env.EMAIL_FROM,
+      passwordProvided: !!process.env.EMAIL_PASSWORD || !!process.env.EMAIL_APP_PASSWORD
+    });
     return false;
   }
 };
@@ -41,6 +68,18 @@ const sendVoterApprovalEmail = async (email, firstName) => {
 // Send voter rejection email
 const sendVoterRejectionEmail = async (email, firstName, reason) => {
   try {
+    if (!email) {
+      console.warn('No email provided for voter rejection notification');
+      return false;
+    }
+    
+    if (!transporter) {
+      console.error('Email transporter not initialized');
+      return false;
+    }
+    
+    console.log(`Preparing to send rejection email to ${email}`);
+    
     const mailOptions = {
       from: process.env.EMAIL_FROM,
       to: email,
@@ -60,11 +99,17 @@ const sendVoterRejectionEmail = async (email, firstName, reason) => {
       `
     };
     
-    await transporter.sendMail(mailOptions);
-    console.log(`Rejection email sent to ${email}`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Rejection email sent to ${email}: ${info.messageId}`);
     return true;
   } catch (error) {
     console.error('Error sending rejection email:', error);
+    console.error('Email configuration:', {
+      service: process.env.EMAIL_SERVICE,
+      user: process.env.EMAIL_USER,
+      from: process.env.EMAIL_FROM,
+      passwordProvided: !!process.env.EMAIL_PASSWORD || !!process.env.EMAIL_APP_PASSWORD
+    });
     return false;
   }
 };

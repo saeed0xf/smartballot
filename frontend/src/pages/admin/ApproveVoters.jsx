@@ -22,6 +22,10 @@ const ApproveVoters = () => {
   const [selectedVoter, setSelectedVoter] = useState(null);
   const [voterDetailsLoading, setVoterDetailsLoading] = useState(false);
   
+  // Image preview modal state
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState('');
+  
   // Action loading states
   const [approvingVoter, setApprovingVoter] = useState(false);
   const [rejectingVoter, setRejectingVoter] = useState(false);
@@ -40,6 +44,7 @@ const ApproveVoters = () => {
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       const response = await axios.get(`${apiUrl}/admin/voters?status=${filterStatus}`);
       
+      console.log('Fetched voters:', response.data.voters);
       setVoters(response.data.voters);
     } catch (err) {
       console.error('Error fetching voters:', err);
@@ -57,6 +62,7 @@ const ApproveVoters = () => {
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       const response = await axios.get(`${apiUrl}/admin/voters/${voterId}`);
       
+      console.log('Fetched voter details:', response.data.voter);
       setSelectedVoter(response.data.voter);
       setShowDetailsModal(true);
     } catch (err) {
@@ -72,8 +78,14 @@ const ApproveVoters = () => {
     try {
       setApprovingVoter(true);
       
+      // No need to request accounts explicitly since we're already connected
+      // if we're seeing the admin interface
+      
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
-      await axios.put(`${apiUrl}/admin/voters/${voterId}/approve`);
+      console.log(`Sending approval request to: ${apiUrl}/admin/voters/${voterId}/approve`);
+      
+      const response = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve`);
+      console.log('Voter approval response:', response.data);
       
       // Update local state
       setVoters(prevVoters => 
@@ -82,10 +94,20 @@ const ApproveVoters = () => {
         )
       );
       
-      toast.success('Voter approved successfully. Email notification has been sent.');
+      toast.success(response.data.message || 'Voter approved successfully.');
     } catch (err) {
       console.error('Error approving voter:', err);
-      toast.error(err.response?.data?.message || 'Failed to approve voter.');
+      let errorMessage = 'Failed to approve voter.';
+      
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = `Error: ${err.response.data.error}`;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setApprovingVoter(false);
     }
@@ -108,10 +130,17 @@ const ApproveVoters = () => {
     try {
       setRejectingVoter(true);
       
+      // No need to request accounts explicitly since we're already connected
+      // if we're seeing the admin interface
+      
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
-      await axios.put(`${apiUrl}/admin/voters/${selectedVoterId}/reject`, {
+      console.log(`Sending rejection request to: ${apiUrl}/admin/voters/${selectedVoterId}/reject`);
+      
+      const response = await axios.put(`${apiUrl}/admin/voters/${selectedVoterId}/reject`, {
         reason: rejectReason
       });
+      
+      console.log('Voter rejection response:', response.data);
       
       // Update local state
       setVoters(prevVoters => 
@@ -122,11 +151,21 @@ const ApproveVoters = () => {
         )
       );
       
-      toast.success('Voter rejected successfully. Email notification has been sent.');
+      toast.success('Voter rejected successfully.');
       setShowRejectModal(false);
     } catch (err) {
       console.error('Error rejecting voter:', err);
-      toast.error(err.response?.data?.message || 'Failed to reject voter.');
+      let errorMessage = 'Failed to reject voter.';
+      
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = `Error: ${err.response.data.error}`;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setRejectingVoter(false);
     }
@@ -150,6 +189,26 @@ const ApproveVoters = () => {
       default:
         return <Badge bg="secondary">Unknown</Badge>;
     }
+  };
+
+  // Get image URL with proper path
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return null;
+    
+    // If the path already includes http(s), it's a complete URL
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    }
+    
+    // Extract the base URL without the /api path
+    const apiUrl = env.API_URL || 'http://localhost:5000';
+    const baseUrl = apiUrl.replace('/api', '');
+    
+    // Remove any leading slash if present
+    const cleanPath = imagePath.startsWith('/') ? imagePath.substring(1) : imagePath;
+    
+    // Make sure the path is correctly formatted
+    return `${baseUrl}/${cleanPath}`;
   };
 
   return (
@@ -218,9 +277,13 @@ const ApproveVoters = () => {
                         </td>
                         <td>{voter.voterId}</td>
                         <td>
-                          <a href={`mailto:${voter.email}`} className="d-flex align-items-center text-decoration-none">
-                            <FaEnvelope className="me-1" /> {voter.email}
-                          </a>
+                          {voter.email ? (
+                            <a href={`mailto:${voter.email}`} className="d-flex align-items-center text-decoration-none">
+                              <FaEnvelope className="me-1" /> {voter.email}
+                            </a>
+                          ) : (
+                            <span className="text-muted">No email</span>
+                          )}
                         </td>
                         <td>
                           <div className="d-flex align-items-center">
@@ -334,30 +397,30 @@ const ApproveVoters = () => {
                 <dl className="row">
                   <dt className="col-sm-4">Full Name</dt>
                   <dd className="col-sm-8">
-                    {selectedVoter.firstName} {selectedVoter.middleName} {selectedVoter.lastName}
+                    {selectedVoter.firstName} {selectedVoter.middleName || ''} {selectedVoter.lastName}
                   </dd>
                   
                   <dt className="col-sm-4">Father's Name</dt>
-                  <dd className="col-sm-8">{selectedVoter.fatherName}</dd>
+                  <dd className="col-sm-8">{selectedVoter.fatherName || 'Not provided'}</dd>
                   
                   <dt className="col-sm-4">Gender</dt>
-                  <dd className="col-sm-8">{selectedVoter.gender}</dd>
+                  <dd className="col-sm-8">{selectedVoter.gender || 'Not provided'}</dd>
                   
                   <dt className="col-sm-4">Age</dt>
-                  <dd className="col-sm-8">{selectedVoter.age}</dd>
+                  <dd className="col-sm-8">{selectedVoter.age || 'Not provided'}</dd>
                   
                   <dt className="col-sm-4">Date of Birth</dt>
-                  <dd className="col-sm-8">{formatDate(selectedVoter.dateOfBirth)}</dd>
+                  <dd className="col-sm-8">{selectedVoter.dateOfBirth ? formatDate(selectedVoter.dateOfBirth) : 'Not provided'}</dd>
                   
                   <dt className="col-sm-4">Email</dt>
-                  <dd className="col-sm-8">{selectedVoter.email}</dd>
+                  <dd className="col-sm-8">{selectedVoter.email || 'No email provided'}</dd>
                   
                   <dt className="col-sm-4">Voter ID</dt>
-                  <dd className="col-sm-8">{selectedVoter.voterId}</dd>
+                  <dd className="col-sm-8">{selectedVoter.voterId || 'Not provided'}</dd>
                   
                   <dt className="col-sm-4">Wallet Address</dt>
                   <dd className="col-sm-8" style={{ wordBreak: 'break-all' }}>
-                    {selectedVoter.walletAddress}
+                    {selectedVoter.walletAddress || 'Not provided'}
                   </dd>
                 </dl>
               </Col>
@@ -365,14 +428,48 @@ const ApproveVoters = () => {
                 <h6>Voter ID Image</h6>
                 <div className="mt-2">
                   {selectedVoter.voterIdImage ? (
-                    <img 
-                      src={selectedVoter.voterIdImage.startsWith('http') 
-                        ? selectedVoter.voterIdImage 
-                        : `${env.API_URL || 'http://localhost:5000'}${selectedVoter.voterIdImage}`} 
-                      alt="Voter ID" 
-                      className="img-fluid border" 
-                      style={{ maxHeight: '300px' }}
-                    />
+                    <>
+                      <div className="p-2 bg-light border rounded mb-2" style={{ textAlign: 'center' }}>
+                        <img 
+                          src={getImageUrl(selectedVoter.voterIdImage)} 
+                          alt="Voter ID" 
+                          className="img-fluid border rounded shadow-sm cursor-pointer" 
+                          style={{ 
+                            maxHeight: '220px', 
+                            maxWidth: '100%',
+                            objectFit: 'contain',
+                            display: 'block',
+                            margin: '0 auto',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            setPreviewImageUrl(getImageUrl(selectedVoter.voterIdImage));
+                            setShowImageModal(true);
+                          }}
+                          onError={(e) => {
+                            console.error('Image failed to load:', selectedVoter.voterIdImage);
+                            console.log('Full URL attempted:', getImageUrl(selectedVoter.voterIdImage));
+                            e.target.onerror = null; // Prevent infinite loop
+                            e.target.src = 'https://via.placeholder.com/300x200?text=Image+Not+Found';
+                            e.target.alt = 'Image not found';
+                          }}
+                        />
+                        <div className="d-flex justify-content-between align-items-center mt-2">
+                          <small className="text-muted">Click to enlarge</small>
+                          <Button 
+                            variant="outline-secondary" 
+                            size="sm"
+                            as="a"
+                            href={getImageUrl(selectedVoter.voterIdImage)}
+                            download
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Download
+                          </Button>
+                        </div>
+                      </div>
+                    </>
                   ) : (
                     <Alert variant="warning">No ID image uploaded</Alert>
                   )}
@@ -383,7 +480,7 @@ const ApproveVoters = () => {
                   <div className="d-flex align-items-center">
                     {getStatusBadge(selectedVoter.status)}
                     {selectedVoter.status === 'rejected' && (
-                      <span className="ms-2">Reason: {selectedVoter.rejectionReason}</span>
+                      <span className="ms-2">Reason: {selectedVoter.rejectionReason || 'No reason provided'}</span>
                     )}
                   </div>
                 </div>
@@ -438,6 +535,43 @@ const ApproveVoters = () => {
               </Button>
             </>
           )}
+        </Modal.Footer>
+      </Modal>
+
+      {/* Image Preview Modal */}
+      <Modal 
+        show={showImageModal} 
+        onHide={() => setShowImageModal(false)}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Voter ID Image</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="text-center p-0">
+          {previewImageUrl && (
+            <img 
+              src={previewImageUrl}
+              alt="Voter ID Full Size" 
+              className="img-fluid"
+              style={{ maxHeight: '80vh' }}
+            />
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowImageModal(false)}>
+            Close
+          </Button>
+          <Button 
+            variant="primary" 
+            as="a"
+            href={previewImageUrl}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Download
+          </Button>
         </Modal.Footer>
       </Modal>
     </Layout>

@@ -67,35 +67,99 @@ const registerVoterOnBlockchain = async (voterAddress) => {
 const approveVoterOnBlockchain = async (voterAddress) => {
   try {
     if (!voteSureContract) {
+      console.error('Contract not initialized when approving voter');
       return { success: false, error: 'Contract not initialized' };
     }
     
-    const tx = await voteSureContract.approveVoter(voterAddress);
-    const receipt = await tx.wait();
+    console.log(`Attempting to approve voter on blockchain: ${voterAddress}`);
     
-    console.log(`Voter approved on blockchain: ${voterAddress}`);
-    return { success: true, txHash: receipt.transactionHash };
+    if (!adminWallet) {
+      console.error('Admin wallet not initialized when approving voter');
+      return { success: false, error: 'Admin wallet not initialized. Check ADMIN_PRIVATE_KEY in .env file.' };
+    }
+    
+    // Validate address format
+    if (!voterAddress || typeof voterAddress !== 'string' || !voterAddress.startsWith('0x')) {
+      console.error(`Invalid wallet address format: ${voterAddress}`);
+      return { success: false, error: 'Invalid wallet address format' };
+    }
+    
+    console.log(`Using admin wallet ${adminWallet.address} to approve voter ${voterAddress}`);
+    
+    try {
+      // First check if voter is already registered in the contract
+      let isRegistered = false;
+      try {
+        isRegistered = await voteSureContract.isVoterRegistered(voterAddress);
+        console.log(`Voter registered status check: ${isRegistered}`);
+      } catch (checkError) {
+        console.warn(`Could not check if voter is registered: ${checkError.message}`);
+        // Continue despite the check error
+      }
+      
+      // If not registered, try to register first
+      if (!isRegistered) {
+        try {
+          console.log(`Voter not registered, attempting to register first: ${voterAddress}`);
+          const regTx = await voteSureContract.registerVoter(voterAddress);
+          const regReceipt = await regTx.wait();
+          console.log(`Voter registered first, hash: ${regReceipt.transactionHash}`);
+        } catch (regError) {
+          console.warn(`Could not register voter first (may already be registered): ${regError.message}`);
+          // Continue anyway, as the voter might actually be registered
+        }
+      }
+      
+      // Now attempt to approve
+      const tx = await voteSureContract.approveVoter(voterAddress);
+      console.log(`Approval transaction submitted, hash: ${tx.hash}`);
+      
+      const receipt = await tx.wait();
+      console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+      
+      console.log(`Voter approved on blockchain: ${voterAddress}`);
+      console.log(`Transaction hash: ${receipt.transactionHash}`);
+      return { success: true, txHash: receipt.transactionHash };
+    } catch (txError) {
+      console.error('Transaction error when approving voter:', txError);
+      return { 
+        success: false, 
+        error: `Transaction failed: ${txError.message}`,
+        details: txError.toString()
+      };
+    }
   } catch (error) {
     console.error('Error approving voter on blockchain:', error.message);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error.message,
+      stack: error.stack 
+    };
   }
 };
 
-// Reject voter on blockchain
+// Reject voter on blockchain - this function now only simulates the process
+// We don't actually register rejections on the blockchain as per requirements
 const rejectVoterOnBlockchain = async (voterAddress) => {
   try {
-    if (!voteSureContract) {
-      return { success: false, error: 'Contract not initialized' };
-    }
+    // We don't actually need to call the blockchain for rejections
+    // Just log the information and return a successful result
+    console.log(`Simulating rejection of voter on blockchain: ${voterAddress}`);
+    console.log('Voter rejections are not recorded on the blockchain');
     
-    const tx = await voteSureContract.rejectVoter(voterAddress);
-    const receipt = await tx.wait();
-    
-    console.log(`Voter rejected on blockchain: ${voterAddress}`);
-    return { success: true, txHash: receipt.transactionHash };
+    // Return a simulated successful response
+    return { 
+      success: true, 
+      txHash: `simulated-rejection-${Date.now()}`,
+      note: 'This is a simulated rejection - not recorded on blockchain'
+    };
   } catch (error) {
-    console.error('Error rejecting voter on blockchain:', error.message);
-    return { success: false, error: error.message };
+    console.error('Error in rejection simulation:', error.message);
+    return { 
+      success: false, 
+      error: error.message,
+      stack: error.stack
+    };
   }
 };
 
