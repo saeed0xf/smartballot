@@ -13,6 +13,9 @@ router.get('/voters/:voterId', verifyToken, isAdmin, adminController.getVoterDet
 // Approve voter (protected route)
 router.put('/voters/:voterId/approve', verifyToken, isAdmin, adminController.approveVoter);
 
+// Complete voter approval after MetaMask transaction (protected route)
+router.put('/voters/:voterId/approve-complete', verifyToken, isAdmin, adminController.approveVoterComplete);
+
 // Reject voter (protected route)
 router.put('/voters/:voterId/reject', verifyToken, isAdmin, adminController.rejectVoter);
 

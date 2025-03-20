@@ -64,7 +64,7 @@ const registerVoterOnBlockchain = async (voterAddress) => {
 };
 
 // Approve voter on blockchain
-const approveVoterOnBlockchain = async (voterAddress) => {
+const approveVoterOnBlockchain = async (voterAddress, options = {}) => {
   try {
     if (!voteSureContract) {
       console.error('Contract not initialized when approving voter');
@@ -72,7 +72,31 @@ const approveVoterOnBlockchain = async (voterAddress) => {
     }
     
     console.log(`Attempting to approve voter on blockchain: ${voterAddress}`);
+    console.log('Options:', options);
     
+    // If useMetaMask is true, then we should delegate the transaction
+    // to the frontend. Just validate and return instructions.
+    if (options.useMetaMask === true) {
+      console.log('Using MetaMask for transaction...');
+      
+      // Validate address format
+      if (!voterAddress || typeof voterAddress !== 'string' || !voterAddress.startsWith('0x')) {
+        console.error(`Invalid wallet address format: ${voterAddress}`);
+        return { success: false, error: 'Invalid wallet address format' };
+      }
+      
+      // Return special response for MetaMask
+      return { 
+        success: true, 
+        useMetaMask: true,
+        contractAddress: deploymentInfo.address,
+        methodName: 'approveVoter',
+        params: [voterAddress],
+        message: 'Please confirm the transaction in MetaMask to approve this voter'
+      };
+    }
+    
+    // Traditional server-side transaction flow
     if (!adminWallet) {
       console.error('Admin wallet not initialized when approving voter');
       return { success: false, error: 'Admin wallet not initialized. Check ADMIN_PRIVATE_KEY in .env file.' };

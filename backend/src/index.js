@@ -11,6 +11,7 @@ const voterRoutes = require('./routes/voter.routes');
 const adminRoutes = require('./routes/admin.routes');
 const electionRoutes = require('./routes/election.routes');
 const officerRoutes = require('./routes/officer.routes');
+const blockchainRoutes = require('./routes/blockchain.routes');
 
 // Create Express app
 const app = express();
@@ -35,6 +36,7 @@ app.use('/api/voter', voterRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/election', electionRoutes);
 app.use('/api/officer', officerRoutes);
+app.use('/api/blockchain', blockchainRoutes);
 
 // Root route
 app.get('/', (req, res) => {

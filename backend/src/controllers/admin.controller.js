@@ -134,8 +134,9 @@ exports.getVoterDetails = async (req, res) => {
 exports.approveVoter = async (req, res) => {
   try {
     const { voterId } = req.params;
+    const { useMetaMask } = req.body; // Extract MetaMask flag from request
     
-    console.log(`Approving voter with ID: ${voterId}`);
+    console.log(`Approving voter with ID: ${voterId}, useMetaMask: ${useMetaMask}`);
     
     // Find voter
     const voter = await Voter.findById(voterId);
@@ -209,10 +210,30 @@ exports.approveVoter = async (req, res) => {
       // Continue with approval process as normal
     }
     
-    // Approve voter on blockchain
-    const blockchainResult = await approveVoterOnBlockchain(user.walletAddress);
+    // Approve voter on blockchain - pass useMetaMask option
+    const blockchainResult = await approveVoterOnBlockchain(user.walletAddress, { useMetaMask });
     
     console.log(`Blockchain approval result:`, blockchainResult);
+    
+    // Handle MetaMask transaction case
+    if (blockchainResult.success && blockchainResult.useMetaMask) {
+      console.log('Returning MetaMask transaction details to frontend');
+      return res.json({
+        message: 'Please approve the transaction in MetaMask',
+        useMetaMask: true,
+        contractDetails: {
+          address: blockchainResult.contractAddress,
+          method: blockchainResult.methodName,
+          params: blockchainResult.params
+        },
+        voter: {
+          id: voter._id,
+          firstName: voter.firstName,
+          lastName: voter.lastName,
+          status: voter.status
+        }
+      });
+    }
     
     // Special handling for "Voter already approved" error
     if (!blockchainResult.success && 
@@ -264,8 +285,9 @@ exports.approveVoter = async (req, res) => {
     const userEmail = user.email || voter.email;
     try {
       if (userEmail) {
+        console.log(`Attempting to send approval email to ${userEmail} using Brevo API`);
         const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName);
-        console.log(`Approval email sent to ${userEmail}:`, emailResult);
+        console.log(`Approval email sent to ${userEmail}, result:`, emailResult);
       } else {
         console.log(`No email available for voter ${voterId}, skipping notification`);
       }
@@ -357,8 +379,9 @@ exports.rejectVoter = async (req, res) => {
     const userEmail = user.email || voter.email;
     try {
       if (userEmail) {
+        console.log(`Attempting to send rejection email to ${userEmail} using Brevo API`);
         const emailResult = await sendVoterRejectionEmail(userEmail, voter.firstName, reason);
-        console.log(`Rejection email sent to ${userEmail}:`, emailResult);
+        console.log(`Rejection email sent to ${userEmail}, result:`, emailResult);
       } else {
         console.log(`No email available for voter ${voterId}, skipping notification`);
       }
@@ -569,5 +592,73 @@ exports.getElectionStatus = async (req, res) => {
   } catch (error) {
     console.error('Get election status error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Complete voter approval after MetaMask transaction
+exports.approveVoterComplete = async (req, res) => {
+  try {
+    const { voterId } = req.params;
+    const { txHash, voterAddress } = req.body;
+    
+    console.log(`Completing voter approval for ID: ${voterId}, txHash: ${txHash}`);
+    
+    if (!txHash) {
+      return res.status(400).json({ message: 'Transaction hash is required' });
+    }
+    
+    // Find voter
+    const voter = await Voter.findById(voterId);
+    if (!voter) {
+      console.log(`Voter not found with ID: ${voterId}`);
+      return res.status(404).json({ message: 'Voter not found' });
+    }
+    
+    console.log(`Found voter: ${voter._id}, status: ${voter.status}`);
+    
+    // Update voter status
+    voter.status = 'approved';
+    voter.rejectionReason = null;
+    voter.blockchainRegistered = true;
+    voter.blockchainTxHash = txHash;
+    
+    await voter.save();
+    
+    console.log(`Voter ${voterId} status updated to approved with txHash: ${txHash}`);
+    
+    // Get user for email notification
+    const user = await User.findById(voter.user);
+    
+    // Send approval email if user has email
+    const userEmail = user?.email || voter.email;
+    try {
+      if (userEmail) {
+        console.log(`Attempting to send approval email to ${userEmail} using Brevo API`);
+        const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName);
+        console.log(`Approval email sent to ${userEmail}, result:`, emailResult);
+      } else {
+        console.log(`No email available for voter ${voterId}, skipping notification`);
+      }
+    } catch (emailError) {
+      console.error(`Error sending approval email to ${userEmail}:`, emailError);
+      // Continue despite email error
+    }
+    
+    res.json({
+      message: 'Voter approved successfully with MetaMask transaction',
+      voter: {
+        id: voter._id,
+        firstName: voter.firstName,
+        lastName: voter.lastName,
+        status: voter.status,
+        blockchainTxHash: txHash
+      }
+    });
+  } catch (error) {
+    console.error('Complete voter approval error:', error);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message
+    });
   }
 }; 

@@ -78,14 +78,62 @@ const ApproveVoters = () => {
     try {
       setApprovingVoter(true);
       
-      // No need to request accounts explicitly since we're already connected
-      // if we're seeing the admin interface
+      // Make sure we have MetaMask connected
+      if (!window.ethereum) {
+        throw new Error('MetaMask is not installed. Please install MetaMask to approve voters on the blockchain.');
+      }
+      
+      // Request account access from MetaMask
+      console.log('Requesting MetaMask accounts...');
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      console.log('MetaMask accounts access granted:', accounts);
+      const adminAccount = accounts[0];
       
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       console.log(`Sending approval request to: ${apiUrl}/admin/voters/${voterId}/approve`);
       
-      const response = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve`);
+      const response = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve`, {
+        useMetaMask: true // Indicate that frontend has MetaMask connected
+      });
+      
       console.log('Voter approval response:', response.data);
+      
+      // Check if response includes MetaMask transaction data
+      if (response.data.useMetaMask && response.data.contractDetails) {
+        console.log('Processing MetaMask transaction...');
+        const { address, method, params } = response.data.contractDetails;
+        
+        // Get contract ABI
+        const contractAbi = await fetchContractAbi();
+        
+        // Create contract transaction
+        const tx = {
+          from: adminAccount,
+          to: address,
+          data: window.ethereum.toHex(
+            window.ethereum._web3Provider.utils.abi.encodeFunctionCall(
+              contractAbi.find(item => item.name === method), 
+              params
+            )
+          )
+        };
+        
+        console.log('Sending transaction to MetaMask:', tx);
+        const txHash = await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [tx],
+        });
+        
+        console.log('Transaction successful:', txHash);
+        
+        // Now update the voter status in our database
+        const updateResponse = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve-complete`, {
+          txHash,
+          voterAddress: params[0]
+        });
+        
+        console.log('Voter status update response:', updateResponse.data);
+      }
       
       // Update local state
       setVoters(prevVoters => 
@@ -94,7 +142,7 @@ const ApproveVoters = () => {
         )
       );
       
-      toast.success(response.data.message || 'Voter approved successfully.');
+      toast.success('Voter approved successfully and recorded on blockchain.');
     } catch (err) {
       console.error('Error approving voter:', err);
       let errorMessage = 'Failed to approve voter.';
@@ -107,9 +155,27 @@ const ApproveVoters = () => {
         errorMessage = err.message;
       }
       
+      // Handle MetaMask specific errors
+      if (err.code === 4001) {
+        errorMessage = 'MetaMask transaction was rejected by the user.';
+      }
+      
       toast.error(errorMessage);
     } finally {
       setApprovingVoter(false);
+    }
+  };
+
+  // Fetch contract ABI
+  const fetchContractAbi = async () => {
+    try {
+      const apiUrl = env.API_URL || 'http://localhost:5000/api';
+      const response = await axios.get(`${apiUrl}/blockchain/contract-abi`);
+      return response.data.abi;
+    } catch (error) {
+      console.error('Error fetching contract ABI:', error);
+      toast.error('Failed to fetch contract information');
+      throw error;
     }
   };
 
@@ -130,8 +196,15 @@ const ApproveVoters = () => {
     try {
       setRejectingVoter(true);
       
-      // No need to request accounts explicitly since we're already connected
-      // if we're seeing the admin interface
+      // Request account access from MetaMask (for consistency with approval flow)
+      try {
+        console.log('Requesting MetaMask accounts...');
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        console.log('MetaMask accounts access granted');
+      } catch (metaMaskError) {
+        console.warn('MetaMask access not granted, continuing anyway:', metaMaskError);
+        // Continue anyway since we don't need blockchain for rejection
+      }
       
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       console.log(`Sending rejection request to: ${apiUrl}/admin/voters/${selectedVoterId}/reject`);
