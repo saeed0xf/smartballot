@@ -25,14 +25,22 @@ exports.registerVoter = async (req, res) => {
         return res.status(400).json({ message: 'Voter profile already exists for this wallet address' });
       }
     } else {
-      // Create new user
-      const newUser = new User({
-        walletAddress,
-        role: 'voter'
-      });
-      
-      await newUser.save();
-      userId = newUser._id;
+      try {
+        // Create new user with only the required fields
+        const newUser = new User({
+          walletAddress,
+          role: 'voter'
+        });
+        
+        await newUser.save();
+        userId = newUser._id;
+      } catch (userError) {
+        console.error('Error creating user:', userError);
+        return res.status(400).json({ 
+          message: 'Error creating user account',
+          details: userError.message
+        });
+      }
     }
     
     // Get form data

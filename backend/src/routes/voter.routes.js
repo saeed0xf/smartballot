@@ -7,7 +7,7 @@ const upload = require('../middleware/upload.middleware');
 // Register voter profile
 router.post(
   '/register',
-  upload.single('profileImage'),
+  upload.single('voterIdImage'),
   voterController.registerVoter
 );
 
@@ -19,7 +19,7 @@ router.put(
   '/profile',
   verifyToken,
   isVoter,
-  upload.single('profileImage'),
+  upload.single('voterIdImage'),
   voterController.updateVoterProfile
 );
 

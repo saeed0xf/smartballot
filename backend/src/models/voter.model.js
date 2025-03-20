@@ -54,9 +54,6 @@ const voterSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  profileImage: {
-    type: String
-  },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],

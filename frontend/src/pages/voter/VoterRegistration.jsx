@@ -92,7 +92,6 @@ const VoterRegistration = () => {
       formData.append('dateOfBirth', values.dateOfBirth);
       formData.append('email', values.email);
       formData.append('voterId', values.voterId);
-      formData.append('voterIdImage', values.voterIdImage);
       formData.append('walletAddress', walletAddress);
 
       // Calculate age from date of birth
@@ -105,6 +104,19 @@ const VoterRegistration = () => {
       }
       formData.append('age', age);
 
+      // Add voter ID image
+      if (values.voterIdImage) {
+        console.log('Adding voter ID image:', values.voterIdImage.name);
+        formData.append('voterIdImage', values.voterIdImage);
+      } else {
+        console.log('No voter ID image provided');
+      }
+
+      // Log formData entries for debugging
+      for (let [key, value] of formData.entries()) {
+        console.log(`FormData: ${key} = ${value instanceof File ? value.name : value}`);
+      }
+
       // Submit registration
       await registerVoter(formData);
 
@@ -112,6 +124,7 @@ const VoterRegistration = () => {
       resetForm();
       navigate('/');
     } catch (err) {
+      console.error('Registration error:', err);
       setError(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);

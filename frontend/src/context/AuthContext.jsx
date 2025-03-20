@@ -281,7 +281,7 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
-      const response = await axios.post(`${apiUrl}/voters/register`, voterData);
+      const response = await axios.post(`${apiUrl}/voter/register`, voterData);
       
       console.log('Voter registration response:', response.data);
       return response.data;

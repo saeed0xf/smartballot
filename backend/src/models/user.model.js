@@ -8,6 +8,11 @@ const userSchema = new mongoose.Schema({
     trim: true,
     lowercase: true
   },
+  email: {
+    type: String,
+    trim: true,
+    lowercase: true
+  },
   role: {
     type: String,
     enum: ['voter', 'admin', 'officer'],
