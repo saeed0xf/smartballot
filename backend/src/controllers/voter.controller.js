@@ -40,6 +40,8 @@ exports.registerVoter = async (req, res) => {
       firstName,
       middleName,
       lastName,
+      fatherName,
+      gender,
       age,
       dateOfBirth,
       email,
@@ -47,8 +49,22 @@ exports.registerVoter = async (req, res) => {
     } = req.body;
     
     // Validate required fields
-    if (!firstName || !lastName || !age || !dateOfBirth || !email || !voterId) {
+    if (!firstName || !lastName || !fatherName || !gender || !age || !dateOfBirth || !email || !voterId) {
       return res.status(400).json({ message: 'All required fields must be provided' });
+    }
+    
+    // Validate age (must be 18+)
+    const birthDate = new Date(dateOfBirth);
+    const today = new Date();
+    let calculatedAge = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      calculatedAge--;
+    }
+    
+    if (calculatedAge < 18) {
+      return res.status(400).json({ message: 'You must be at least 18 years old to register as a voter' });
     }
     
     // Check if voter ID is already registered
@@ -63,11 +79,13 @@ exports.registerVoter = async (req, res) => {
       firstName,
       middleName,
       lastName,
-      age,
+      fatherName,
+      gender,
+      age: calculatedAge, // Use calculated age
       dateOfBirth,
       email,
       voterId,
-      profileImage: req.file ? `/uploads/${req.file.filename}` : null,
+      voterIdImage: req.file ? `/uploads/${req.file.filename}` : null,
       status: 'pending'
     });
     
@@ -119,11 +137,13 @@ exports.getVoterProfile = async (req, res) => {
         firstName: voter.firstName,
         middleName: voter.middleName,
         lastName: voter.lastName,
+        fatherName: voter.fatherName,
+        gender: voter.gender,
         age: voter.age,
         dateOfBirth: voter.dateOfBirth,
         email: voter.email,
         voterId: voter.voterId,
-        profileImage: voter.profileImage,
+        voterIdImage: voter.voterIdImage,
         status: voter.status,
         rejectionReason: voter.rejectionReason,
         walletAddress: user.walletAddress
@@ -156,7 +176,8 @@ exports.updateVoterProfile = async (req, res) => {
       firstName,
       middleName,
       lastName,
-      age,
+      fatherName,
+      gender,
       dateOfBirth,
       email,
       voterId
@@ -166,8 +187,31 @@ exports.updateVoterProfile = async (req, res) => {
     if (firstName) voter.firstName = firstName;
     if (middleName !== undefined) voter.middleName = middleName;
     if (lastName) voter.lastName = lastName;
-    if (age) voter.age = age;
-    if (dateOfBirth) voter.dateOfBirth = dateOfBirth;
+    if (fatherName) voter.fatherName = fatherName;
+    if (gender) voter.gender = gender;
+    
+    // Update age if date of birth changes
+    if (dateOfBirth) {
+      voter.dateOfBirth = dateOfBirth;
+      
+      // Recalculate age
+      const birthDate = new Date(dateOfBirth);
+      const today = new Date();
+      let calculatedAge = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        calculatedAge--;
+      }
+      
+      // Validate age (must be 18+)
+      if (calculatedAge < 18) {
+        return res.status(400).json({ message: 'You must be at least 18 years old to register as a voter' });
+      }
+      
+      voter.age = calculatedAge;
+    }
+    
     if (email) voter.email = email;
     
     // Check if voter ID is being changed and if it's already registered
@@ -181,7 +225,7 @@ exports.updateVoterProfile = async (req, res) => {
     
     // Update image if provided
     if (req.file) {
-      voter.profileImage = `/uploads/${req.file.filename}`;
+      voter.voterIdImage = `/uploads/${req.file.filename}`;
     }
     
     // If voter was rejected, set status back to pending
@@ -199,11 +243,13 @@ exports.updateVoterProfile = async (req, res) => {
         firstName: voter.firstName,
         middleName: voter.middleName,
         lastName: voter.lastName,
+        fatherName: voter.fatherName,
+        gender: voter.gender,
         age: voter.age,
         dateOfBirth: voter.dateOfBirth,
         email: voter.email,
         voterId: voter.voterId,
-        profileImage: voter.profileImage,
+        voterIdImage: voter.voterIdImage,
         status: voter.status
       }
     });

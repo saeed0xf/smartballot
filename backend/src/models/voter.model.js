@@ -20,6 +20,16 @@ const voterSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  fatherName: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  gender: {
+    type: String,
+    required: true,
+    enum: ['male', 'female', 'other']
+  },
   age: {
     type: Number,
     required: true
@@ -39,6 +49,10 @@ const voterSchema = new mongoose.Schema({
     required: true,
     unique: true,
     trim: true
+  },
+  voterIdImage: {
+    type: String,
+    required: true
   },
   profileImage: {
     type: String

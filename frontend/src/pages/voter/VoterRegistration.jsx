@@ -37,16 +37,26 @@ const VoterRegistration = () => {
     firstName: Yup.string().required('First name is required'),
     middleName: Yup.string(),
     lastName: Yup.string().required('Last name is required'),
-    age: Yup.number()
-      .required('Age is required')
-      .min(18, 'You must be at least 18 years old')
-      .max(120, 'Invalid age'),
-    dateOfBirth: Yup.date().required('Date of birth is required'),
+    fatherName: Yup.string().required('Father\'s name is required'),
+    gender: Yup.string().required('Gender is required').oneOf(['male', 'female', 'other'], 'Invalid gender selection'),
+    dateOfBirth: Yup.date()
+      .required('Date of birth is required')
+      .test('is-18-plus', 'You must be at least 18 years old', function(value) {
+        if (!value) return false;
+        const today = new Date();
+        const birthDate = new Date(value);
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        return age >= 18;
+      }),
     email: Yup.string()
       .email('Invalid email address')
       .required('Email is required'),
     voterId: Yup.string().required('Voter ID is required'),
-    profileImage: Yup.mixed().required('Profile image is required')
+    voterIdImage: Yup.mixed().required('Voter ID image is required')
   });
 
   // Initial form values
@@ -54,11 +64,12 @@ const VoterRegistration = () => {
     firstName: '',
     middleName: '',
     lastName: '',
-    age: '',
+    fatherName: '',
+    gender: '',
     dateOfBirth: '',
     email: '',
     voterId: '',
-    profileImage: null
+    voterIdImage: null
   };
 
   // Handle form submission
@@ -76,12 +87,23 @@ const VoterRegistration = () => {
       formData.append('firstName', values.firstName);
       formData.append('middleName', values.middleName || '');
       formData.append('lastName', values.lastName);
-      formData.append('age', values.age);
+      formData.append('fatherName', values.fatherName);
+      formData.append('gender', values.gender);
       formData.append('dateOfBirth', values.dateOfBirth);
       formData.append('email', values.email);
       formData.append('voterId', values.voterId);
-      formData.append('profileImage', values.profileImage);
+      formData.append('voterIdImage', values.voterIdImage);
       formData.append('walletAddress', walletAddress);
+
+      // Calculate age from date of birth
+      const birthDate = new Date(values.dateOfBirth);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      formData.append('age', age);
 
       // Submit registration
       await registerVoter(formData);
@@ -222,37 +244,60 @@ const VoterRegistration = () => {
                   <Row>
                     <Col md={6}>
                       <Form.Group className="mb-3">
-                        <Form.Label>Age</Form.Label>
+                        <Form.Label>Father's Name</Form.Label>
                         <Form.Control
-                          type="number"
-                          name="age"
-                          value={values.age}
+                          type="text"
+                          name="fatherName"
+                          value={values.fatherName}
                           onChange={handleChange}
                           onBlur={handleBlur}
-                          isInvalid={touched.age && errors.age}
+                          isInvalid={touched.fatherName && errors.fatherName}
                         />
                         <Form.Control.Feedback type="invalid">
-                          {errors.age}
+                          {errors.fatherName}
                         </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={6}>
                       <Form.Group className="mb-3">
-                        <Form.Label>Date of Birth</Form.Label>
-                        <Form.Control
-                          type="date"
-                          name="dateOfBirth"
-                          value={values.dateOfBirth}
+                        <Form.Label>Gender</Form.Label>
+                        <Form.Select
+                          name="gender"
+                          value={values.gender}
                           onChange={handleChange}
                           onBlur={handleBlur}
-                          isInvalid={touched.dateOfBirth && errors.dateOfBirth}
-                        />
+                          isInvalid={touched.gender && errors.gender}
+                        >
+                          <option value="">Select Gender</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                          <option value="other">Other</option>
+                        </Form.Select>
                         <Form.Control.Feedback type="invalid">
-                          {errors.dateOfBirth}
+                          {errors.gender}
                         </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                   </Row>
+
+                  <Form.Group className="mb-3">
+                    <Form.Label>Date of Birth</Form.Label>
+                    <Form.Control
+                      type="date"
+                      name="dateOfBirth"
+                      value={values.dateOfBirth}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      isInvalid={touched.dateOfBirth && errors.dateOfBirth}
+                      max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
+                    />
+                    <Form.Control.Feedback type="invalid">
+                      {errors.dateOfBirth}
+                    </Form.Control.Feedback>
+                    <Form.Text className="text-muted">
+                      You must be at least 18 years old to register.
+                    </Form.Text>
+                  </Form.Group>
 
                   <Form.Group className="mb-3">
                     <Form.Label>Email Address</Form.Label>
@@ -285,19 +330,22 @@ const VoterRegistration = () => {
                   </Form.Group>
 
                   <Form.Group className="mb-4">
-                    <Form.Label>Profile Image</Form.Label>
+                    <Form.Label>Voter ID Image</Form.Label>
                     <Form.Control
                       type="file"
-                      name="profileImage"
+                      name="voterIdImage"
                       accept="image/*"
                       onChange={(e) => {
-                        setFieldValue('profileImage', e.currentTarget.files[0]);
+                        setFieldValue('voterIdImage', e.currentTarget.files[0]);
                       }}
-                      isInvalid={touched.profileImage && errors.profileImage}
+                      isInvalid={touched.voterIdImage && errors.voterIdImage}
                     />
                     <Form.Control.Feedback type="invalid">
-                      {errors.profileImage}
+                      {errors.voterIdImage}
                     </Form.Control.Feedback>
+                    <Form.Text className="text-muted">
+                      Please upload a clear image of your voter ID card.
+                    </Form.Text>
                   </Form.Group>
 
                   <div className="d-grid mt-4">
