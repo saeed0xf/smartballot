@@ -25,6 +25,7 @@ import OfficerDashboard from './pages/officer/OfficerDashboard';
 import ViewSlots from './pages/officer/ViewSlots';
 import AddSlot from './pages/officer/AddSlot';
 import MonitorVoting from './pages/officer/MonitorVoting';
+import TimeSlotAllocation from './pages/officer/TimeSlotAllocation';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -53,6 +54,7 @@ function App() {
         <Route path="/officer" element={<OfficerRoute><OfficerDashboard /></OfficerRoute>} />
         <Route path="/officer/slots" element={<OfficerRoute><ViewSlots /></OfficerRoute>} />
         <Route path="/officer/slots/add" element={<OfficerRoute><AddSlot /></OfficerRoute>} />
+        <Route path="/officer/timeslots" element={<OfficerRoute><TimeSlotAllocation /></OfficerRoute>} />
         <Route path="/officer/monitor" element={<OfficerRoute><MonitorVoting /></OfficerRoute>} />
         
         {/* 404 Route */}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Container, Row, Col, Card, Button, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaClipboardList, FaPlus, FaChartLine, FaUsers, FaVoteYea, FaMapMarkerAlt } from 'react-icons/fa';
+import { FaClipboardList, FaPlus, FaChartLine, FaUsers, FaVoteYea, FaMapMarkerAlt, FaClock, FaCalendarAlt } from 'react-icons/fa';
 import Layout from '../../components/Layout';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
@@ -126,7 +126,7 @@ const OfficerDashboard = () => {
         {/* Quick Actions */}
         <h4 className="mb-3">Quick Actions</h4>
         <Row className="mb-4">
-          <Col md={6} lg={4} className="mb-3">
+          <Col md={6} lg={3} className="mb-3">
             <Card className="h-100 border-0 shadow-sm">
               <Card.Body className="text-center p-4">
                 <div className="icon-box mb-3">
@@ -148,7 +148,7 @@ const OfficerDashboard = () => {
             </Card>
           </Col>
           
-          <Col md={6} lg={4} className="mb-3">
+          <Col md={6} lg={3} className="mb-3">
             <Card className="h-100 border-0 shadow-sm">
               <Card.Body className="text-center p-4">
                 <div className="icon-box mb-3">
@@ -170,7 +170,29 @@ const OfficerDashboard = () => {
             </Card>
           </Col>
           
-          <Col md={6} lg={4} className="mb-3">
+          <Col md={6} lg={3} className="mb-3">
+            <Card className="h-100 border-0 shadow-sm">
+              <Card.Body className="text-center p-4">
+                <div className="icon-box mb-3">
+                  <FaCalendarAlt size={32} className="text-warning" />
+                </div>
+                <h5>Manage Voter Time Slots</h5>
+                <p className="text-muted">
+                  Allocate and manage time slots for approved voters.
+                </p>
+                <Button
+                  as={Link}
+                  to="/officer/timeslots"
+                  variant="outline-warning"
+                  className="mt-2"
+                >
+                  Allocate Time Slots
+                </Button>
+              </Card.Body>
+            </Card>
+          </Col>
+          
+          <Col md={6} lg={3} className="mb-3">
             <Card className="h-100 border-0 shadow-sm">
               <Card.Body className="text-center p-4">
                 <div className="icon-box mb-3">
