@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Table, Card, Button, Form, Row, Col, Badge, Spinner } from 'react-bootstrap';
+import { Container, Table, Card, Button, Form, Row, Col, Badge, Spinner, Modal, Alert, ListGroup } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaPlus, FaEdit, FaTrash, FaFilter, FaSearch } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaFilter, FaSearch, FaClock, FaCalendarAlt, FaUsers, FaEnvelope } from 'react-icons/fa';
 import Layout from '../../components/Layout';
 import axios from 'axios';
 
@@ -10,6 +10,8 @@ const ViewSlots = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // 'all', 'active', 'inactive'
   const [searchQuery, setSearchQuery] = useState('');
+  const [showVotersModal, setShowVotersModal] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState(null);
 
   useEffect(() => {
     const fetchSlots = async () => {
@@ -25,47 +27,71 @@ const ViewSlots = () => {
           setSlots([
             {
               id: '1',
-              name: 'Ward 1 Station',
+              name: 'Morning Session Ward 1',
               location: '123 Main St, City',
               status: 'active',
               capacity: 250,
               currentVoters: 148,
-              lastUpdated: '2023-10-15T10:30:00Z'
+              date: '2023-10-15',
+              startTime: '08:00',
+              endTime: '12:00',
+              lastUpdated: '2023-10-15T10:30:00Z',
+              voters: [
+                { id: 'v1', name: 'John Doe', email: 'john@example.com' },
+                { id: 'v2', name: 'Jane Smith', email: 'jane@example.com' },
+                { id: 'v3', name: 'Robert Johnson', email: 'robert@example.com' }
+              ]
             },
             {
               id: '2',
-              name: 'Central Library',
+              name: 'Afternoon Session Central Library',
               location: '456 Park Ave, City',
               status: 'active',
               capacity: 300,
               currentVoters: 212,
-              lastUpdated: '2023-10-15T11:15:00Z'
+              date: '2023-10-15',
+              startTime: '13:00',
+              endTime: '17:00',
+              lastUpdated: '2023-10-15T11:15:00Z',
+              voters: [
+                { id: 'v4', name: 'Emily Davis', email: 'emily@example.com' },
+                { id: 'v5', name: 'Michael Wilson', email: 'michael@example.com' }
+              ]
             },
             {
               id: '3',
-              name: 'Community Center',
+              name: 'Evening Session Community Center',
               location: '789 Oak Rd, City',
               status: 'inactive',
               capacity: 200,
               currentVoters: 0,
+              date: '2023-10-16',
+              startTime: '17:00',
+              endTime: '21:00',
               lastUpdated: '2023-10-10T09:45:00Z'
             },
             {
               id: '4',
-              name: 'High School Gym',
+              name: 'Morning Session High School Gym',
               location: '101 School Blvd, City',
               status: 'active',
               capacity: 400,
               currentVoters: 275,
+              date: '2023-10-16',
+              startTime: '08:00',
+              endTime: '12:00',
               lastUpdated: '2023-10-15T10:00:00Z'
             },
             {
               id: '5',
-              name: 'East Side Station',
+              name: 'Afternoon Session East Side',
               location: '202 River St, City',
               status: 'inactive',
               capacity: 150,
               currentVoters: 0,
+              date: '2023-10-17',
+              startTime: '13:00',
+              endTime: '17:00',
               lastUpdated: '2023-10-12T14:20:00Z'
             }
           ]);
@@ -104,15 +130,37 @@ const ViewSlots = () => {
     const date = new Date(dateString);
     return date.toLocaleString();
   };
+  
+  // Format date only (YYYY-MM-DD to readable format)
+  const formatDateOnly = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
+  
+  // Format time (24hr to 12hr format)
+  const formatTime = (timeString) => {
+    if (!timeString) return '';
+    const [hours, minutes] = timeString.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+  };
+
+  // Function to open the voters modal
+  const handleShowVoters = (slot) => {
+    setSelectedSlot(slot);
+    setShowVotersModal(true);
+  };
 
   return (
     <Layout>
       <Container className="py-4">
         <div className="d-flex justify-content-between align-items-center mb-4">
           <div>
-            <h1>Monitoring Slots</h1>
+            <h1>Voting Time Slots</h1>
             <p className="text-muted">
-              View and manage polling station monitoring slots.
+              View and manage voting time slots for polling stations.
             </p>
           </div>
           <Button 
@@ -163,12 +211,12 @@ const ViewSlots = () => {
         {loading ? (
           <div className="text-center my-5">
             <Spinner animation="border" variant="primary" />
-            <p className="mt-3">Loading monitoring slots...</p>
+            <p className="mt-3">Loading voting time slots...</p>
           </div>
         ) : filteredSlots.length === 0 ? (
           <Card className="border-0 shadow-sm">
             <Card.Body className="text-center p-5">
-              <p className="mb-3">No monitoring slots found matching your criteria.</p>
+              <p className="mb-3">No voting time slots found matching your criteria.</p>
               <Button 
                 as={Link} 
                 to="/officer/slots/add" 
@@ -186,10 +234,11 @@ const ViewSlots = () => {
                   <tr>
                     <th>Name</th>
                     <th>Location</th>
+                    <th>Date</th>
+                    <th>Time</th>
                     <th>Status</th>
                     <th>Capacity</th>
-                    <th>Current Voters</th>
-                    <th>Last Updated</th>
+                    <th>Assigned</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -199,13 +248,29 @@ const ViewSlots = () => {
                       <td className="fw-semibold">{slot.name}</td>
                       <td>{slot.location}</td>
                       <td>
+                        <div className="d-flex align-items-center">
+                          <FaCalendarAlt className="me-1 text-muted" />
+                          {formatDateOnly(slot.date)}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          <FaClock className="me-1 text-muted" />
+                          {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                        </div>
+                      </td>
+                      <td>
                         <Badge bg={slot.status === 'active' ? 'success' : 'secondary'}>
                           {slot.status === 'active' ? 'Active' : 'Inactive'}
                         </Badge>
                       </td>
                       <td>{slot.capacity}</td>
-                      <td>{slot.currentVoters}</td>
-                      <td>{formatDate(slot.lastUpdated)}</td>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          <FaUsers className="me-1 text-muted" />
+                          {slot.voters?.length || 0} / {slot.capacity}
+                        </div>
+                      </td>
                       <td>
                         <Button 
                           variant="outline-primary" 
@@ -214,6 +279,16 @@ const ViewSlots = () => {
                           title="Edit"
                         >
                           <FaEdit />
+                        </Button>
+                        <Button 
+                          variant="outline-success" 
+                          size="sm"
+                          className="me-2"
+                          title="View Assigned Voters"
+                          onClick={() => handleShowVoters(slot)}
+                          disabled={!slot.voters || slot.voters.length === 0}
+                        >
+                          <FaUsers />
                         </Button>
                         <Button 
                           variant="outline-danger" 
@@ -231,6 +306,58 @@ const ViewSlots = () => {
           </Card>
         )}
       </Container>
+
+      {/* Assigned Voters Modal */}
+      <Modal 
+        show={showVotersModal} 
+        onHide={() => setShowVotersModal(false)} 
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title className="d-flex align-items-center">
+            <FaUsers className="me-2" />
+            Assigned Voters - {selectedSlot?.name}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {!selectedSlot?.voters || selectedSlot.voters.length === 0 ? (
+            <Alert variant="info">No voters assigned to this time slot.</Alert>
+          ) : (
+            <ListGroup>
+              {selectedSlot.voters.map(voter => (
+                <ListGroup.Item key={voter.id} className="d-flex justify-content-between align-items-center">
+                  <div>
+                    <div className="fw-semibold">{voter.name}</div>
+                    <div className="text-muted small">{voter.email}</div>
+                  </div>
+                  <Button 
+                    variant="outline-primary" 
+                    size="sm"
+                    title="Send Reminder Email"
+                    onClick={() => {
+                      alert(`Reminder email sent to ${voter.email}`);
+                    }}
+                  >
+                    <FaEnvelope className="me-1" /> Reminder
+                  </Button>
+                </ListGroup.Item>
+              ))}
+            </ListGroup>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <div className="d-flex justify-content-between w-100">
+            <div>
+              <Badge bg="primary" pill className="px-3 py-2">
+                {selectedSlot?.voters?.length || 0} voters assigned
+              </Badge>
+            </div>
+            <Button variant="secondary" onClick={() => setShowVotersModal(false)}>
+              Close
+            </Button>
+          </div>
+        </Modal.Footer>
+      </Modal>
     </Layout>
   );
 };

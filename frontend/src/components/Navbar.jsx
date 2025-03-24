@@ -1,12 +1,12 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Navbar, Nav, Container, Button, Badge } from 'react-bootstrap';
-import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine } from 'react-icons/fa';
+import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine, FaClock } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 import env from '../utils/env';
 
 const AppNavbar = () => {
-  const { user, isAuthenticated, isAdmin, isVoter, isOfficer, logout } = useContext(AuthContext);
+  const { user, isAuthenticated, logout } = useContext(AuthContext);
   const navigate = useNavigate();
   const [walletType, setWalletType] = useState(null);
 
@@ -47,8 +47,15 @@ const AppNavbar = () => {
     navigate('/');
   };
 
-  // This line needs to be updated to handle undefined user
-  const userRole = user ? user.role : '';
+  // Get user role or wallet type
+  const getUserRole = () => {
+    if (user && user.role) {
+      return user.role;
+    }
+    return walletType || '';
+  };
+
+  const userRole = getUserRole();
 
   // Public navbar - hide register for admin and officer
   const publicLinks = (
@@ -116,13 +123,13 @@ const AppNavbar = () => {
         <FaHome className="me-1" /> Dashboard
       </Nav.Link>
       <Nav.Link as={Link} to="/officer/slots" className="d-flex align-items-center">
-        <FaClipboardList className="me-1" /> View Slots
+        <FaClock className="me-1" /> Time Slots
       </Nav.Link>
       <Nav.Link as={Link} to="/officer/slots/add" className="d-flex align-items-center">
         <FaBoxes className="me-1" /> Add Slot
       </Nav.Link>
       <Nav.Link as={Link} to="/officer/monitor" className="d-flex align-items-center">
-        <FaChartLine className="me-1" /> Monitoring
+        <FaChartLine className="me-1" /> Live Monitoring
       </Nav.Link>
       <Button variant="outline-danger" onClick={handleLogout} className="ms-2 d-flex align-items-center">
         <FaSignOutAlt className="me-1" /> Logout
@@ -132,17 +139,21 @@ const AppNavbar = () => {
 
   // Render the appropriate links based on user role
   const navLinks = () => {
-    if (isAuthenticated) {
-      if (isAdmin) {
-        return adminLinks;
-      } else if (isOfficer()) {
-        return officerLinks;
-      } else if (isVoter()) {
-        return voterLinks;
-      }
+    if (!isAuthenticated) {
+      return publicLinks;
     }
-    return publicLinks;
-  }
+    
+    switch(userRole) {
+      case 'admin':
+        return adminLinks;
+      case 'officer':
+        return officerLinks;
+      case 'voter':
+        return voterLinks;
+      default:
+        return publicLinks;
+    }
+  };
 
   return (
     <Navbar bg="dark" variant="dark" expand="lg" className="mb-4">

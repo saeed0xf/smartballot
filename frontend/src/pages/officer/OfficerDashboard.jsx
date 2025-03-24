@@ -58,7 +58,7 @@ const OfficerDashboard = () => {
           </div>
           <div>
             <Badge bg="primary" className="p-2">
-              Officer ID: {user?.id?.substring(0, 8) || 'Unknown'}
+              Officer Wallet: {user?.walletAddress || user?.wallet || 'Unknown'}
             </Badge>
           </div>
         </div>
@@ -72,7 +72,7 @@ const OfficerDashboard = () => {
                   <FaMapMarkerAlt size={24} className="text-primary" />
                 </div>
                 <div>
-                  <h6 className="mb-0 text-muted">Total Slots</h6>
+                  <h6 className="mb-0 text-muted">Total Time Slots</h6>
                   <h3 className="mb-0">{stats.totalSlots}</h3>
                 </div>
               </Card.Body>
@@ -86,7 +86,7 @@ const OfficerDashboard = () => {
                   <FaClipboardList size={24} className="text-success" />
                 </div>
                 <div>
-                  <h6 className="mb-0 text-muted">Active Slots</h6>
+                  <h6 className="mb-0 text-muted">Active Time Slots</h6>
                   <h3 className="mb-0">{stats.activeSlots}</h3>
                 </div>
               </Card.Body>
@@ -102,6 +102,7 @@ const OfficerDashboard = () => {
                 <div>
                   <h6 className="mb-0 text-muted">Pending Voters</h6>
                   <h3 className="mb-0">{stats.pendingVoters}</h3>
+                  <small className="text-muted">Awaiting time slot allocation</small>
                 </div>
               </Card.Body>
             </Card>
@@ -131,9 +132,9 @@ const OfficerDashboard = () => {
                 <div className="icon-box mb-3">
                   <FaClipboardList size={32} className="text-primary" />
                 </div>
-                <h5>View Monitoring Slots</h5>
+                <h5>View Voting Time Slots</h5>
                 <p className="text-muted">
-                  View and manage all polling station monitoring slots.
+                  View and manage all voting time slots for polling stations.
                 </p>
                 <Button
                   as={Link}
@@ -153,9 +154,9 @@ const OfficerDashboard = () => {
                 <div className="icon-box mb-3">
                   <FaPlus size={32} className="text-success" />
                 </div>
-                <h5>Add New Monitoring Slot</h5>
+                <h5>Add New Voting Time Slot</h5>
                 <p className="text-muted">
-                  Create a new polling station monitoring slot.
+                  Create a new voting time slot for voters and send email notifications.
                 </p>
                 <Button
                   as={Link}
