@@ -14,9 +14,9 @@ const Register = () => {
     if (isAuthenticated) {
       if (isAdmin) {
         navigate('/admin');
-      } else if (isVoter) {
+      } else if (isVoter()) {
         navigate('/voter');
-      } else if (isOfficer) {
+      } else if (isOfficer()) {
         navigate('/officer');
       }
     }

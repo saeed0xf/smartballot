@@ -18,7 +18,7 @@ const VoterRoute = ({ children }) => {
     return <Navigate to="/login" />;
   }
 
-  return isVoter ? children : <Navigate to="/" />;
+  return isVoter() ? children : <Navigate to="/" />;
 };
 
 export default VoterRoute; 

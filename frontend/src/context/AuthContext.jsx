@@ -498,7 +498,19 @@ export const AuthProvider = ({ children }) => {
           
           return false;
         },
-        isVoter: user?.role === 'voter',
+        isVoter: () => {
+          // Check if the current user has the voter role
+          if (user && user.role === 'voter') {
+            return true;
+          }
+          
+          // If user has a role that is not admin or officer, they're a voter
+          if (user && user.role && user.role !== 'admin' && user.role !== 'officer') {
+            return true;
+          }
+          
+          return false;
+        },
         connectWallet,
         signMessage,
         registerVoter,

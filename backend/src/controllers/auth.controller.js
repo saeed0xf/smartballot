@@ -100,9 +100,20 @@ exports.login = async (req, res) => {
     
     // Check if this is an officer address (you can add officer addresses to env or database)
     const officerAddressesStr = process.env.OFFICER_WALLET_ADDRESSES || '';
+    console.log('Officer addresses string from env:', officerAddressesStr);
+    
     const officerAddresses = officerAddressesStr ? officerAddressesStr.split(',') : [];
-    console.log('Officer addresses from env:', officerAddresses);
-    const isOfficer = officerAddresses.some(addr => addr.toLowerCase() === address.toLowerCase());
+    console.log('Officer addresses parsed from env:', officerAddresses);
+    
+    // Case-insensitive comparison with address normalization for better logging
+    const normalizedUserAddress = address.toLowerCase();
+    console.log('Normalized user address:', normalizedUserAddress);
+    
+    const isOfficer = officerAddresses.some(addr => {
+      const normalizedAddr = addr.toLowerCase();
+      console.log(`Comparing officer address: ${normalizedAddr} with user address: ${normalizedUserAddress}`);
+      return normalizedAddr === normalizedUserAddress;
+    });
     console.log('Is officer address:', isOfficer);
     
     // Determine the role

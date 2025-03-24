@@ -18,7 +18,7 @@ const OfficerRoute = ({ children }) => {
     return <Navigate to="/login" />;
   }
 
-  return isOfficer ? children : <Navigate to="/" />;
+  return isOfficer() ? children : <Navigate to="/" />;
 };
 
 export default OfficerRoute; 

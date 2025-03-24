@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Navbar, Nav, Container, Button, Badge } from 'react-bootstrap';
-import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare } from 'react-icons/fa';
+import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 import env from '../utils/env';
 
@@ -47,8 +47,8 @@ const AppNavbar = () => {
     navigate('/');
   };
 
-  // Determine user role for exclusive navbar display
-  const userRole = user?.role || '';
+  // This line needs to be updated to handle undefined user
+  const userRole = user ? user.role : '';
 
   // Public navbar - hide register for admin and officer
   const publicLinks = (
@@ -121,11 +121,28 @@ const AppNavbar = () => {
       <Nav.Link as={Link} to="/officer/slots/add" className="d-flex align-items-center">
         <FaBoxes className="me-1" /> Add Slot
       </Nav.Link>
+      <Nav.Link as={Link} to="/officer/monitor" className="d-flex align-items-center">
+        <FaChartLine className="me-1" /> Monitoring
+      </Nav.Link>
       <Button variant="outline-danger" onClick={handleLogout} className="ms-2 d-flex align-items-center">
         <FaSignOutAlt className="me-1" /> Logout
       </Button>
     </>
   );
+
+  // Render the appropriate links based on user role
+  const navLinks = () => {
+    if (isAuthenticated) {
+      if (isAdmin) {
+        return adminLinks;
+      } else if (isOfficer()) {
+        return officerLinks;
+      } else if (isVoter()) {
+        return voterLinks;
+      }
+    }
+    return publicLinks;
+  }
 
   return (
     <Navbar bg="dark" variant="dark" expand="lg" className="mb-4">
@@ -142,10 +159,7 @@ const AppNavbar = () => {
         <Navbar.Toggle aria-controls="basic-navbar-nav" />
         <Navbar.Collapse id="basic-navbar-nav">
           <Nav className="ms-auto">
-            {!isAuthenticated && publicLinks}
-            {isAuthenticated && userRole === 'admin' && adminLinks}
-            {isAuthenticated && userRole === 'voter' && voterLinks}
-            {isAuthenticated && userRole === 'officer' && officerLinks}
+            {navLinks()}
           </Nav>
         </Navbar.Collapse>
       </Container>

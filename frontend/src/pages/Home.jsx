@@ -42,6 +42,30 @@ const Home = () => {
     checkWalletType();
   }, []);
 
+  const renderDashboardButton = () => {
+    if (isAuthenticated) {
+      if (isAdmin) {
+        return (
+          <Button variant="success" as={Link} to="/admin" className="me-3">
+            Admin Dashboard
+          </Button>
+        );
+      } else if (isVoter()) {
+        return (
+          <Button variant="success" as={Link} to="/voter" className="me-3">
+            Voter Dashboard
+          </Button>
+        );
+      } else if (isOfficer()) {
+        return (
+          <Button variant="success" as={Link} to="/officer" className="me-3">
+            Officer Dashboard
+          </Button>
+        );
+      }
+    }
+  };
+
   // Redirect authenticated users to their respective dashboards
   if (isAuthenticated) {
     if (isAdmin) {
