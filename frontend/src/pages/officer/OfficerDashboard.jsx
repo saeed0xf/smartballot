@@ -126,7 +126,7 @@ const OfficerDashboard = () => {
         {/* Quick Actions */}
         <h4 className="mb-3">Quick Actions</h4>
         <Row className="mb-4">
-          <Col md={6} lg={3} className="mb-3">
+          <Col md={6} lg={4} className="mb-3">
             <Card className="h-100 border-0 shadow-sm">
               <Card.Body className="text-center p-4">
                 <div className="icon-box mb-3">
@@ -148,29 +148,7 @@ const OfficerDashboard = () => {
             </Card>
           </Col>
           
-          <Col md={6} lg={3} className="mb-3">
-            <Card className="h-100 border-0 shadow-sm">
-              <Card.Body className="text-center p-4">
-                <div className="icon-box mb-3">
-                  <FaPlus size={32} className="text-success" />
-                </div>
-                <h5>Add New Voting Time Slot</h5>
-                <p className="text-muted">
-                  Create a new voting time slot for voters and send email notifications.
-                </p>
-                <Button
-                  as={Link}
-                  to="/officer/slots/add"
-                  variant="outline-success"
-                  className="mt-2"
-                >
-                  Add Slot
-                </Button>
-              </Card.Body>
-            </Card>
-          </Col>
-          
-          <Col md={6} lg={3} className="mb-3">
+          <Col md={6} lg={4} className="mb-3">
             <Card className="h-100 border-0 shadow-sm">
               <Card.Body className="text-center p-4">
                 <div className="icon-box mb-3">
@@ -192,7 +170,7 @@ const OfficerDashboard = () => {
             </Card>
           </Col>
           
-          <Col md={6} lg={3} className="mb-3">
+          <Col md={6} lg={4} className="mb-3">
             <Card className="h-100 border-0 shadow-sm">
               <Card.Body className="text-center p-4">
                 <div className="icon-box mb-3">

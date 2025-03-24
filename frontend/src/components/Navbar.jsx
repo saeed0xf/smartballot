@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Navbar, Nav, Container, Button, Badge } from 'react-bootstrap';
-import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine, FaClock } from 'react-icons/fa';
+import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine, FaClock, FaCalendarAlt } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 import env from '../utils/env';
 
@@ -56,6 +56,22 @@ const AppNavbar = () => {
   };
 
   const userRole = getUserRole();
+
+  // Get dashboard path based on user role
+  const getDashboardPath = () => {
+    if (!isAuthenticated) return '/';
+    
+    switch(userRole) {
+      case 'admin':
+        return '/admin';
+      case 'officer':
+        return '/officer';
+      case 'voter':
+        return '/voter';
+      default:
+        return '/';
+    }
+  };
 
   // Public navbar - hide register for admin and officer
   const publicLinks = (
@@ -125,8 +141,8 @@ const AppNavbar = () => {
       <Nav.Link as={Link} to="/officer/slots" className="d-flex align-items-center">
         <FaClock className="me-1" /> Time Slots
       </Nav.Link>
-      <Nav.Link as={Link} to="/officer/slots/add" className="d-flex align-items-center">
-        <FaBoxes className="me-1" /> Add Slot
+      <Nav.Link as={Link} to="/officer/timeslots" className="d-flex align-items-center">
+        <FaCalendarAlt className="me-1" /> Manage Voter Time Slots
       </Nav.Link>
       <Nav.Link as={Link} to="/officer/monitor" className="d-flex align-items-center">
         <FaChartLine className="me-1" /> Live Monitoring
@@ -158,7 +174,7 @@ const AppNavbar = () => {
   return (
     <Navbar bg="dark" variant="dark" expand="lg" className="mb-4">
       <Container>
-        <Navbar.Brand as={Link} to="/" className="d-flex align-items-center">
+        <Navbar.Brand as={Link} to={getDashboardPath()} className="d-flex align-items-center">
           <FaVoteYea className="me-2" size={24} />
           <span>VoteSure</span>
           {isAuthenticated && (
