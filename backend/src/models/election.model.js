@@ -10,6 +10,16 @@ const electionSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  electionType: {
+    type: String,
+    required: true,
+    enum: ['Presidential', 'Parliamentary', 'Regional', 'Local'],
+    default: 'Presidential'
+  },
+  region: {
+    type: String,
+    trim: true
+  },
   startDate: {
     type: Date
   },
@@ -19,6 +29,17 @@ const electionSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: false
+  },
+  isArchived: {
+    type: Boolean,
+    default: false
+  },
+  archivedAt: {
+    type: Date
+  },
+  totalVotes: {
+    type: Number,
+    default: 0
   },
   blockchainStartTxHash: {
     type: String

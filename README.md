@@ -1,80 +1,109 @@
-# Votesure - Decentralized Voting System
+# VoteSure - Secure Blockchain Voting System
 
-A blockchain-based voting system built with Ethereum, React, and Node.js.
+VoteSure is a secure voting system built on blockchain technology, designed to facilitate transparent, tamper-proof elections. The system incorporates various security features, including voter identity verification, time slot allocation, and real-time monitoring.
 
-## Project Overview
+## Recent Updates
 
-Votesure is a hybrid decentralized voting system that leverages Ethereum blockchain for crucial voting operations while using MongoDB for non-critical data storage. The system supports three types of users:
+### 1. MongoDB Integration for Candidate Management
+- Candidates are now stored in MongoDB when added through the admin interface
+- Complete candidate profile with comprehensive details (personal info, party affiliation, etc.)
+- Images are stored using multer (candidate photos and party symbols)
+- When an election starts, candidate data is recorded on the blockchain
 
-1. **Voters** - Citizens who register and cast votes
-2. **Admin** - Manages voter approvals and election setup
-3. **Election Commission Officer** - Monitors the election process
+### 2. Archived Elections Feature
+- New section "Archived Elections" in the admin navbar
+- Stores data about ended elections, including:
+  - Election details (type, region, dates)
+  - Candidates who participated
+  - Vote counts and percentages
+  - Ability to download results as CSV
 
-## Features
+### 3. Footer Improvements
+- "Register as Voter" link is now hidden when logged in with admin or officer wallet
+- "Connect Wallet" button is hidden when any wallet is already connected
+- Improved text visibility with updated color scheme
 
-- Secure voter registration and approval process
-- Blockchain-based vote casting and verification
-- Admin dashboard for voter approval and election management
-- Election Commission Officer monitoring capabilities
-- Email notifications for voter approval/rejection
+### 4. Candidate Registration Form Enhancement
+- Date of Birth field is now optional
+- Added required Age field for better data collection
+- Improved form validation and user feedback
 
 ## Tech Stack
 
-- **Frontend**: React.js
-- **Backend**: Node.js, Express
-- **Blockchain**: Ethereum (Ganache for development)
-- **Database**: MongoDB
-- **Blockchain Interaction**: ethers.js
+### Frontend
+- React.js
+- React Bootstrap
+- React Router
+- React Icons
+- Context API for state management
+- Axios for API requests
 
-## Project Structure
+### Backend
+- Node.js
+- Express.js
+- MongoDB with Mongoose
+- JWT Authentication
+- Multer for file uploads
+- Blockchain integration (Web3.js)
+
+### Authentication
+- MetaMask wallet integration
+- Role-based access control (Admin, Officer, Voter)
+
+## Key Features
+
+- **Voter Management**: Registration, verification, and approval workflow
+- **Candidate Management**: Add, edit, and manage election candidates
+- **Time Slot Allocation**: Schedule voting time slots to prevent overloading
+- **Election Monitoring**: Real-time monitoring of voting activity
+- **Election Archives**: Store and analyze past election data
+- **Blockchain Integration**: Secure, tamper-proof vote recording
+
+## Getting Started
+
+1. Clone the repository
+2. Install dependencies:
+```
+npm install
+cd frontend && npm install
+cd backend && npm install
+```
+
+3. Start the development server:
+```
+npm run dev
+```
+
+4. Access the application at:
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:5000
+
+## File Structure
 
 ```
 votesure/
-├── frontend/         # React frontend application
-├── backend/          # Node.js backend server
-└── blockchain/       # Smart contracts and blockchain interaction
+├── frontend/
+│   ├── public/
+│   └── src/
+│       ├── components/
+│       ├── context/
+│       ├── pages/
+│       │   ├── admin/
+│       │   ├── officer/
+│       │   └── voter/
+│       └── utils/
+├── backend/
+│   ├── src/
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── models/
+│   │   ├── routes/
+│   │   └── utils/
+│   └── uploads/
+└── contracts/
+    └── [blockchain contracts]
 ```
-
-## Setup Instructions
-
-### Prerequisites
-
-- Node.js and npm
-- MongoDB
-- Ganache (for local blockchain)
-- MetaMask browser extension
-
-### Installation
-
-1. Clone the repository
-2. Install dependencies for each component:
-   ```
-   # Frontend
-   cd frontend
-   npm install
-
-   # Backend
-   cd ../backend
-   npm install
-
-   # Blockchain
-   cd ../blockchain
-   npm install
-   ```
-
-3. Configure environment variables
-4. Deploy smart contracts to Ganache
-5. Start the application:
-   ```
-   # Start backend server
-   cd backend
-   npm start
-
-   # Start frontend application
-   cd ../frontend
-   npm start
-   ```
 
 ## License
 
-MIT 
+This project is licensed under the MIT License. 

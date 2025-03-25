@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Button, Alert, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaUsers, FaUserCheck, FaUserEdit, FaListAlt, FaPlay, FaStop, FaChartPie } from 'react-icons/fa';
+import { FaUsers, FaUserCheck, FaUserEdit, FaListAlt, FaPlay, FaStop, FaChartPie, FaArchive } from 'react-icons/fa';
 import axios from 'axios';
 import Layout from '../../components/Layout';
 import env from '../../utils/env';
@@ -204,6 +204,32 @@ const AdminDashboard = () => {
                     className="d-flex align-items-center justify-content-center"
                   >
                     <FaChartPie className="me-2" /> View Results
+                  </Button>
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+          
+          {/* Archived Elections */}
+          <Col lg={4} md={6} className="mb-4">
+            <Card className="h-100 shadow-sm">
+              <Card.Header className="bg-primary text-white">
+                <h5 className="mb-0 d-flex align-items-center">
+                  <FaArchive className="me-2" /> Archive Management
+                </h5>
+              </Card.Header>
+              <Card.Body>
+                <p>
+                  Access archived elections history. View past election data, candidates, and results for reference and analysis.
+                </p>
+                <div className="d-grid gap-2">
+                  <Button
+                    as={Link}
+                    to="/admin/archived-elections"
+                    variant="primary"
+                    className="d-flex align-items-center justify-content-center"
+                  >
+                    <FaArchive className="me-2" /> View Archives
                   </Button>
                 </div>
               </Card.Body>

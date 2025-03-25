@@ -415,61 +415,260 @@ exports.rejectVoter = async (req, res) => {
 // Add candidate
 exports.addCandidate = async (req, res) => {
   try {
-    const { name, party, slogan } = req.body;
-    
+    const {
+      firstName,
+      middleName,
+      lastName,
+      age,
+      gender,
+      dateOfBirth,
+      partyName,
+      electionType,
+      constituency,
+      manifesto,
+      education,
+      experience,
+      criminalRecord,
+      email
+    } = req.body;
+
     // Validate required fields
-    if (!name || !party) {
-      return res.status(400).json({ message: 'Name and party are required' });
+    if (!firstName || !lastName || !age || !gender || !partyName || !electionType) {
+      return res.status(400).json({ message: 'Please provide all required fields' });
     }
-    
-    // Add candidate to blockchain
-    const blockchainResult = await addCandidateOnBlockchain(name, party, slogan || '');
-    
-    if (!blockchainResult.success) {
-      return res.status(500).json({ 
-        message: 'Failed to add candidate on blockchain',
-        error: blockchainResult.error
-      });
-    }
-    
-    // Create candidate in database
-    const candidate = new Candidate({
-      name,
-      party,
-      slogan: slogan || '',
-      image: req.file ? `/uploads/${req.file.filename}` : null,
-      blockchainId: blockchainResult.candidateId,
-      blockchainTxHash: blockchainResult.txHash
+
+    // Create new candidate
+    const newCandidate = new Candidate({
+      firstName,
+      middleName,
+      lastName,
+      age,
+      gender,
+      dateOfBirth,
+      partyName,
+      electionType,
+      constituency,
+      manifesto,
+      education,
+      experience,
+      criminalRecord: criminalRecord || 'None',
+      email
     });
-    
-    await candidate.save();
-    
-    res.status(201).json({
-      message: 'Candidate added successfully',
-      candidate: {
-        id: candidate._id,
-        name: candidate.name,
-        party: candidate.party,
-        slogan: candidate.slogan,
-        image: candidate.image,
-        blockchainId: candidate.blockchainId
+
+    // Handle file uploads
+    if (req.files) {
+      if (req.files.candidatePhoto) {
+        newCandidate.photoUrl = `/uploads/${req.files.candidatePhoto[0].filename}`;
       }
-    });
+      if (req.files.partySymbol) {
+        newCandidate.partySymbol = `/uploads/${req.files.partySymbol[0].filename}`;
+      }
+    }
+
+    // Save to database
+    const savedCandidate = await newCandidate.save();
+
+    // Return saved candidate
+    res.status(201).json(savedCandidate);
   } catch (error) {
-    console.error('Add candidate error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error adding candidate:', error);
+    res.status(500).json({ message: 'Server error while adding candidate', error: error.message });
   }
 };
 
 // Get all candidates
 exports.getAllCandidates = async (req, res) => {
   try {
-    const candidates = await Candidate.find().sort({ name: 1 });
+    const { electionType, archived } = req.query;
     
-    res.json({ candidates });
+    // Build query
+    const query = {};
+    if (electionType) {
+      query.electionType = electionType;
+    }
+    
+    // Handle archived filter
+    if (archived === 'true') {
+      query.isArchived = true;
+    } else if (archived === 'false' || archived === undefined) {
+      query.isArchived = false;
+    }
+    
+    // Find candidates
+    const candidates = await Candidate.find(query).sort({ createdAt: -1 });
+    
+    res.status(200).json(candidates);
   } catch (error) {
-    console.error('Get all candidates error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error getting candidates:', error);
+    res.status(500).json({ message: 'Server error while getting candidates', error: error.message });
+  }
+};
+
+// Get candidate by ID
+exports.getCandidateById = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+    
+    // Find candidate
+    const candidate = await Candidate.findById(candidateId);
+    
+    if (!candidate) {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+    
+    res.status(200).json(candidate);
+  } catch (error) {
+    console.error('Error getting candidate:', error);
+    res.status(500).json({ message: 'Server error while getting candidate', error: error.message });
+  }
+};
+
+// Update candidate
+exports.updateCandidate = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+    const updateData = { ...req.body };
+    
+    // Handle file uploads
+    if (req.files) {
+      if (req.files.candidatePhoto) {
+        updateData.photoUrl = `/uploads/${req.files.candidatePhoto[0].filename}`;
+      }
+      if (req.files.partySymbol) {
+        updateData.partySymbol = `/uploads/${req.files.partySymbol[0].filename}`;
+      }
+    }
+    
+    // Update candidate
+    const updatedCandidate = await Candidate.findByIdAndUpdate(
+      candidateId,
+      updateData,
+      { new: true }
+    );
+    
+    if (!updatedCandidate) {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+    
+    res.status(200).json(updatedCandidate);
+  } catch (error) {
+    console.error('Error updating candidate:', error);
+    res.status(500).json({ message: 'Server error while updating candidate', error: error.message });
+  }
+};
+
+// Delete candidate
+exports.deleteCandidate = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+    
+    // Delete candidate
+    const deletedCandidate = await Candidate.findByIdAndDelete(candidateId);
+    
+    if (!deletedCandidate) {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+    
+    res.status(200).json({ message: 'Candidate deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting candidate:', error);
+    res.status(500).json({ message: 'Server error while deleting candidate', error: error.message });
+  }
+};
+
+// Add candidate to blockchain
+exports.addCandidateToBlockchain = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+    
+    // Find candidate
+    const candidate = await Candidate.findById(candidateId);
+    
+    if (!candidate) {
+      return res.status(404).json({ message: 'Candidate not found' });
+    }
+    
+    // Check if candidate is already on blockchain
+    if (candidate.blockchainId) {
+      return res.status(400).json({ message: 'Candidate already added to blockchain' });
+    }
+    
+    // Add candidate to blockchain
+    const blockchainResponse = await addCandidateOnBlockchain(candidate);
+    
+    // Update candidate with blockchain data
+    candidate.blockchainId = blockchainResponse.candidateId;
+    candidate.blockchainTxHash = blockchainResponse.txHash;
+    await candidate.save();
+    
+    res.status(200).json({
+      message: 'Candidate added to blockchain successfully',
+      blockchainId: candidate.blockchainId,
+      blockchainTxHash: candidate.blockchainTxHash
+    });
+  } catch (error) {
+    console.error('Error adding candidate to blockchain:', error);
+    res.status(500).json({
+      message: 'Server error while adding candidate to blockchain',
+      error: error.message
+    });
+  }
+};
+
+// Archive election
+exports.archiveElection = async (req, res) => {
+  try {
+    const { electionId } = req.params;
+    
+    // Find election
+    const election = await Election.findById(electionId);
+    
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    // Check if election is already archived
+    if (election.isArchived) {
+      return res.status(400).json({ message: 'Election is already archived' });
+    }
+    
+    // Update candidates associated with this election
+    await Candidate.updateMany(
+      { electionType: election.electionType },
+      { isArchived: true }
+    );
+    
+    // Archive election
+    election.isArchived = true;
+    election.archivedAt = Date.now();
+    await election.save();
+    
+    res.status(200).json({
+      message: 'Election archived successfully',
+      electionId: election._id
+    });
+  } catch (error) {
+    console.error('Error archiving election:', error);
+    res.status(500).json({
+      message: 'Server error while archiving election',
+      error: error.message
+    });
+  }
+};
+
+// Get archived elections
+exports.getArchivedElections = async (req, res) => {
+  try {
+    // Find archived elections
+    const archivedElections = await Election.find({ isArchived: true }).sort({ archivedAt: -1 });
+    
+    res.status(200).json(archivedElections);
+  } catch (error) {
+    console.error('Error getting archived elections:', error);
+    res.status(500).json({
+      message: 'Server error while getting archived elections',
+      error: error.message
+    });
   }
 };
 

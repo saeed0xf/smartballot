@@ -21,6 +21,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import ApproveVoters from './pages/admin/ApproveVoters';
 import ManageCandidates from './pages/admin/ManageCandidates';
 import ManageElection from './pages/admin/ManageElection';
+import ArchivedElections from './pages/admin/ArchivedElections';
 import OfficerDashboard from './pages/officer/OfficerDashboard';
 import ViewSlots from './pages/officer/ViewSlots';
 import AddSlot from './pages/officer/AddSlot';
@@ -49,6 +50,7 @@ function App() {
         <Route path="/admin/voters" element={<AdminRoute><ApproveVoters /></AdminRoute>} />
         <Route path="/admin/candidates" element={<AdminRoute><ManageCandidates /></AdminRoute>} />
         <Route path="/admin/election" element={<AdminRoute><ManageElection /></AdminRoute>} />
+        <Route path="/admin/archived-elections" element={<AdminRoute><ArchivedElections /></AdminRoute>} />
         
         {/* Officer Routes */}
         <Route path="/officer" element={<OfficerRoute><OfficerDashboard /></OfficerRoute>} />

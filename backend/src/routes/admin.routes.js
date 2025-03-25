@@ -20,16 +20,32 @@ router.put('/voters/:voterId/approve-complete', verifyToken, isAdmin, adminContr
 router.put('/voters/:voterId/reject', verifyToken, isAdmin, adminController.rejectVoter);
 
 // Add candidate (protected route)
-router.post(
-  '/candidates',
-  verifyToken,
-  isAdmin,
-  upload.single('image'),
-  adminController.addCandidate
-);
+const candidateUpload = upload.fields([
+  { name: 'candidatePhoto', maxCount: 1 },
+  { name: 'partySymbol', maxCount: 1 }
+]);
+router.post('/candidates', verifyToken, isAdmin, candidateUpload, adminController.addCandidate);
 
 // Get all candidates (protected route)
 router.get('/candidates', verifyToken, isAdmin, adminController.getAllCandidates);
+
+// Get candidate by ID (protected route)
+router.get('/candidates/:candidateId', verifyToken, isAdmin, adminController.getCandidateById);
+
+// Update candidate (protected route)
+router.put('/candidates/:candidateId', verifyToken, isAdmin, candidateUpload, adminController.updateCandidate);
+
+// Delete candidate (protected route)
+router.delete('/candidates/:candidateId', verifyToken, isAdmin, adminController.deleteCandidate);
+
+// Add candidate to blockchain (protected route)
+router.post('/candidates/:candidateId/blockchain', verifyToken, isAdmin, adminController.addCandidateToBlockchain);
+
+// Archive election (protected route)
+router.put('/elections/:electionId/archive', verifyToken, isAdmin, adminController.archiveElection);
+
+// Get archived elections (protected route)
+router.get('/elections/archived', verifyToken, isAdmin, adminController.getArchivedElections);
 
 // Start election (protected route)
 router.post('/election/start', verifyToken, isAdmin, adminController.startElection);

@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Navbar, Nav, Container, Button, Badge } from 'react-bootstrap';
-import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine, FaClock, FaCalendarAlt } from 'react-icons/fa';
+import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine, FaClock, FaCalendarAlt, FaArchive } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 import env from '../utils/env';
 
@@ -104,6 +104,9 @@ const AppNavbar = () => {
       </Nav.Link>
       <Nav.Link as={Link} to="/admin/election" className="d-flex align-items-center">
         <FaVoteYea className="me-1" /> Election
+      </Nav.Link>
+      <Nav.Link as={Link} to="/admin/archived-elections" className="d-flex align-items-center">
+        <FaArchive className="me-1" /> Archives
       </Nav.Link>
       <Button variant="outline-danger" onClick={handleLogout} className="ms-2 d-flex align-items-center">
         <FaSignOutAlt className="me-1" /> Logout

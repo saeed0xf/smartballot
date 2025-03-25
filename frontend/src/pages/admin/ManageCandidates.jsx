@@ -1,14 +1,964 @@
-import React from 'react';
-import { Container } from 'react-bootstrap';
+import React, { useState, useEffect } from 'react';
+import { Container, Row, Col, Card, Form, Button, Table, Tab, Tabs, Badge, Alert, Modal, Spinner } from 'react-bootstrap';
+import { FaUserPlus, FaEdit, FaTrashAlt, FaEye, FaSearch, FaSave, FaTimes, FaCamera, FaUpload, FaDownload } from 'react-icons/fa';
 import Layout from '../../components/Layout';
+import axios from 'axios';
 
 const ManageCandidates = () => {
+  const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('list');
+  
+  // State for form
+  const [newCandidate, setNewCandidate] = useState({
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    age: '',
+    gender: 'Male',
+    dateOfBirth: '',
+    photoUrl: '',
+    partyName: '',
+    partySymbol: '',
+    electionType: 'Presidential',
+    constituency: '',
+    manifesto: '',
+    education: '',
+    experience: '',
+    criminalRecord: 'None',
+    email: ''
+  });
+  
+  const [candidateImage, setCandidateImage] = useState(null);
+  const [partySymbolImage, setPartySymbolImage] = useState(null);
+  const [formErrors, setFormErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  // Mock data for demonstration
+  useEffect(() => {
+    const mockCandidates = [
+      {
+        id: 1,
+        firstName: 'John',
+        middleName: 'Robert',
+        lastName: 'Doe',
+        age: 45,
+        gender: 'Male',
+        dateOfBirth: '1978-05-15',
+        photoUrl: 'https://randomuser.me/api/portraits/men/75.jpg',
+        partyName: 'Democratic Party',
+        partySymbol: 'https://via.placeholder.com/50',
+        electionType: 'Presidential',
+        constituency: 'Central Region',
+        manifesto: 'Building a better future for all citizens through economic reforms and infrastructure development.',
+        education: 'Ph.D. in Political Science, University of California',
+        experience: '10 years as State Senator, 4 years as Mayor',
+        criminalRecord: 'None',
+        email: 'john.doe@example.com'
+      },
+      {
+        id: 2,
+        firstName: 'Jane',
+        middleName: '',
+        lastName: 'Smith',
+        age: 42,
+        gender: 'Female',
+        dateOfBirth: '1981-08-20',
+        photoUrl: 'https://randomuser.me/api/portraits/women/45.jpg',
+        partyName: 'Republican Party',
+        partySymbol: 'https://via.placeholder.com/50',
+        electionType: 'Parliamentary',
+        constituency: 'Eastern District',
+        manifesto: 'Promoting traditional values, fiscal responsibility, and strong national security.',
+        education: 'MBA, Harvard Business School',
+        experience: '8 years as State Representative, Business Executive',
+        criminalRecord: 'None',
+        email: 'jane.smith@example.com'
+      }
+    ];
+
+    setTimeout(() => {
+      setCandidates(mockCandidates);
+      setLoading(false);
+    }, 1000);
+  }, []);
+  
+  // Handle input changes
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewCandidate(prev => ({ ...prev, [name]: value }));
+    
+    // Clear error when field is updated
+    if (formErrors[name]) {
+      setFormErrors(prev => ({ ...prev, [name]: null }));
+    }
+  };
+  
+  // Handle candidate image upload
+  const handleCandidateImageChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setCandidateImage(file);
+      // Create URL for preview
+      setNewCandidate(prev => ({ 
+        ...prev, 
+        photoUrl: URL.createObjectURL(file) 
+      }));
+    }
+  };
+  
+  // Handle party symbol upload
+  const handlePartySymbolChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setPartySymbolImage(file);
+      // Create URL for preview
+      setNewCandidate(prev => ({ 
+        ...prev, 
+        partySymbol: URL.createObjectURL(file) 
+      }));
+    }
+  };
+  
+  // Validate form
+  const validateForm = () => {
+    const errors = {};
+    
+    if (!newCandidate.firstName) errors.firstName = 'First name is required';
+    if (!newCandidate.lastName) errors.lastName = 'Last name is required';
+    if (!newCandidate.age) errors.age = 'Age is required';
+    if (!newCandidate.partyName) errors.partyName = 'Party name is required';
+    if (!newCandidate.electionType) errors.electionType = 'Election type is required';
+    if (!newCandidate.constituency) errors.constituency = 'Constituency is required';
+    if (!newCandidate.photoUrl) errors.photoUrl = 'Candidate photo is required';
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+  
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) return;
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Create FormData for file uploads
+      const formData = new FormData();
+      
+      // Add candidate data to formData
+      Object.keys(newCandidate).forEach(key => {
+        if (key !== 'photoUrl' && key !== 'partySymbol') {
+          formData.append(key, newCandidate[key]);
+        }
+      });
+      
+      // Add image files if present
+      if (candidateImage) {
+        formData.append('candidatePhoto', candidateImage);
+      }
+      
+      if (partySymbolImage) {
+        formData.append('partySymbol', partySymbolImage);
+      }
+      
+      // Send data to backend API
+      // In production, use the actual API endpoint
+      try {
+        const response = await axios.post('/api/candidates', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+        
+        // Add the new candidate to the UI
+        const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id)) + 1 : 1;
+        const candidateToAdd = {
+          ...newCandidate,
+          id: response.data._id || newId, // Use ID from MongoDB if available
+          age: parseInt(newCandidate.age, 10)
+        };
+        
+        setCandidates(prev => [...prev, candidateToAdd]);
+        
+        // Reset form and show success message
+        setSuccessMessage("Candidate successfully added to the database!");
+      } catch (apiError) {
+        console.error('Error saving to MongoDB:', apiError);
+        
+        // If API call fails, still update UI for demo purposes
+        // In production, you would handle this error differently
+        const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id)) + 1 : 1;
+        const candidateToAdd = {
+          ...newCandidate,
+          id: newId,
+          age: parseInt(newCandidate.age, 10)
+        };
+        
+        setCandidates(prev => [...prev, candidateToAdd]);
+        setSuccessMessage("Candidate added locally (MongoDB connection failed)");
+      }
+      
+      // Reset form after 3 seconds
+      setTimeout(() => {
+        setNewCandidate({
+          firstName: '',
+          middleName: '',
+          lastName: '',
+          age: '',
+          gender: 'Male',
+          dateOfBirth: '',
+          photoUrl: '',
+          partyName: '',
+          partySymbol: '',
+          electionType: 'Presidential',
+          constituency: '',
+          manifesto: '',
+          education: '',
+          experience: '',
+          criminalRecord: 'None',
+          email: ''
+        });
+        setCandidateImage(null);
+        setPartySymbolImage(null);
+        setSuccessMessage("");
+        setActiveTab('list');
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Error adding candidate:', error);
+      setError('Failed to add candidate. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  // View candidate details
+  const handleViewCandidate = (candidate) => {
+    setSelectedCandidate(candidate);
+    setShowViewModal(true);
+  };
+
+  // Handle delete candidate
+  const handleDeleteClick = (id) => {
+    setDeletingId(id);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      setLoading(true);
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Remove candidate from list
+      setCandidates(prev => prev.filter(c => c.id !== deletingId));
+      
+      setShowDeleteModal(false);
+      setDeletingId(null);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error deleting candidate:', error);
+      setError('Failed to delete candidate. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  // Update date of birth when age changes (optional functionality)
+  const handleAgeChange = (e) => {
+    const age = e.target.value;
+    
+    // Update age directly
+    setNewCandidate(prev => ({
+      ...prev,
+      age: age
+    }));
+    
+    // Clear any age-related error
+    if (formErrors.age) {
+      setFormErrors(prev => ({ ...prev, age: null }));
+    }
+  };
+
   return (
     <Layout>
       <Container className="py-4">
-        <h1>Manage Candidates</h1>
-        <p>This is a placeholder component for managing candidates.</p>
+        <div className="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h1>Manage Candidates</h1>
+            <p className="text-muted">
+              Add, update, and remove election candidates.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <Alert variant="danger" className="mb-4">
+            {error}
+          </Alert>
+        )}
+
+        <Tabs
+          activeKey={activeTab}
+          onSelect={(k) => setActiveTab(k)}
+          className="mb-4"
+        >
+          <Tab eventKey="list" title="All Candidates">
+            <Card className="border-0 shadow-sm">
+              <Card.Header className="bg-white py-3">
+                <div className="d-flex justify-content-between align-items-center">
+                  <h5 className="mb-0">Candidate List</h5>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setActiveTab('add')}
+                    className="d-flex align-items-center"
+                  >
+                    <FaUserPlus className="me-1" /> Add New Candidate
+                  </Button>
+                </div>
+              </Card.Header>
+              <Card.Body className="p-0">
+                {loading ? (
+                  <div className="text-center py-5">
+                    <Spinner animation="border" variant="primary" />
+                    <p className="mt-2">Loading candidates...</p>
+                  </div>
+                ) : candidates.length === 0 ? (
+                  <div className="text-center py-5">
+                    <p className="mb-0">No candidates found.</p>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => setActiveTab('add')}
+                    >
+                      <FaUserPlus className="me-1" /> Add Candidate
+                    </Button>
+                  </div>
+                ) : (
+                  <Table responsive hover className="mb-0">
+                    <thead className="bg-light">
+                      <tr>
+                        <th>Photo</th>
+                        <th>Name</th>
+                        <th>Party</th>
+                        <th>Election Type</th>
+                        <th>Constituency</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {candidates.map((candidate) => (
+                        <tr key={candidate.id}>
+                          <td>
+                            <img
+                              src={candidate.photoUrl}
+                              alt={candidate.firstName}
+                              style={{
+                                width: '40px',
+                                height: '40px',
+                                borderRadius: '50%',
+                                objectFit: 'cover'
+                              }}
+                            />
+                          </td>
+                          <td>
+                            {candidate.firstName} {candidate.middleName} {candidate.lastName}
+                          </td>
+                          <td>
+                            <div className="d-flex align-items-center">
+                              <img
+                                src={candidate.partySymbol}
+                                alt={candidate.partyName}
+                                style={{
+                                  width: '20px',
+                                  height: '20px',
+                                  marginRight: '8px'
+                                }}
+                              />
+                              {candidate.partyName}
+                            </div>
+                          </td>
+                          <td>{candidate.electionType}</td>
+                          <td>{candidate.constituency}</td>
+                          <td>
+                            <Button
+                              variant="info"
+                              size="sm"
+                              className="me-2"
+                              title="View Details"
+                              onClick={() => handleViewCandidate(candidate)}
+                            >
+                              <FaEye />
+                            </Button>
+                            <Button
+                              variant="warning"
+                              size="sm"
+                              className="me-2"
+                              title="Edit Candidate"
+                            >
+                              <FaEdit />
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              title="Delete Candidate"
+                              onClick={() => handleDeleteClick(candidate.id)}
+                            >
+                              <FaTrashAlt />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                )}
+              </Card.Body>
+            </Card>
+          </Tab>
+          <Tab eventKey="add" title="Add Candidate">
+            <Card className="border-0 shadow-sm">
+              <Card.Header className="bg-white py-3">
+                <h5 className="mb-0">Add New Candidate</h5>
+              </Card.Header>
+              <Card.Body>
+                {successMessage && (
+                  <Alert variant="success" className="mb-4">
+                    {successMessage}
+                  </Alert>
+                )}
+                
+                <Form onSubmit={handleSubmit}>
+                  <h5 className="mb-3">Basic Candidate Details</h5>
+                  <Row>
+                    <Col md={4}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>First Name <span className="text-danger">*</span></Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="firstName"
+                          value={newCandidate.firstName}
+                          onChange={handleInputChange}
+                          isInvalid={!!formErrors.firstName}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {formErrors.firstName}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col md={4}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Middle Name</Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="middleName"
+                          value={newCandidate.middleName}
+                          onChange={handleInputChange}
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col md={4}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Last Name <span className="text-danger">*</span></Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="lastName"
+                          value={newCandidate.lastName}
+                          onChange={handleInputChange}
+                          isInvalid={!!formErrors.lastName}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {formErrors.lastName}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <Row>
+                    <Col md={4}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Age <span className="text-danger">*</span></Form.Label>
+                        <Form.Control
+                          type="number"
+                          name="age"
+                          min="18"
+                          max="120"
+                          value={newCandidate.age}
+                          onChange={handleAgeChange}
+                          isInvalid={!!formErrors.age}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {formErrors.age}
+                        </Form.Control.Feedback>
+                        <Form.Text className="text-muted">
+                          Candidate must be at least 18 years old
+                        </Form.Text>
+                      </Form.Group>
+                    </Col>
+                    <Col md={4}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Date of Birth <span className="text-muted">(Optional)</span></Form.Label>
+                        <Form.Control
+                          type="date"
+                          name="dateOfBirth"
+                          value={newCandidate.dateOfBirth}
+                          onChange={handleInputChange}
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col md={4}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Gender</Form.Label>
+                        <Form.Select
+                          name="gender"
+                          value={newCandidate.gender}
+                          onChange={handleInputChange}
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                          <option value="Prefer not to say">Prefer not to say</option>
+                        </Form.Select>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <Row>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Candidate Photo <span className="text-danger">*</span></Form.Label>
+                        <div className="mb-2">
+                          <Button
+                            as="label"
+                            htmlFor="candidatePhoto"
+                            variant="outline-primary"
+                            className="me-2"
+                          >
+                            <FaUpload className="me-2" /> Upload Photo
+                          </Button>
+                          <Form.Control
+                            type="file"
+                            id="candidatePhoto"
+                            onChange={handleCandidateImageChange}
+                            className="d-none"
+                            accept="image/*"
+                          />
+                          {formErrors.photoUrl && (
+                            <div className="text-danger mt-1">
+                              {formErrors.photoUrl}
+                            </div>
+                          )}
+                        </div>
+                        {newCandidate.photoUrl && (
+                          <div className="mt-2 position-relative" style={{ maxWidth: '150px' }}>
+                            <img
+                              src={newCandidate.photoUrl}
+                              alt="Candidate Preview"
+                              className="img-thumbnail"
+                              style={{ width: '100%', height: 'auto' }}
+                            />
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              className="position-absolute top-0 end-0"
+                              onClick={() => {
+                                setNewCandidate(prev => ({ ...prev, photoUrl: '' }));
+                                setCandidateImage(null);
+                              }}
+                            >
+                              <FaTimes />
+                            </Button>
+                          </div>
+                        )}
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Email Address</Form.Label>
+                        <Form.Control
+                          type="email"
+                          name="email"
+                          value={newCandidate.email}
+                          onChange={handleInputChange}
+                        />
+                        <Form.Text className="text-muted">
+                          For contact purposes
+                        </Form.Text>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <hr className="my-4" />
+                  
+                  <h5 className="mb-3">Election-Specific Details</h5>
+                  <Row>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Political Party Name <span className="text-danger">*</span></Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="partyName"
+                          value={newCandidate.partyName}
+                          onChange={handleInputChange}
+                          isInvalid={!!formErrors.partyName}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {formErrors.partyName}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Party Symbol</Form.Label>
+                        <div className="mb-2">
+                          <Button
+                            as="label"
+                            htmlFor="partySymbol"
+                            variant="outline-primary"
+                            className="me-2"
+                          >
+                            <FaUpload className="me-2" /> Upload Symbol
+                          </Button>
+                          <Form.Control
+                            type="file"
+                            id="partySymbol"
+                            onChange={handlePartySymbolChange}
+                            className="d-none"
+                            accept="image/*"
+                          />
+                        </div>
+                        {newCandidate.partySymbol && (
+                          <div className="mt-2 position-relative" style={{ maxWidth: '100px' }}>
+                            <img
+                              src={newCandidate.partySymbol}
+                              alt="Party Symbol Preview"
+                              className="img-thumbnail"
+                              style={{ width: '100%', height: 'auto' }}
+                            />
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              className="position-absolute top-0 end-0"
+                              onClick={() => {
+                                setNewCandidate(prev => ({ ...prev, partySymbol: '' }));
+                                setPartySymbolImage(null);
+                              }}
+                            >
+                              <FaTimes />
+                            </Button>
+                          </div>
+                        )}
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <Row>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Election Type <span className="text-danger">*</span></Form.Label>
+                        <Form.Select
+                          name="electionType"
+                          value={newCandidate.electionType}
+                          onChange={handleInputChange}
+                          isInvalid={!!formErrors.electionType}
+                        >
+                          <option value="Presidential">Presidential</option>
+                          <option value="Parliamentary">Parliamentary</option>
+                          <option value="Local Body">Local Body</option>
+                          <option value="State">State</option>
+                          <option value="Other">Other</option>
+                        </Form.Select>
+                        <Form.Control.Feedback type="invalid">
+                          {formErrors.electionType}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Constituency/Region <span className="text-danger">*</span></Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="constituency"
+                          value={newCandidate.constituency}
+                          onChange={handleInputChange}
+                          isInvalid={!!formErrors.constituency}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {formErrors.constituency}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <hr className="my-4" />
+                  
+                  <h5 className="mb-3">Additional Information</h5>
+                  <Row>
+                    <Col md={12}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Candidate Manifesto</Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={3}
+                          name="manifesto"
+                          value={newCandidate.manifesto}
+                          onChange={handleInputChange}
+                          placeholder="Brief about the candidate's promises, agenda, or policies"
+                        />
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <Row>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Educational Qualifications</Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={2}
+                          name="education"
+                          value={newCandidate.education}
+                          onChange={handleInputChange}
+                          placeholder="Highest degree, institution, etc."
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Previous Experience</Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={2}
+                          name="experience"
+                          value={newCandidate.experience}
+                          onChange={handleInputChange}
+                          placeholder="Past positions held, work in politics or governance"
+                        />
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <Row>
+                    <Col md={12}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Criminal Record Status</Form.Label>
+                        <Form.Select
+                          name="criminalRecord"
+                          value={newCandidate.criminalRecord}
+                          onChange={handleInputChange}
+                        >
+                          <option value="None">None</option>
+                          <option value="Pending Cases">Pending Cases</option>
+                          <option value="Convicted">Convicted</option>
+                          <option value="Acquitted">Acquitted</option>
+                        </Form.Select>
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <div className="d-flex justify-content-end mt-4">
+                    <Button 
+                      variant="secondary" 
+                      className="me-2"
+                      onClick={() => setActiveTab('list')}
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      type="submit" 
+                      variant="primary"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Spinner
+                            as="span"
+                            animation="border"
+                            size="sm"
+                            role="status"
+                            aria-hidden="true"
+                            className="me-2"
+                          />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <FaSave className="me-1" /> Save Candidate
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </Form>
+              </Card.Body>
+            </Card>
+          </Tab>
+        </Tabs>
       </Container>
+      
+      {/* View Candidate Modal */}
+      <Modal 
+        show={showViewModal} 
+        onHide={() => setShowViewModal(false)}
+        size="lg"
+        centered
+      >
+        {selectedCandidate && (
+          <>
+            <Modal.Header closeButton>
+              <Modal.Title>Candidate Details</Modal.Title>
+            </Modal.Header>
+            <Modal.Body className="p-4">
+              <Row>
+                <Col md={4} className="text-center mb-4">
+                  <img
+                    src={selectedCandidate.photoUrl}
+                    alt={`${selectedCandidate.firstName} ${selectedCandidate.lastName}`}
+                    className="img-thumbnail"
+                    style={{ width: '200px', height: '200px', objectFit: 'cover' }}
+                  />
+                  <div className="mt-3">
+                    <h5>{selectedCandidate.firstName} {selectedCandidate.middleName} {selectedCandidate.lastName}</h5>
+                    <Badge bg="primary">{selectedCandidate.electionType}</Badge>
+                  </div>
+                </Col>
+                <Col md={8}>
+                  <h5 className="border-bottom pb-2">Basic Information</h5>
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Full Name:</Col>
+                    <Col sm={8}>{selectedCandidate.firstName} {selectedCandidate.middleName} {selectedCandidate.lastName}</Col>
+                  </Row>
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Age:</Col>
+                    <Col sm={8}>{selectedCandidate.age} years</Col>
+                  </Row>
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Gender:</Col>
+                    <Col sm={8}>{selectedCandidate.gender}</Col>
+                  </Row>
+                  {selectedCandidate.dateOfBirth && (
+                    <Row className="mb-3">
+                      <Col sm={4} className="text-muted">Date of Birth:</Col>
+                      <Col sm={8}>{new Date(selectedCandidate.dateOfBirth).toLocaleDateString()}</Col>
+                    </Row>
+                  )}
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Email:</Col>
+                    <Col sm={8}>{selectedCandidate.email || 'Not provided'}</Col>
+                  </Row>
+                  
+                  <h5 className="border-bottom pb-2 mt-4">Election Details</h5>
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Political Party:</Col>
+                    <Col sm={8} className="d-flex align-items-center">
+                      {selectedCandidate.partySymbol && (
+                        <img
+                          src={selectedCandidate.partySymbol}
+                          alt={selectedCandidate.partyName}
+                          style={{ width: '30px', height: '30px', marginRight: '10px' }}
+                        />
+                      )}
+                      {selectedCandidate.partyName}
+                    </Col>
+                  </Row>
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Election Type:</Col>
+                    <Col sm={8}>{selectedCandidate.electionType}</Col>
+                  </Row>
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Constituency:</Col>
+                    <Col sm={8}>{selectedCandidate.constituency}</Col>
+                  </Row>
+                  
+                  <h5 className="border-bottom pb-2 mt-4">Additional Information</h5>
+                  {selectedCandidate.manifesto && (
+                    <Row className="mb-3">
+                      <Col sm={4} className="text-muted">Manifesto:</Col>
+                      <Col sm={8}>{selectedCandidate.manifesto}</Col>
+                    </Row>
+                  )}
+                  {selectedCandidate.education && (
+                    <Row className="mb-3">
+                      <Col sm={4} className="text-muted">Education:</Col>
+                      <Col sm={8}>{selectedCandidate.education}</Col>
+                    </Row>
+                  )}
+                  {selectedCandidate.experience && (
+                    <Row className="mb-3">
+                      <Col sm={4} className="text-muted">Experience:</Col>
+                      <Col sm={8}>{selectedCandidate.experience}</Col>
+                    </Row>
+                  )}
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Criminal Record:</Col>
+                    <Col sm={8}>
+                      {selectedCandidate.criminalRecord === 'None' ? (
+                        <Badge bg="success">None</Badge>
+                      ) : (
+                        <Badge bg="warning">{selectedCandidate.criminalRecord}</Badge>
+                      )}
+                    </Col>
+                  </Row>
+                </Col>
+              </Row>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="secondary" onClick={() => setShowViewModal(false)}>
+                Close
+              </Button>
+            </Modal.Footer>
+          </>
+        )}
+      </Modal>
+      
+      {/* Delete Confirmation Modal */}
+      <Modal
+        show={showDeleteModal}
+        onHide={() => setShowDeleteModal(false)}
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Confirm Deletion</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          Are you sure you want to delete this candidate? This action cannot be undone.
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
+            Cancel
+          </Button>
+          <Button 
+            variant="danger" 
+            onClick={handleDeleteConfirm}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <Spinner
+                  as="span"
+                  animation="border"
+                  size="sm"
+                  role="status"
+                  aria-hidden="true"
+                  className="me-2"
+                />
+                Deleting...
+              </>
+            ) : (
+              <>Delete Candidate</>
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Layout>
   );
 };
