@@ -45,6 +45,8 @@ const ManageCandidates = () => {
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingCandidate, setEditingCandidate] = useState(null);
 
   // Get auth token
   const getAuthHeaders = () => {
@@ -164,7 +166,7 @@ const ManageCandidates = () => {
       
       // Add candidate data to formData
       Object.keys(newCandidate).forEach(key => {
-        if (key !== 'photoUrl' && key !== 'partySymbol') {
+        if (key !== 'photoUrl' && key !== 'partySymbol' && key !== 'id' && key !== '_id') {
           formData.append(key, newCandidate[key]);
         }
       });
@@ -184,78 +186,110 @@ const ManageCandidates = () => {
         'Content-Type': 'multipart/form-data'
       };
       
-      // Send data to backend API with proper URL
-      try {
-        console.log('Sending candidate data to:', `${API_URL}/admin/candidates`);
-        console.log('With headers:', headers);
+      let response;
+      
+      // If editing, call PUT endpoint, otherwise call POST endpoint
+      if (isEditing) {
+        // Use candidate ID for update
+        const candidateId = editingCandidate._id || editingCandidate.id;
+        console.log(`Updating candidate with ID: ${candidateId}`);
         
-        const response = await axios.post(`${API_URL}/admin/candidates`, formData, {
-          headers: headers
-        });
-        
-        console.log('API response:', response.data);
-        
-        // Add the new candidate to the UI
-        const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id)) + 1 : 1;
-        const candidateToAdd = {
-          ...newCandidate,
-          id: response.data._id || newId, // Use ID from MongoDB if available
-          age: parseInt(newCandidate.age, 10)
-        };
-        
-        setCandidates(prev => [...prev, candidateToAdd]);
-        
-        // Reset form and show success message
-        setSuccessMessage("Candidate successfully added to the database!");
-      } catch (apiError) {
-        console.error('Error saving to MongoDB:', apiError);
-        if (apiError.response) {
-          console.error('Response status:', apiError.response.status);
-          console.error('Response data:', apiError.response.data);
+        try {
+          response = await axios.put(`${API_URL}/admin/candidates/${candidateId}`, formData, {
+            headers: headers
+          });
+          
+          console.log('Update response:', response.data);
+          
+          // Update the candidate in the UI
+          setCandidates(prev => prev.map(c => 
+            (c._id === candidateId || c.id === candidateId) 
+              ? {
+                  ...newCandidate,
+                  id: candidateId,
+                  _id: response.data._id || candidateId,
+                  photoUrl: response.data.photoUrl || newCandidate.photoUrl,
+                  partySymbol: response.data.partySymbol || newCandidate.partySymbol,
+                  age: parseInt(newCandidate.age, 10)
+                }
+              : c
+          ));
+          
+          setSuccessMessage("Candidate successfully updated!");
+        } catch (updateError) {
+          console.error('Error updating candidate:', updateError);
+          if (updateError.response) {
+            console.error('Response status:', updateError.response.status);
+            console.error('Response data:', updateError.response.data);
+          }
+          
+          // Even if API call fails, update UI for demo purposes
+          setCandidates(prev => prev.map(c => 
+            (c._id === editingCandidate._id || c.id === editingCandidate.id) 
+              ? {
+                  ...newCandidate,
+                  id: editingCandidate.id,
+                  _id: editingCandidate._id,
+                  age: parseInt(newCandidate.age, 10)
+                }
+              : c
+          ));
+          
+          setSuccessMessage("Candidate updated locally (MongoDB connection failed)");
         }
-        
-        // If API call fails, still update UI for demo purposes
-        // In production, you would handle this error differently
-        const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id)) + 1 : 1;
-        const candidateToAdd = {
-          ...newCandidate,
-          id: newId,
-          age: parseInt(newCandidate.age, 10)
-        };
-        
-        setCandidates(prev => [...prev, candidateToAdd]);
-        setSuccessMessage("Candidate added locally (MongoDB connection failed)");
+      } else {
+        // Otherwise, add a new candidate
+        try {
+          console.log('Sending candidate data to:', `${API_URL}/admin/candidates`);
+          console.log('With headers:', headers);
+          
+          response = await axios.post(`${API_URL}/admin/candidates`, formData, {
+            headers: headers
+          });
+          
+          console.log('API response:', response.data);
+          
+          // Add the new candidate to the UI
+          const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id || 0)) + 1 : 1;
+          const candidateToAdd = {
+            ...newCandidate,
+            id: response.data._id || newId, // Use ID from MongoDB if available
+            _id: response.data._id,
+            age: parseInt(newCandidate.age, 10)
+          };
+          
+          setCandidates(prev => [...prev, candidateToAdd]);
+          setSuccessMessage("Candidate successfully added to the database!");
+        } catch (apiError) {
+          console.error('Error saving to MongoDB:', apiError);
+          if (apiError.response) {
+            console.error('Response status:', apiError.response.status);
+            console.error('Response data:', apiError.response.data);
+          }
+          
+          // If API call fails, still update UI for demo purposes
+          const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id || 0)) + 1 : 1;
+          const candidateToAdd = {
+            ...newCandidate,
+            id: newId,
+            age: parseInt(newCandidate.age, 10)
+          };
+          
+          setCandidates(prev => [...prev, candidateToAdd]);
+          setSuccessMessage("Candidate added locally (MongoDB connection failed)");
+        }
       }
       
       // Reset form after 3 seconds
       setTimeout(() => {
-        setNewCandidate({
-          firstName: '',
-          middleName: '',
-          lastName: '',
-          age: '',
-          gender: 'Male',
-          dateOfBirth: '',
-          photoUrl: '',
-          partyName: '',
-          partySymbol: '',
-          electionType: 'Presidential',
-          constituency: '',
-          manifesto: '',
-          education: '',
-          experience: '',
-          criminalRecord: 'None',
-          email: ''
-        });
-        setCandidateImage(null);
-        setPartySymbolImage(null);
+        resetForm();
         setSuccessMessage("");
         setActiveTab('list');
       }, 3000);
       
     } catch (error) {
-      console.error('Error adding candidate:', error);
-      setError('Failed to add candidate. Please try again.');
+      console.error('Error adding/updating candidate:', error);
+      setError('Failed to add/update candidate. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -273,8 +307,12 @@ const ManageCandidates = () => {
   };
 
   // Handle delete candidate
-  const handleDeleteClick = (id) => {
-    setDeletingId(id);
+  const handleDeleteClick = (candidate) => {
+    // Store both id and _id to handle both local and MongoDB candidates
+    setDeletingId({
+      id: candidate.id,
+      _id: candidate._id || candidate.id
+    });
     setShowDeleteModal(true);
   };
 
@@ -285,20 +323,45 @@ const ManageCandidates = () => {
       // Get auth headers
       const headers = getAuthHeaders();
       
-      // Call API to delete candidate with proper URL
-      await axios.delete(`${API_URL}/admin/candidates/${deletingId}`, {
-        headers: headers
-      });
-
-      // Remove candidate from list
-      setCandidates(prev => prev.filter(c => c.id !== deletingId));
+      // Get the appropriate ID for the API call
+      const candidateId = deletingId._id;
+      
+      console.log(`Deleting candidate with ID: ${candidateId}`);
+      
+      try {
+        // Call API to delete candidate with proper URL
+        await axios.delete(`${API_URL}/admin/candidates/${candidateId}`, {
+          headers: headers
+        });
+        
+        console.log('Successfully deleted candidate from database');
+        
+        // Remove candidate from list - check both id and _id
+        setCandidates(prev => prev.filter(c => 
+          c.id !== deletingId.id && (c._id ? c._id !== deletingId._id : true)
+        ));
+        
+      } catch (apiError) {
+        console.error('Error deleting from database:', apiError);
+        if (apiError.response) {
+          console.error('Response status:', apiError.response.status);
+          console.error('Response data:', apiError.response.data);
+        }
+        
+        // Even if API call fails, update UI for demo purposes
+        setCandidates(prev => prev.filter(c => 
+          c.id !== deletingId.id && (c._id ? c._id !== deletingId._id : true)
+        ));
+        
+        setError("Candidate deleted locally (MongoDB connection failed)");
+      }
 
       setShowDeleteModal(false);
       setDeletingId(null);
-      setLoading(false);
     } catch (error) {
       console.error('Error deleting candidate:', error);
       setError('Failed to delete candidate. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -317,6 +380,48 @@ const ManageCandidates = () => {
     if (formErrors.age) {
       setFormErrors(prev => ({ ...prev, age: null }));
     }
+  };
+
+  // Add handleEditClick function after handleDeleteConfirm function
+  const handleEditClick = (candidate) => {
+    // Set the form fields to the candidate's current values
+    const candidateForEdit = {
+      ...candidate,
+      // Convert any date strings to the format expected by the date input
+      dateOfBirth: candidate.dateOfBirth ? new Date(candidate.dateOfBirth).toISOString().split('T')[0] : ''
+    };
+    
+    setEditingCandidate(candidate);
+    setNewCandidate(candidateForEdit);
+    setIsEditing(true);
+    setActiveTab('add'); // Switch to the form tab
+  };
+
+  // Add a function to reset the form properly
+  const resetForm = () => {
+    setNewCandidate({
+      firstName: '',
+      middleName: '',
+      lastName: '',
+      age: '',
+      gender: 'Male',
+      dateOfBirth: '',
+      photoUrl: '',
+      partyName: '',
+      partySymbol: '',
+      electionType: 'Presidential',
+      constituency: '',
+      manifesto: '',
+      education: '',
+      experience: '',
+      criminalRecord: 'None',
+      email: ''
+    });
+    setCandidateImage(null);
+    setPartySymbolImage(null);
+    setIsEditing(false);
+    setEditingCandidate(null);
+    setSuccessMessage("");
   };
 
   return (
@@ -436,6 +541,7 @@ const ManageCandidates = () => {
                               size="sm"
                               className="me-2"
                               title="Edit Candidate"
+                              onClick={() => handleEditClick(candidate)}
                             >
                               <FaEdit />
                             </Button>
@@ -443,7 +549,7 @@ const ManageCandidates = () => {
                               variant="danger"
                               size="sm"
                               title="Delete Candidate"
-                              onClick={() => handleDeleteClick(candidate.id)}
+                              onClick={() => handleDeleteClick(candidate)}
                             >
                               <FaTrashAlt />
                             </Button>
@@ -459,12 +565,23 @@ const ManageCandidates = () => {
           <Tab eventKey="add" title="Add Candidate">
             <Card className="border-0 shadow-sm">
               <Card.Header className="bg-white py-3">
-                <h5 className="mb-0">Add New Candidate</h5>
+                <h5 className="mb-0">{isEditing ? 'Edit Candidate' : 'Add New Candidate'}</h5>
               </Card.Header>
               <Card.Body>
                 {successMessage && (
                   <Alert variant="success" className="mb-4">
                     {successMessage}
+                  </Alert>
+                )}
+                {isEditing && !successMessage && (
+                  <Alert variant="info" className="mb-4">
+                    <div className="d-flex align-items-center">
+                      <FaEdit className="me-2" /> 
+                      <div>
+                        <strong>Edit Mode:</strong> You are editing candidate "{editingCandidate?.firstName} {editingCandidate?.lastName}". 
+                        Make your changes and click 'Update Candidate' to save them.
+                      </div>
+                    </div>
                   </Alert>
                 )}
                 
@@ -592,10 +709,14 @@ const ManageCandidates = () => {
                         {newCandidate.photoUrl && (
                           <div className="mt-2 position-relative" style={{ maxWidth: '150px' }}>
                             <img
-                              src={newCandidate.photoUrl}
+                              src={isPreviewUrl(newCandidate.photoUrl) ? newCandidate.photoUrl : formatImageUrl(newCandidate.photoUrl)}
                               alt="Candidate Preview"
                               className="img-thumbnail"
                               style={{ width: '100%', height: 'auto' }}
+                              onError={(e) => {
+                                console.error('Error loading image:', e);
+                                e.target.src = 'https://via.placeholder.com/150?text=Image+Error';
+                              }}
                             />
                             <Button
                               variant="danger"
@@ -670,10 +791,14 @@ const ManageCandidates = () => {
                         {newCandidate.partySymbol && (
                           <div className="mt-2 position-relative" style={{ maxWidth: '100px' }}>
                             <img
-                              src={newCandidate.partySymbol}
+                              src={isPreviewUrl(newCandidate.partySymbol) ? newCandidate.partySymbol : formatImageUrl(newCandidate.partySymbol)}
                               alt="Party Symbol Preview"
                               className="img-thumbnail"
                               style={{ width: '100%', height: 'auto' }}
+                              onError={(e) => {
+                                console.error('Error loading image:', e);
+                                e.target.src = 'https://via.placeholder.com/100?text=Symbol+Error';
+                              }}
                             />
                             <Button
                               variant="danger"
@@ -800,7 +925,14 @@ const ManageCandidates = () => {
                     <Button 
                       variant="secondary" 
                       className="me-2"
-                      onClick={() => setActiveTab('list')}
+                      onClick={() => {
+                        setActiveTab('list');
+                        if (isEditing) {
+                          setIsEditing(false);
+                          setEditingCandidate(null);
+                          resetForm();
+                        }
+                      }}
                       disabled={isSubmitting}
                     >
                       Cancel
@@ -824,7 +956,7 @@ const ManageCandidates = () => {
                         </>
                       ) : (
                         <>
-                          <FaSave className="me-1" /> Save Candidate
+                          <FaSave className="me-1" /> {isEditing ? 'Update Candidate' : 'Save Candidate'}
                         </>
                       )}
                     </Button>
