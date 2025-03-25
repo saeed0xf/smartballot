@@ -41,8 +41,10 @@ export const AuthProvider = ({ children }) => {
       },
       (error) => {
         if (error.response && error.response.status === 401) {
-          console.log('Unauthorized response detected, logging out');
-          logout();
+          // Handle unauthorized errors (e.g., token expired)
+          localStorage.removeItem('token');
+          setUser(null);
+          setIsAuthenticated(false);
         }
         return Promise.reject(error);
       }

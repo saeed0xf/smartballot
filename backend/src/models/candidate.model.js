@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 
+// Add debugging
+console.log('Initializing Candidate model with mongoose version:', mongoose.version);
+
 const candidateSchema = new mongoose.Schema({
   firstName: {
     type: String,
@@ -90,6 +93,14 @@ const candidateSchema = new mongoose.Schema({
   }
 });
 
+// Add a pre-save hook to log when a candidate is being saved
+candidateSchema.pre('save', function(next) {
+  console.log('Saving candidate to MongoDB:', this);
+  next();
+});
+
 const Candidate = mongoose.model('Candidate', candidateSchema);
+
+console.log('Candidate model initialized');
 
 module.exports = Candidate; 

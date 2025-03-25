@@ -415,6 +415,10 @@ exports.rejectVoter = async (req, res) => {
 // Add candidate
 exports.addCandidate = async (req, res) => {
   try {
+    console.log('Add candidate API called');
+    console.log('Request body:', req.body);
+    console.log('Request files:', req.files);
+    
     const {
       firstName,
       middleName,
@@ -442,7 +446,7 @@ exports.addCandidate = async (req, res) => {
       firstName,
       middleName,
       lastName,
-      age,
+      age: parseInt(age, 10),
       gender,
       dateOfBirth,
       partyName,
@@ -457,22 +461,43 @@ exports.addCandidate = async (req, res) => {
 
     // Handle file uploads
     if (req.files) {
-      if (req.files.candidatePhoto) {
+      console.log('Processing uploaded files:', Object.keys(req.files));
+      
+      if (req.files.candidatePhoto && req.files.candidatePhoto.length > 0) {
+        console.log('Candidate photo file:', req.files.candidatePhoto[0].filename);
         newCandidate.photoUrl = `/uploads/${req.files.candidatePhoto[0].filename}`;
       }
-      if (req.files.partySymbol) {
+      
+      if (req.files.partySymbol && req.files.partySymbol.length > 0) {
+        console.log('Party symbol file:', req.files.partySymbol[0].filename);
         newCandidate.partySymbol = `/uploads/${req.files.partySymbol[0].filename}`;
       }
     }
 
-    // Save to database
-    const savedCandidate = await newCandidate.save();
+    console.log('Prepared candidate object for saving:', newCandidate);
 
-    // Return saved candidate
-    res.status(201).json(savedCandidate);
+    // Save to database
+    try {
+      const savedCandidate = await newCandidate.save();
+      console.log('Candidate saved successfully with ID:', savedCandidate._id);
+      
+      // Return saved candidate
+      res.status(201).json(savedCandidate);
+    } catch (dbError) {
+      console.error('MongoDB save error:', dbError);
+      res.status(500).json({ 
+        message: 'Database error while saving candidate', 
+        error: dbError.message,
+        stack: dbError.stack
+      });
+    }
   } catch (error) {
     console.error('Error adding candidate:', error);
-    res.status(500).json({ message: 'Server error while adding candidate', error: error.message });
+    res.status(500).json({ 
+      message: 'Server error while adding candidate', 
+      error: error.message,
+      stack: error.stack
+    });
   }
 };
 

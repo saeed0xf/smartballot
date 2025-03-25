@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Container, Row, Col, Card, Form, Button, Table, Tab, Tabs, Badge, Alert, Modal, Spinner } from 'react-bootstrap';
 import { FaUserPlus, FaEdit, FaTrashAlt, FaEye, FaSearch, FaSave, FaTimes, FaCamera, FaUpload, FaDownload } from 'react-icons/fa';
 import Layout from '../../components/Layout';
 import axios from 'axios';
+import { AuthContext } from '../../context/AuthContext';
+
+// Get API URL from environment variables
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const ManageCandidates = () => {
+  const { isAuthenticated } = useContext(AuthContext);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -40,54 +45,48 @@ const ManageCandidates = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  // Mock data for demonstration
-  useEffect(() => {
-    const mockCandidates = [
-      {
-        id: 1,
-        firstName: 'John',
-        middleName: 'Robert',
-        lastName: 'Doe',
-        age: 45,
-        gender: 'Male',
-        dateOfBirth: '1978-05-15',
-        photoUrl: 'https://randomuser.me/api/portraits/men/75.jpg',
-        partyName: 'Democratic Party',
-        partySymbol: 'https://via.placeholder.com/50',
-        electionType: 'Presidential',
-        constituency: 'Central Region',
-        manifesto: 'Building a better future for all citizens through economic reforms and infrastructure development.',
-        education: 'Ph.D. in Political Science, University of California',
-        experience: '10 years as State Senator, 4 years as Mayor',
-        criminalRecord: 'None',
-        email: 'john.doe@example.com'
-      },
-      {
-        id: 2,
-        firstName: 'Jane',
-        middleName: '',
-        lastName: 'Smith',
-        age: 42,
-        gender: 'Female',
-        dateOfBirth: '1981-08-20',
-        photoUrl: 'https://randomuser.me/api/portraits/women/45.jpg',
-        partyName: 'Republican Party',
-        partySymbol: 'https://via.placeholder.com/50',
-        electionType: 'Parliamentary',
-        constituency: 'Eastern District',
-        manifesto: 'Promoting traditional values, fiscal responsibility, and strong national security.',
-        education: 'MBA, Harvard Business School',
-        experience: '8 years as State Representative, Business Executive',
-        criminalRecord: 'None',
-        email: 'jane.smith@example.com'
-      }
-    ];
+  // Get auth token
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
 
-    setTimeout(() => {
-      setCandidates(mockCandidates);
-      setLoading(false);
-    }, 1000);
-  }, []);
+  // Fetch real data from the API
+  useEffect(() => {
+    const fetchCandidates = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get auth headers
+        const headers = getAuthHeaders();
+        console.log('Authorization headers:', headers);
+        
+        const response = await axios.get(`${API_URL}/admin/candidates`, {
+          headers: headers
+        });
+        
+        console.log('Candidates data:', response.data);
+        setCandidates(response.data || []);
+      } catch (err) {
+        console.error('Error fetching candidates:', err);
+        if (err.response) {
+          console.error('Response status:', err.response.status);
+          console.error('Response data:', err.response.data);
+        }
+        setError('Failed to fetch candidates. Please try again.');
+        
+        // Fallback to empty array if fetch fails
+        setCandidates([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (isAuthenticated) {
+      fetchCandidates();
+    }
+  }, [isAuthenticated]);
   
   // Handle input changes
   const handleInputChange = (e) => {
@@ -170,14 +169,22 @@ const ManageCandidates = () => {
         formData.append('partySymbol', partySymbolImage);
       }
       
-      // Send data to backend API
-      // In production, use the actual API endpoint
+      // Get auth headers
+      const headers = {
+        ...getAuthHeaders(),
+        'Content-Type': 'multipart/form-data'
+      };
+      
+      // Send data to backend API with proper URL
       try {
-        const response = await axios.post('/api/candidates', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
+        console.log('Sending candidate data to:', `${API_URL}/admin/candidates`);
+        console.log('With headers:', headers);
+        
+        const response = await axios.post(`${API_URL}/admin/candidates`, formData, {
+          headers: headers
         });
+        
+        console.log('API response:', response.data);
         
         // Add the new candidate to the UI
         const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id)) + 1 : 1;
@@ -193,6 +200,10 @@ const ManageCandidates = () => {
         setSuccessMessage("Candidate successfully added to the database!");
       } catch (apiError) {
         console.error('Error saving to MongoDB:', apiError);
+        if (apiError.response) {
+          console.error('Response status:', apiError.response.status);
+          console.error('Response data:', apiError.response.data);
+        }
         
         // If API call fails, still update UI for demo purposes
         // In production, you would handle this error differently
@@ -256,12 +267,18 @@ const ManageCandidates = () => {
   const handleDeleteConfirm = async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
+      // Get auth headers
+      const headers = getAuthHeaders();
+      
+      // Call API to delete candidate with proper URL
+      await axios.delete(`${API_URL}/admin/candidates/${deletingId}`, {
+        headers: headers
+      });
+
       // Remove candidate from list
       setCandidates(prev => prev.filter(c => c.id !== deletingId));
-      
+
       setShowDeleteModal(false);
       setDeletingId(null);
       setLoading(false);
