@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Alert, Badge } from 'react-bootstrap';
 import axios from 'axios';
 import Layout from '../../components/Layout';
+import { formatImageUrl } from '../../utils/imageUtils';
 
 const ViewCandidates = () => {
   const [candidates, setCandidates] = useState([]);
@@ -15,7 +16,14 @@ const ViewCandidates = () => {
         setError(null);
         
         const response = await axios.get('/api/election/candidates');
-        setCandidates(response.data.candidates);
+        
+        // Format candidate data to ensure image URLs are correct
+        const formattedCandidates = response.data.candidates.map(candidate => ({
+          ...candidate,
+          image: formatImageUrl(candidate.image || candidate.photoUrl)
+        }));
+        
+        setCandidates(formattedCandidates);
       } catch (err) {
         console.error('Error fetching candidates:', err);
         setError('Failed to load candidates. Please try again later.');
@@ -59,10 +67,7 @@ const ViewCandidates = () => {
                   {candidate.image ? (
                     <Card.Img 
                       variant="top" 
-                      src={candidate.image.startsWith('http') 
-                        ? candidate.image 
-                        : `http://localhost:5000${candidate.image}`
-                      } 
+                      src={candidate.image}
                       alt={candidate.name}
                       className="candidate-image"
                     />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Alert, Badge } from 'react-bootstrap';
+import { Container, Row, Col, Card, Button, Alert, Badge, Spinner } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { FaUsers, FaUserCheck, FaUserEdit, FaListAlt, FaPlay, FaStop, FaChartPie, FaArchive } from 'react-icons/fa';
 import axios from 'axios';
@@ -30,36 +30,60 @@ const AdminDashboard = () => {
       
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       
-      // Get pending voters count
-      const pendingVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=pending`);
-      const pendingVoters = pendingVotersResponse.data.voters.length;
-      
-      // Get approved voters count
-      const approvedVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=approved`);
-      const approvedVoters = approvedVotersResponse.data.voters.length;
-      
-      // Get rejected voters count
-      const rejectedVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=rejected`);
-      const rejectedVoters = rejectedVotersResponse.data.voters.length;
-      
-      // Get candidates count
-      const candidatesResponse = await axios.get(`${apiUrl}/admin/candidates`);
-      const totalCandidates = candidatesResponse.data.candidates.length;
-      
-      // Get election status
-      const electionStatusResponse = await axios.get(`${apiUrl}/admin/election/status`);
-      const electionActive = electionStatusResponse.data.active;
-      
-      setStats({
-        pendingVoters,
-        approvedVoters,
-        rejectedVoters,
-        totalCandidates,
-        electionActive
-      });
+      try {
+        // Get pending voters count
+        const pendingVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=pending`);
+        const pendingVoters = pendingVotersResponse.data.voters.length;
+        
+        // Get approved voters count
+        const approvedVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=approved`);
+        const approvedVoters = approvedVotersResponse.data.voters.length;
+        
+        // Get rejected voters count
+        const rejectedVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=rejected`);
+        const rejectedVoters = rejectedVotersResponse.data.voters.length;
+        
+        // Get candidates count - the response structure is different here
+        const candidatesResponse = await axios.get(`${apiUrl}/admin/candidates`);
+        
+        // Handle the candidate response based on its actual structure
+        // The admin/candidates endpoint returns an array directly, not wrapped in a 'candidates' property
+        const totalCandidates = Array.isArray(candidatesResponse.data) 
+          ? candidatesResponse.data.length 
+          : (candidatesResponse.data.candidates ? candidatesResponse.data.candidates.length : 0);
+        
+        // Get election status
+        const electionStatusResponse = await axios.get(`${apiUrl}/admin/election/status`);
+        const electionActive = electionStatusResponse.data.active;
+        
+        setStats({
+          pendingVoters,
+          approvedVoters,
+          rejectedVoters,
+          totalCandidates,
+          electionActive
+        });
+      } catch (apiError) {
+        console.error('API error:', apiError);
+        if (apiError.response) {
+          console.error('Response status:', apiError.response.status);
+          console.error('Response data:', apiError.response.data);
+        }
+        throw apiError; // Re-throw to be caught by the outer try-catch
+      }
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
       setError('Failed to fetch dashboard statistics.');
+      
+      // Log detailed error information for debugging
+      if (err.response) {
+        console.error('Response status:', err.response.status);
+        console.error('Response data:', err.response.data);
+      } else if (err.request) {
+        console.error('No response received:', err.request);
+      } else {
+        console.error('Error setting up request:', err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -78,7 +102,12 @@ const AdminDashboard = () => {
         </div>
         
         {error && <Alert variant="danger">{error}</Alert>}
-        
+        {loading ? (
+          <div className="text-center my-5">
+            <Spinner animation="border" variant="primary" />
+            <p className="mt-2">Loading dashboard statistics...</p>
+          </div>
+        ) : (
         <Row>
           {/* Voter Management */}
           <Col lg={4} md={6} className="mb-4">
@@ -236,6 +265,7 @@ const AdminDashboard = () => {
             </Card>
           </Col>
         </Row>
+        )}
       </Container>
     </Layout>
   );

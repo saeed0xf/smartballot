@@ -8,6 +8,7 @@ import axios from 'axios';
 import Layout from '../../components/Layout';
 import { useNavigate } from 'react-router-dom';
 import dateFormat from 'dateformat';
+import { formatImageUrl } from '../../utils/imageUtils';
 
 const ArchivedElections = () => {
   const [elections, setElections] = useState([]);
@@ -71,9 +72,13 @@ const ArchivedElections = () => {
     
     try {
       // Find candidates for this election type from our already loaded candidates
-      const matchingCandidates = candidates.filter(
-        candidate => candidate.electionType === election.electionType
-      );
+      const matchingCandidates = candidates
+        .filter(candidate => candidate.electionType === election.electionType)
+        .map(candidate => ({
+          ...candidate,
+          photoUrl: formatImageUrl(candidate.photoUrl),
+          partySymbol: formatImageUrl(candidate.partySymbol)
+        }));
       setElectionCandidates(matchingCandidates);
     } catch (err) {
       console.error('Error fetching election candidates:', err);

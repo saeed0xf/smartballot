@@ -4,6 +4,7 @@ import { FaUserPlus, FaEdit, FaTrashAlt, FaEye, FaSearch, FaSave, FaTimes, FaCam
 import Layout from '../../components/Layout';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
+import { formatImageUrl, isPreviewUrl } from '../../utils/imageUtils';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -67,7 +68,15 @@ const ManageCandidates = () => {
         });
         
         console.log('Candidates data:', response.data);
-        setCandidates(response.data || []);
+        
+        // Format image URLs in the candidates data
+        const formattedCandidates = response.data.map(candidate => ({
+          ...candidate,
+          photoUrl: formatImageUrl(candidate.photoUrl),
+          partySymbol: formatImageUrl(candidate.partySymbol)
+        }));
+        
+        setCandidates(formattedCandidates || []);
       } catch (err) {
         console.error('Error fetching candidates:', err);
         if (err.response) {
@@ -254,7 +263,12 @@ const ManageCandidates = () => {
   
   // View candidate details
   const handleViewCandidate = (candidate) => {
-    setSelectedCandidate(candidate);
+    // Make sure image URLs are properly formatted
+    setSelectedCandidate({
+      ...candidate,
+      photoUrl: formatImageUrl(candidate.photoUrl),
+      partySymbol: formatImageUrl(candidate.partySymbol)
+    });
     setShowViewModal(true);
   };
 
