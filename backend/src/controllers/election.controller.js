@@ -51,16 +51,19 @@ exports.getElectionById = async (req, res) => {
 exports.createElection = async (req, res) => {
   try {
     console.log('Create election request received:', req.body);
-    const { name, type, description, startDate, endDate } = req.body;
+    const { name, title, type, description, startDate, endDate } = req.body;
+    
+    // Use name or title (frontend sends name, but schema expects title)
+    const electionTitle = title || name;
     
     // Validate required fields
-    if (!name || !type || !description || !startDate || !endDate) {
+    if (!electionTitle || !type || !description || !startDate || !endDate) {
       return res.status(400).json({ message: 'All fields are required' });
     }
     
     // Create new election
     const newElection = new Election({
-      name,
+      title: electionTitle, // Use the electionTitle variable
       type,
       description,
       startDate: new Date(startDate),
@@ -69,10 +72,22 @@ exports.createElection = async (req, res) => {
       createdBy: req.userId // Set by auth middleware
     });
     
-    const savedElection = await newElection.save();
-    console.log('Election created successfully:', savedElection);
-    
-    res.status(201).json(savedElection);
+    try {
+      const savedElection = await newElection.save();
+      console.log('Election created successfully:', savedElection);
+      res.status(201).json(savedElection);
+    } catch (dbError) {
+      console.error('Error saving election to database:', dbError);
+      // Return a more detailed error message
+      res.status(500).json({ 
+        message: 'Failed to create election in database', 
+        error: dbError.message,
+        details: dbError.errors ? Object.keys(dbError.errors).map(key => ({
+          field: key,
+          message: dbError.errors[key].message
+        })) : null
+      });
+    }
   } catch (error) {
     console.error('Error creating election:', error);
     res.status(500).json({ message: 'Failed to create election', error: error.message });
