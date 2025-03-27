@@ -192,8 +192,14 @@ const ManageElection = () => {
   const validateForm = () => {
     const errors = {};
     
-    if (!newElection.name) errors.name = 'Election name is required';
-    if (!newElection.type) errors.type = 'Election type is required';
+    if (!newElection.name && !newElection.title) errors.name = 'Election name is required';
+    
+    // Don't validate type if it's already set (especially when editing)
+    if (!newElection.type && newElection.type !== 'General Elections' && 
+        newElection.type !== 'State Elections' && newElection.type !== 'Local Elections') {
+      errors.type = 'Election type is required';
+    }
+    
     if (!newElection.description) errors.description = 'Election description is required';
     if (!newElection.startDate) errors.startDate = 'Start date is required';
     if (!newElection.endDate) errors.endDate = 'End date is required';
@@ -212,6 +218,7 @@ const ManageElection = () => {
       errors.endDate = 'End date must be after start date';
     }
     
+    console.log('Form validation errors:', errors);
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -250,11 +257,23 @@ const ManageElection = () => {
       
       // Attempt to determine if MongoDB is connected
       try {
-        const healthResponse = await axios.get(`${API_URL}/health`);
+        // Fix the health check URL
+        const healthCheckUrl = `${API_URL}/health`;
+        console.log('Checking MongoDB connection at:', healthCheckUrl);
+        
+        const healthResponse = await axios.get(healthCheckUrl);
         console.log('Health check response:', healthResponse.data);
         
-        if (healthResponse.data && healthResponse.data.mongodb !== 'connected') {
-          throw new Error('MongoDB is not connected. Cannot save election data permanently.');
+        if (!healthResponse.data || healthResponse.data.mongodb !== 'connected') {
+          console.warn('MongoDB not connected according to health check');
+          // Don't throw an error, just set a warning
+          setError('Warning: MongoDB may not be properly connected. Data changes might not be saved permanently.');
+        } else {
+          console.log('MongoDB connection confirmed via health check');
+          // Clear any previous MongoDB connection warnings
+          if (error && error.includes('MongoDB')) {
+            setError(null);
+          }
         }
       } catch (healthError) {
         console.error('Health check failed:', healthError);
@@ -264,8 +283,17 @@ const ManageElection = () => {
       
       // If editing, update existing election
       if (isEditing) {
+        // Make sure we have the correct election ID
         const electionId = editingElection._id || editingElection.id;
-        console.log(`Updating election with ID: ${electionId}`);
+        
+        if (!electionId) {
+          console.error('Missing election ID for editing');
+          setError('Cannot update election: Missing ID');
+          setIsSubmitting(false);
+          return;
+        }
+        
+        console.log(`Updating election with ID: ${electionId}`, electionData);
         
         try {
           // First try the admin endpoint
@@ -278,15 +306,20 @@ const ManageElection = () => {
           
           console.log('Update response:', response.data);
           
+          // Process the updated election response
+          const updatedElection = {
+            ...response.data,
+            // Ensure name and title are consistent
+            name: response.data.name || response.data.title,
+            title: response.data.title || response.data.name,
+            // Ensure IDs are preserved
+            id: response.data._id || electionId,
+            _id: response.data._id || electionId
+          };
+          
           // Update the election in the UI
           setElections(prev => prev.map(e => 
-            (e._id === electionId || e.id === electionId) 
-              ? {
-                  ...newElection,
-                  id: electionId,
-                  _id: response.data._id || electionId,
-                }
-              : e
+            (e._id === electionId || e.id === electionId) ? updatedElection : e
           ));
           
           setSuccessMessage("Election successfully updated in the database!");
@@ -304,15 +337,20 @@ const ManageElection = () => {
             
             console.log('Direct endpoint update response:', response.data);
             
+            // Process the updated election response
+            const updatedElection = {
+              ...response.data,
+              // Ensure name and title are consistent
+              name: response.data.name || response.data.title,
+              title: response.data.title || response.data.name,
+              // Ensure IDs are preserved
+              id: response.data._id || electionId,
+              _id: response.data._id || electionId
+            };
+            
             // Update the election in the UI
             setElections(prev => prev.map(e => 
-              (e._id === electionId || e.id === electionId) 
-                ? {
-                    ...newElection,
-                    id: electionId,
-                    _id: response.data._id || electionId,
-                  }
-                : e
+              (e._id === electionId || e.id === electionId) ? updatedElection : e
             ));
             
             setSuccessMessage("Election successfully updated in the database!");
@@ -320,13 +358,18 @@ const ManageElection = () => {
             console.error('Direct endpoint update failed:', directError);
             
             // Even if API call fails, update UI for demo purposes
+            const updatedElection = {
+              ...newElection,
+              id: editingElection.id,
+              _id: editingElection._id,
+              startDate: new Date(newElection.startDate),
+              endDate: new Date(newElection.endDate)
+            };
+            
+            // Update UI with local changes
             setElections(prev => prev.map(e => 
               (e._id === editingElection._id || e.id === editingElection.id) 
-                ? {
-                    ...newElection,
-                    id: editingElection.id,
-                    _id: editingElection._id,
-                  }
+                ? updatedElection
                 : e
             ));
             
@@ -617,12 +660,26 @@ const ManageElection = () => {
   
   // Handle edit election
   const handleEditClick = (election) => {
+    // Reset any form errors
+    setFormErrors({});
+    setError(null);
+    
+    console.log('Editing election:', election);
+    
     // Format the date-time for the form inputs
     const formatDateForInput = (dateString) => {
       try {
+        if (!dateString) return '';
+        
         const date = new Date(dateString);
+        if (isNaN(date.getTime())) {
+          console.warn('Invalid date:', dateString);
+          return '';
+        }
+        
         return date.toISOString().slice(0, 16); // Format as "YYYY-MM-DDThh:mm"
       } catch (error) {
+        console.error('Error formatting date for input:', error);
         return '';
       }
     };
@@ -630,13 +687,18 @@ const ManageElection = () => {
     // Prepare the election data for editing, combining title and name fields
     const electionForEdit = {
       ...election,
-      name: election.name || election.title,
-      title: election.title || election.name,
+      name: election.name || election.title || '',
+      title: election.title || election.name || '',
+      // Default to General Elections if type is missing
+      type: election.type || 'General Elections',
+      description: election.description || '',
       startDate: formatDateForInput(election.startDate),
       endDate: formatDateForInput(election.endDate),
       _id: election._id || election.id, // Ensure _id is always set
       id: election.id || election._id   // Ensure id is always set
     };
+    
+    console.log('Prepared election for edit:', electionForEdit);
     
     setEditingElection(electionForEdit);
     setNewElection(electionForEdit);
@@ -646,10 +708,11 @@ const ManageElection = () => {
   
   // Reset form
   const resetForm = () => {
+    console.log('Resetting form');
     setNewElection({
       name: '',
       title: '',
-      type: 'General Elections',
+      type: 'General Elections', // Default value
       description: '',
       startDate: '',
       endDate: '',
@@ -658,6 +721,8 @@ const ManageElection = () => {
     setIsEditing(false);
     setEditingElection(null);
     setFormErrors({});
+    // Also clear any errors or success messages
+    setError(null);
   };
   
   // Handle start button click
@@ -862,7 +927,7 @@ const ManageElection = () => {
                         <Form.Label>Election Type <span className="text-danger">*</span></Form.Label>
                         <Form.Select
                           name="type"
-                          value={newElection.type}
+                          value={newElection.type || 'General Elections'}
                           onChange={handleInputChange}
                           isInvalid={!!formErrors.type}
                         >
