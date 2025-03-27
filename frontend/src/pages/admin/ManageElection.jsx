@@ -32,6 +32,7 @@ const ManageElection = () => {
   // Election form state
   const [newElection, setNewElection] = useState({
     name: '',
+    title: '',
     type: 'General Elections',
     description: '',
     startDate: '',
@@ -107,6 +108,16 @@ const ManageElection = () => {
             formattedElections = [];
           }
         }
+        
+        // Process elections to ensure they have both name and title fields
+        formattedElections = formattedElections.map(election => ({
+          ...election,
+          name: election.name || election.title || 'Untitled Election',
+          title: election.title || election.name || 'Untitled Election',
+          // Ensure _id is set for proper identification
+          _id: election._id || election.id,
+          id: election.id || election._id
+        }));
         
         console.log('Formatted elections:', formattedElections);
         setElections(formattedElections);
@@ -228,6 +239,8 @@ const ManageElection = () => {
       // Create form data for API
       const electionData = {
         ...newElection,
+        title: newElection.title || newElection.name,
+        name: newElection.name || newElection.title
       };
       
       // Get auth headers
@@ -533,6 +546,12 @@ const ManageElection = () => {
   
   // Delete election confirm
   const handleDeleteConfirm = async () => {
+    if (!deletingId || (!deletingId.id && !deletingId._id)) {
+      console.error('No election ID to delete');
+      setShowDeleteModal(false);
+      return;
+    }
+
     try {
       setLoading(true);
       
@@ -564,13 +583,26 @@ const ManageElection = () => {
         }
       }
       
-      // Remove election from list
-      setElections(prev => prev.filter(e => 
-        e.id !== deletingId.id && (e._id ? e._id !== deletingId._id : true)
-      ));
+      // Remove only the deleted election from the list by matching both id and _id
+      setElections(prevElections => {
+        // Log the current state to debug
+        console.log('Current elections:', prevElections);
+        console.log('Deleting ID:', deletingId);
+        
+        return prevElections.filter(election => {
+          const keepElection = !(
+            (deletingId.id && election.id === deletingId.id) || 
+            (deletingId._id && election._id === deletingId._id)
+          );
+          console.log(`Election ${election._id || election.id}: keeping = ${keepElection}`);
+          return keepElection;
+        });
+      });
       
       if (!deleted) {
         setError("Election deleted locally (MongoDB connection failed)");
+      } else {
+        setSuccessMessage("Election successfully deleted");
       }
       
       setShowDeleteModal(false);
@@ -595,13 +627,18 @@ const ManageElection = () => {
       }
     };
     
+    // Prepare the election data for editing, combining title and name fields
     const electionForEdit = {
       ...election,
+      name: election.name || election.title,
+      title: election.title || election.name,
       startDate: formatDateForInput(election.startDate),
-      endDate: formatDateForInput(election.endDate)
+      endDate: formatDateForInput(election.endDate),
+      _id: election._id || election.id, // Ensure _id is always set
+      id: election.id || election._id   // Ensure id is always set
     };
     
-    setEditingElection(election);
+    setEditingElection(electionForEdit);
     setNewElection(electionForEdit);
     setIsEditing(true);
     setActiveTab('add');
@@ -611,6 +648,7 @@ const ManageElection = () => {
   const resetForm = () => {
     setNewElection({
       name: '',
+      title: '',
       type: 'General Elections',
       description: '',
       startDate: '',
@@ -717,7 +755,7 @@ const ManageElection = () => {
                     <tbody>
                       {elections.map((election) => (
                         <tr key={election.id || election._id}>
-                          <td>{election.name}</td>
+                          <td>{election.title || election.name}</td>
                           <td>{election.type}</td>
                           <td>{formatDate(election.startDate)}</td>
                           <td>{formatDate(election.endDate)}</td>
