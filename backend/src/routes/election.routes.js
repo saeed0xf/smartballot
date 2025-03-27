@@ -1,10 +1,32 @@
 const express = require('express');
 const router = express.Router();
 const electionController = require('../controllers/election.controller');
-const { verifyToken, isVoter } = require('../middleware/auth.middleware');
+const { verifyToken, isVoter, isAdmin } = require('../middleware/auth.middleware');
 
-// Get election status (public route)
+// Public routes for listing and viewing elections
+router.get('/elections', electionController.getAllElections);
+router.get('/election', electionController.getAllElections); // Alias for /elections
+router.get('/election/:id', electionController.getElectionById);
+
+// Protected routes for admin (creating, updating, deleting elections)
+router.post('/election', verifyToken, isAdmin, electionController.createElection);
+router.post('/elections', verifyToken, isAdmin, electionController.createElection); // Alias
+router.put('/election/:id', verifyToken, isAdmin, electionController.updateElection);
+router.delete('/election/:id', verifyToken, isAdmin, electionController.deleteElection);
+
+// Election actions
+router.post('/election/start', verifyToken, isAdmin, electionController.startElection);
+router.post('/elections/start', verifyToken, isAdmin, electionController.startElection); // Alias
+router.post('/election/end', verifyToken, isAdmin, electionController.endElection);
+router.post('/elections/end', verifyToken, isAdmin, electionController.endElection); // Alias
+
+// Get active elections
+router.get('/elections/active', electionController.getActiveElections);
+
+// Election status - multiple paths for compatibility
 router.get('/status', electionController.getElectionStatus);
+router.get('/election/status', electionController.getElectionStatus);
+router.get('/election/status/:electionId', electionController.getElectionStatus);
 
 // Get all candidates (public route)
 router.get('/candidates', electionController.getAllCandidates);

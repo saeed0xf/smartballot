@@ -9,39 +9,308 @@ const {
   getCandidateFromBlockchain,
   getElectionStatusFromBlockchain
 } = require('../utils/blockchain.util');
+const mongoose = require('mongoose');
 
-// Get election status
-exports.getElectionStatus = async (req, res) => {
+// Get all elections
+exports.getAllElections = async (req, res) => {
   try {
-    // Find active or most recent election
-    const election = await Election.findOne().sort({ startDate: -1 });
+    console.log('Fetching all elections');
+    const elections = await Election.find();
+    console.log(`Found ${elections.length} elections`);
+    res.status(200).json(elections);
+  } catch (error) {
+    console.error('Error fetching elections:', error);
+    res.status(500).json({ message: 'Failed to fetch elections', error: error.message });
+  }
+};
+
+// Get election by ID
+exports.getElectionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`Fetching election with id: ${id}`);
     
-    // Get blockchain status
-    const blockchainStatus = await getElectionStatusFromBlockchain();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid election ID format' });
+    }
+    
+    const election = await Election.findById(id);
     
     if (!election) {
-      return res.json({ 
-        active: false, 
-        election: null,
-        blockchainStatus: blockchainStatus.success ? blockchainStatus.data : null
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    res.status(200).json(election);
+  } catch (error) {
+    console.error('Error fetching election:', error);
+    res.status(500).json({ message: 'Failed to fetch election', error: error.message });
+  }
+};
+
+// Create a new election
+exports.createElection = async (req, res) => {
+  try {
+    console.log('Create election request received:', req.body);
+    const { name, type, description, startDate, endDate } = req.body;
+    
+    // Validate required fields
+    if (!name || !type || !description || !startDate || !endDate) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+    
+    // Create new election
+    const newElection = new Election({
+      name,
+      type,
+      description,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      isActive: false,
+      createdBy: req.userId // Set by auth middleware
+    });
+    
+    const savedElection = await newElection.save();
+    console.log('Election created successfully:', savedElection);
+    
+    res.status(201).json(savedElection);
+  } catch (error) {
+    console.error('Error creating election:', error);
+    res.status(500).json({ message: 'Failed to create election', error: error.message });
+  }
+};
+
+// Update an existing election
+exports.updateElection = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`Updating election with id: ${id}`, req.body);
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid election ID format' });
+    }
+    
+    const { name, type, description, startDate, endDate } = req.body;
+    
+    // Find and update election
+    const updatedElection = await Election.findByIdAndUpdate(
+      id,
+      { 
+        name, 
+        type, 
+        description, 
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        updatedAt: Date.now()
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (!updatedElection) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    console.log('Election updated successfully:', updatedElection);
+    res.status(200).json(updatedElection);
+  } catch (error) {
+    console.error('Error updating election:', error);
+    res.status(500).json({ message: 'Failed to update election', error: error.message });
+  }
+};
+
+// Delete an election
+exports.deleteElection = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`Deleting election with id: ${id}`);
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid election ID format' });
+    }
+    
+    // Check if election is active
+    const election = await Election.findById(id);
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    if (election.isActive) {
+      return res.status(400).json({ message: 'Cannot delete an active election' });
+    }
+    
+    // Delete the election
+    await Election.findByIdAndDelete(id);
+    console.log('Election deleted successfully');
+    
+    res.status(200).json({ message: 'Election deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting election:', error);
+    res.status(500).json({ message: 'Failed to delete election', error: error.message });
+  }
+};
+
+// Start an election
+exports.startElection = async (req, res) => {
+  try {
+    const { electionId } = req.body;
+    console.log(`Starting election with id: ${electionId}`);
+    
+    if (!mongoose.Types.ObjectId.isValid(electionId)) {
+      return res.status(400).json({ message: 'Invalid election ID format' });
+    }
+    
+    // Find the election
+    const election = await Election.findById(electionId);
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    // Check if the election is already active
+    if (election.isActive) {
+      return res.status(400).json({ message: 'Election is already active' });
+    }
+    
+    // Check if there are candidates for this election
+    const candidatesCount = await Candidate.countDocuments({ electionType: election.type });
+    if (candidatesCount === 0) {
+      return res.status(400).json({ message: 'Cannot start an election without candidates' });
+    }
+    
+    // Start the election
+    election.isActive = true;
+    election.startedAt = Date.now();
+    await election.save();
+    
+    console.log('Election started successfully:', election);
+    
+    // TODO: Blockchain integration - Record the election start on blockchain
+    // This would be implemented according to your blockchain setup
+    
+    res.status(200).json({ 
+      message: 'Election started successfully',
+      election
+    });
+  } catch (error) {
+    console.error('Error starting election:', error);
+    res.status(500).json({ message: 'Failed to start election', error: error.message });
+  }
+};
+
+// End an election
+exports.endElection = async (req, res) => {
+  try {
+    const { electionId } = req.body;
+    console.log(`Ending election with id: ${electionId}`);
+    
+    if (!mongoose.Types.ObjectId.isValid(electionId)) {
+      return res.status(400).json({ message: 'Invalid election ID format' });
+    }
+    
+    // Find the election
+    const election = await Election.findById(electionId);
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    // Check if the election is active
+    if (!election.isActive) {
+      return res.status(400).json({ message: 'Election is not active' });
+    }
+    
+    // End the election
+    election.isActive = false;
+    election.endedAt = Date.now();
+    await election.save();
+    
+    console.log('Election ended successfully:', election);
+    
+    // TODO: Blockchain integration - Record the election end and results on blockchain
+    // This would be implemented according to your blockchain setup
+    
+    res.status(200).json({ 
+      message: 'Election ended successfully',
+      election
+    });
+  } catch (error) {
+    console.error('Error ending election:', error);
+    res.status(500).json({ message: 'Failed to end election', error: error.message });
+  }
+};
+
+// Get active elections
+exports.getActiveElections = async (req, res) => {
+  try {
+    console.log('Fetching active elections');
+    const activeElections = await Election.find({ isActive: true });
+    console.log(`Found ${activeElections.length} active elections`);
+    res.status(200).json(activeElections);
+  } catch (error) {
+    console.error('Error fetching active elections:', error);
+    res.status(500).json({ message: 'Failed to fetch active elections', error: error.message });
+  }
+};
+
+// Get election status - enhanced to handle different request formats
+exports.getElectionStatus = async (req, res) => {
+  try {
+    console.log('Get election status request received', req.params);
+    // Try to get electionId from different places
+    let electionId = req.params.electionId;
+    
+    // If no specific election ID is provided, find the most recent or active election
+    if (!electionId) {
+      console.log('No specific election ID provided, finding active or most recent election');
+      const election = await Election.findOne().sort({ startDate: -1 });
+      
+      if (!election) {
+        return res.status(200).json({ 
+          message: 'No election found',
+          active: false,
+          election: null,
+          currentTime: new Date()
+        });
+      }
+      
+      return res.status(200).json({
+        active: election.isActive,
+        election: {
+          id: election._id,
+          name: election.name,
+          type: election.type,
+          description: election.description,
+          startDate: election.startDate,
+          endDate: election.endDate,
+          isActive: election.isActive
+        },
+        currentTime: new Date()
       });
     }
     
-    res.json({
+    // Find the specific election if ID is provided
+    if (!mongoose.Types.ObjectId.isValid(electionId)) {
+      return res.status(400).json({ message: 'Invalid election ID format' });
+    }
+    
+    const election = await Election.findById(electionId);
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    return res.status(200).json({
       active: election.isActive,
       election: {
         id: election._id,
-        title: election.title,
+        name: election.name,
+        type: election.type,
         description: election.description,
         startDate: election.startDate,
         endDate: election.endDate,
         isActive: election.isActive
       },
-      blockchainStatus: blockchainStatus.success ? blockchainStatus.data : null
+      currentTime: new Date()
     });
   } catch (error) {
-    console.error('Get election status error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error fetching election status:', error);
+    res.status(500).json({ message: 'Failed to fetch election status', error: error.message });
   }
 };
 

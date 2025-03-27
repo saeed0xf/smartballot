@@ -885,4 +885,45 @@ exports.approveVoterComplete = async (req, res) => {
       error: error.message
     });
   }
+};
+
+// Add the getDashboardData method if it doesn't exist
+exports.getDashboardData = async (req, res) => {
+  try {
+    console.log('Getting dashboard data');
+    
+    // Get counts of various entities
+    const votersCount = await Voter.countDocuments();
+    const pendingVotersCount = await Voter.countDocuments({ status: 'pending' });
+    const candidatesCount = await Candidate.countDocuments();
+    const activeElectionsCount = await Election.countDocuments({ isActive: true });
+    
+    // Get recent activities
+    const recentVoters = await Voter.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select('name email status createdAt');
+    
+    const recentCandidates = await Candidate.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select('name party constituency createdAt');
+    
+    // Return dashboard data
+    res.status(200).json({
+      counts: {
+        voters: votersCount,
+        pendingVoters: pendingVotersCount,
+        candidates: candidatesCount,
+        activeElections: activeElectionsCount
+      },
+      recentActivity: {
+        voters: recentVoters,
+        candidates: recentCandidates
+      }
+    });
+  } catch (error) {
+    console.error('Error getting dashboard data:', error);
+    res.status(500).json({ message: 'Failed to get dashboard data', error: error.message });
+  }
 }; 

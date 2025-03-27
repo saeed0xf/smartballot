@@ -27,7 +27,7 @@ const ManageCandidates = () => {
     photoUrl: '',
     partyName: '',
     partySymbol: '',
-    electionType: 'Presidential',
+    electionType: 'Lok Sabha Elections',
     constituency: '',
     manifesto: '',
     education: '',
@@ -72,11 +72,17 @@ const ManageCandidates = () => {
         console.log('Candidates data:', response.data);
         
         // Format image URLs in the candidates data
-        const formattedCandidates = response.data.map(candidate => ({
-          ...candidate,
-          photoUrl: formatImageUrl(candidate.photoUrl),
-          partySymbol: formatImageUrl(candidate.partySymbol)
-        }));
+        const formattedCandidates = response.data.map(candidate => {
+          // Ensure the age is calculated from date of birth
+          const calculatedAge = candidate.dateOfBirth ? calculateAge(candidate.dateOfBirth) : candidate.age;
+          
+          return {
+            ...candidate,
+            photoUrl: formatImageUrl(candidate.photoUrl),
+            partySymbol: formatImageUrl(candidate.partySymbol),
+            age: calculatedAge
+          };
+        });
         
         setCandidates(formattedCandidates || []);
       } catch (err) {
@@ -99,10 +105,39 @@ const ManageCandidates = () => {
     }
   }, [isAuthenticated]);
   
-  // Handle input changes
+  // Add a function to calculate age from date of birth
+  const calculateAge = (dateOfBirth) => {
+    if (!dateOfBirth) return '';
+    
+    const birthDate = new Date(dateOfBirth);
+    const today = new Date();
+    
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    // If birthday hasn't occurred yet this year, subtract 1 from age
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    
+    return age >= 0 ? age.toString() : '';
+  };
+
+  // Modify the handleInputChange function to calculate age when DOB changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setNewCandidate(prev => ({ ...prev, [name]: value }));
+    
+    if (name === 'dateOfBirth') {
+      // When date of birth changes, calculate and set age
+      const calculatedAge = calculateAge(value);
+      setNewCandidate(prev => ({ 
+        ...prev, 
+        [name]: value,
+        age: calculatedAge
+      }));
+    } else {
+      setNewCandidate(prev => ({ ...prev, [name]: value }));
+    }
     
     // Clear error when field is updated
     if (formErrors[name]) {
@@ -136,13 +171,20 @@ const ManageCandidates = () => {
     }
   };
   
-  // Validate form
+  // Update the validateForm function to validate date of birth instead of age
   const validateForm = () => {
     const errors = {};
     
     if (!newCandidate.firstName) errors.firstName = 'First name is required';
     if (!newCandidate.lastName) errors.lastName = 'Last name is required';
-    if (!newCandidate.age) errors.age = 'Age is required';
+    if (!newCandidate.dateOfBirth) errors.dateOfBirth = 'Date of birth is required';
+    // Calculate age if birth date is provided
+    if (newCandidate.dateOfBirth) {
+      const calculatedAge = calculateAge(newCandidate.dateOfBirth);
+      if (calculatedAge < 18) {
+        errors.dateOfBirth = 'Candidate must be at least 18 years old';
+      }
+    }
     if (!newCandidate.partyName) errors.partyName = 'Party name is required';
     if (!newCandidate.electionType) errors.electionType = 'Election type is required';
     if (!newCandidate.constituency) errors.constituency = 'Constituency is required';
@@ -164,10 +206,16 @@ const ManageCandidates = () => {
       // Create FormData for file uploads
       const formData = new FormData();
       
-      // Add candidate data to formData
-      Object.keys(newCandidate).forEach(key => {
+      // Add candidate data to formData, ensuring age is up-to-date
+      const calculatedAge = calculateAge(newCandidate.dateOfBirth);
+      const candidateData = {
+        ...newCandidate,
+        age: calculatedAge
+      };
+
+      Object.keys(candidateData).forEach(key => {
         if (key !== 'photoUrl' && key !== 'partySymbol' && key !== 'id' && key !== '_id') {
-          formData.append(key, newCandidate[key]);
+          formData.append(key, candidateData[key]);
         }
       });
       
@@ -210,7 +258,7 @@ const ManageCandidates = () => {
                   _id: response.data._id || candidateId,
                   photoUrl: response.data.photoUrl || newCandidate.photoUrl,
                   partySymbol: response.data.partySymbol || newCandidate.partySymbol,
-                  age: parseInt(newCandidate.age, 10)
+                  age: calculateAge(newCandidate.dateOfBirth)
                 }
               : c
           ));
@@ -230,7 +278,7 @@ const ManageCandidates = () => {
                   ...newCandidate,
                   id: editingCandidate.id,
                   _id: editingCandidate._id,
-                  age: parseInt(newCandidate.age, 10)
+                  age: calculateAge(newCandidate.dateOfBirth)
                 }
               : c
           ));
@@ -255,7 +303,7 @@ const ManageCandidates = () => {
             ...newCandidate,
             id: response.data._id || newId, // Use ID from MongoDB if available
             _id: response.data._id,
-            age: parseInt(newCandidate.age, 10)
+            age: calculateAge(newCandidate.dateOfBirth)
           };
           
           setCandidates(prev => [...prev, candidateToAdd]);
@@ -272,7 +320,7 @@ const ManageCandidates = () => {
           const candidateToAdd = {
             ...newCandidate,
             id: newId,
-            age: parseInt(newCandidate.age, 10)
+            age: calculateAge(newCandidate.dateOfBirth)
           };
           
           setCandidates(prev => [...prev, candidateToAdd]);
@@ -366,23 +414,7 @@ const ManageCandidates = () => {
     }
   };
 
-  // Update date of birth when age changes (optional functionality)
-  const handleAgeChange = (e) => {
-    const age = e.target.value;
-    
-    // Update age directly
-    setNewCandidate(prev => ({
-      ...prev,
-      age: age
-    }));
-    
-    // Clear any age-related error
-    if (formErrors.age) {
-      setFormErrors(prev => ({ ...prev, age: null }));
-    }
-  };
-
-  // Add handleEditClick function after handleDeleteConfirm function
+  // Update the edit candidate function to calculate age when populating the form
   const handleEditClick = (candidate) => {
     // Set the form fields to the candidate's current values
     const candidateForEdit = {
@@ -390,6 +422,11 @@ const ManageCandidates = () => {
       // Convert any date strings to the format expected by the date input
       dateOfBirth: candidate.dateOfBirth ? new Date(candidate.dateOfBirth).toISOString().split('T')[0] : ''
     };
+    
+    // Ensure age is calculated from date of birth
+    if (candidateForEdit.dateOfBirth) {
+      candidateForEdit.age = calculateAge(candidateForEdit.dateOfBirth);
+    }
     
     setEditingCandidate(candidate);
     setNewCandidate(candidateForEdit);
@@ -409,7 +446,7 @@ const ManageCandidates = () => {
       photoUrl: '',
       partyName: '',
       partySymbol: '',
-      electionType: 'Presidential',
+      electionType: 'Lok Sabha Elections',
       constituency: '',
       manifesto: '',
       education: '',
@@ -422,6 +459,24 @@ const ManageCandidates = () => {
     setIsEditing(false);
     setEditingCandidate(null);
     setSuccessMessage("");
+  };
+
+  // Remove the handleAgeChange function as it's no longer needed
+  // and replace with a function to update the form when DOB changes
+  const handleDateOfBirthChange = (e) => {
+    const dateOfBirth = e.target.value;
+    const calculatedAge = calculateAge(dateOfBirth);
+    
+    setNewCandidate(prev => ({
+      ...prev,
+      dateOfBirth: dateOfBirth,
+      age: calculatedAge
+    }));
+    
+    // Clear any date-related errors
+    if (formErrors.dateOfBirth) {
+      setFormErrors(prev => ({ ...prev, dateOfBirth: null }));
+    }
   };
 
   return (
@@ -484,12 +539,13 @@ const ManageCandidates = () => {
                   <Table responsive hover className="mb-0">
                     <thead className="bg-light">
                       <tr>
-                        <th>Photo</th>
-                        <th>Name</th>
-                        <th>Party</th>
-                        <th>Election Type</th>
-                        <th>Constituency</th>
-                        <th>Actions</th>
+                        <th width="8%">Photo</th>
+                        <th width="20%">Name</th>
+                        <th width="8%">Age</th>
+                        <th width="18%">Party</th>
+                        <th width="18%">Election Type</th>
+                        <th width="18%">Constituency</th>
+                        <th width="10%">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -509,6 +565,9 @@ const ManageCandidates = () => {
                           </td>
                           <td>
                             {candidate.firstName} {candidate.middleName} {candidate.lastName}
+                          </td>
+                          <td>
+                            {candidate.age} {candidate.age ? 'years' : ''}
                           </td>
                           <td>
                             <div className="d-flex align-items-center">
@@ -632,38 +691,31 @@ const ManageCandidates = () => {
                   </Row>
                   
                   <Row>
-                    <Col md={4}>
+                    <Col md={6}>
                       <Form.Group className="mb-3">
-                        <Form.Label>Age <span className="text-danger">*</span></Form.Label>
-                        <Form.Control
-                          type="number"
-                          name="age"
-                          min="18"
-                          max="120"
-                          value={newCandidate.age}
-                          onChange={handleAgeChange}
-                          isInvalid={!!formErrors.age}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {formErrors.age}
-                        </Form.Control.Feedback>
-                        <Form.Text className="text-muted">
-                          Candidate must be at least 18 years old
-                        </Form.Text>
-                      </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                      <Form.Group className="mb-3">
-                        <Form.Label>Date of Birth <span className="text-muted">(Optional)</span></Form.Label>
+                        <Form.Label>Date of Birth <span className="text-danger">*</span></Form.Label>
                         <Form.Control
                           type="date"
                           name="dateOfBirth"
                           value={newCandidate.dateOfBirth}
-                          onChange={handleInputChange}
+                          onChange={handleDateOfBirthChange}
+                          isInvalid={!!formErrors.dateOfBirth}
+                          max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
                         />
+                        <Form.Control.Feedback type="invalid">
+                          {formErrors.dateOfBirth}
+                        </Form.Control.Feedback>
+                        <Form.Text className="text-muted">
+                          Candidate must be at least 18 years old
+                        </Form.Text>
+                        {newCandidate.dateOfBirth && !formErrors.dateOfBirth && (
+                          <div className="mt-1 text-success">
+                            Age: {newCandidate.age} years
+                          </div>
+                        )}
                       </Form.Group>
                     </Col>
-                    <Col md={4}>
+                    <Col md={6}>
                       <Form.Group className="mb-3">
                         <Form.Label>Gender</Form.Label>
                         <Form.Select
@@ -827,10 +879,9 @@ const ManageCandidates = () => {
                           onChange={handleInputChange}
                           isInvalid={!!formErrors.electionType}
                         >
-                          <option value="Presidential">Presidential</option>
-                          <option value="Parliamentary">Parliamentary</option>
-                          <option value="Local Body">Local Body</option>
-                          <option value="State">State</option>
+                          <option value="Lok Sabha Elections">Lok Sabha Elections (General Elections)</option>
+                          <option value="Vidhan Sabha Elections">Vidhan Sabha Elections (State Assembly Elections)</option>
+                          <option value="Local Body Elections">Local Body Elections (Municipal)</option>
                           <option value="Other">Other</option>
                         </Form.Select>
                         <Form.Control.Feedback type="invalid">
@@ -1001,19 +1052,20 @@ const ManageCandidates = () => {
                     <Col sm={8}>{selectedCandidate.firstName} {selectedCandidate.middleName} {selectedCandidate.lastName}</Col>
                   </Row>
                   <Row className="mb-3">
-                    <Col sm={4} className="text-muted">Age:</Col>
-                    <Col sm={8}>{selectedCandidate.age} years</Col>
+                    <Col sm={4} className="text-muted">Date of Birth:</Col>
+                    <Col sm={8}>
+                      {selectedCandidate.dateOfBirth ? new Date(selectedCandidate.dateOfBirth).toLocaleDateString() : 'Not provided'}
+                      {selectedCandidate.dateOfBirth && (
+                        <span className="ms-2 text-muted">
+                          (Age: {calculateAge(selectedCandidate.dateOfBirth)} years)
+                        </span>
+                      )}
+                    </Col>
                   </Row>
                   <Row className="mb-3">
                     <Col sm={4} className="text-muted">Gender:</Col>
                     <Col sm={8}>{selectedCandidate.gender}</Col>
                   </Row>
-                  {selectedCandidate.dateOfBirth && (
-                    <Row className="mb-3">
-                      <Col sm={4} className="text-muted">Date of Birth:</Col>
-                      <Col sm={8}>{new Date(selectedCandidate.dateOfBirth).toLocaleDateString()}</Col>
-                    </Row>
-                  )}
                   <Row className="mb-3">
                     <Col sm={4} className="text-muted">Email:</Col>
                     <Col sm={8}>{selectedCandidate.email || 'Not provided'}</Col>
