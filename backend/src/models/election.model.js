@@ -6,15 +6,24 @@ const electionSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  description: {
+  name: {
     type: String,
     trim: true
   },
-  electionType: {
+  type: {
     type: String,
     required: true,
-    enum: ['Presidential', 'Parliamentary', 'Regional', 'Local'],
-    default: 'Presidential'
+    enum: [
+      'Lok Sabha Elections (General Elections)',
+      'Vidhan Sabha Elections (State Assembly Elections)',
+      'Local Body Elections (Municipal)',
+      'Other'
+    ],
+    default: 'Lok Sabha Elections (General Elections)'
+  },
+  description: {
+    type: String,
+    trim: true
   },
   region: {
     type: String,
@@ -46,6 +55,16 @@ const electionSchema = new mongoose.Schema({
   },
   blockchainEndTxHash: {
     type: String
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  startedAt: {
+    type: Date
+  },
+  endedAt: {
+    type: Date
   },
   createdAt: {
     type: Date,

@@ -256,12 +256,15 @@ const ManageElection = () => {
     setError(null);
     
     try {
-      // Create form data for API
+      // Create form data for API - ensure both name and title are set explicitly
       const electionData = {
         ...newElection,
-        title: newElection.title || newElection.name,
-        name: newElection.name || newElection.title
+        title: newElection.title || newElection.name || '',
+        name: newElection.name || newElection.title || ''
       };
+      
+      // Log the data we're about to send
+      console.log('Submitting election data:', electionData);
       
       // Get auth headers
       const headers = getAuthHeaders();
@@ -270,16 +273,22 @@ const ManageElection = () => {
       
       // Attempt to determine if MongoDB is connected - improve health check handling
       try {
-        // Fix the health check URL
+        // Fix the health check URL - ensure it uses the correct API path
         const healthCheckUrl = `${API_URL}/health`;
         console.log('Checking MongoDB connection at:', healthCheckUrl);
         
-        const healthResponse = await axios.get(healthCheckUrl);
+        // Add a short timeout to prevent long waits
+        const healthResponse = await axios.get(healthCheckUrl, { 
+          timeout: 5000,
+          headers: { ...headers }
+        });
+        
         console.log('Health check response:', healthResponse.data);
         
         // More explicit check for MongoDB connection status
         const isMongoConnected = healthResponse.data && 
-                                healthResponse.data.mongodb === 'connected';
+                               (healthResponse.data.mongodb === 'connected' || 
+                                healthResponse.data.status === 'OK');
         
         if (!isMongoConnected) {
           console.warn('MongoDB not connected according to health check');
@@ -294,8 +303,17 @@ const ManageElection = () => {
         }
       } catch (healthError) {
         console.error('Health check failed:', healthError);
-        // Continue with the operation, but warn the user
-        setError('Warning: Cannot verify MongoDB connection. Attempting to save data anyway.');
+        
+        if (healthError.code === 'ECONNABORTED') {
+          console.warn('Health check timed out - server may be overloaded');
+          setError('Warning: Server response is slow. Will attempt to save data anyway.');
+        } else if (healthError.response && healthError.response.status === 404) {
+          console.warn('Health check endpoint not found - may be using older backend version');
+          // No need to show error to user for this case, just continue
+        } else {
+          // Continue with the operation, but warn the user
+          setError('Warning: Cannot verify MongoDB connection. Attempting to save data anyway.');
+        }
       }
       
       // If editing, update existing election
@@ -330,7 +348,7 @@ const ManageElection = () => {
                 ...headers,
                 'Content-Type': 'application/json'
               },
-              timeout: 8000 // 8 second timeout
+              timeout: 15000 // Increase timeout to 15 seconds
             });
             
             console.log('Admin endpoint update success - response:', response.data);
@@ -339,12 +357,16 @@ const ManageElection = () => {
             const updatedElection = {
               ...response.data,
               // Ensure name and title are consistent
-              name: response.data.name || response.data.title,
-              title: response.data.title || response.data.name,
+              name: response.data.name || response.data.title || electionData.name,
+              title: response.data.title || response.data.name || electionData.title,
+              // Ensure type is preserved
+              type: response.data.type || electionData.type,
               // Ensure IDs are preserved
               id: response.data._id || electionId,
               _id: response.data._id || electionId
             };
+            
+            console.log('Processed updated election:', updatedElection);
             
             // Update the election in the UI - be sure to match correctly
             setElections(prev => prev.map(e => 
@@ -374,7 +396,7 @@ const ManageElection = () => {
                   ...headers,
                   'Content-Type': 'application/json'
                 },
-                timeout: 8000 // 8 second timeout
+                timeout: 15000 // Increase timeout to 15 seconds
               });
               
               console.log('Direct endpoint update success - response:', response.data);
@@ -383,12 +405,16 @@ const ManageElection = () => {
               const updatedElection = {
                 ...response.data,
                 // Ensure name and title are consistent
-                name: response.data.name || response.data.title,
-                title: response.data.title || response.data.name,
+                name: response.data.name || response.data.title || electionData.name,
+                title: response.data.title || response.data.name || electionData.title,
+                // Ensure type is preserved
+                type: response.data.type || electionData.type,
                 // Ensure IDs are preserved
                 id: response.data._id || electionId,
                 _id: response.data._id || electionId
               };
+              
+              console.log('Processed updated election:', updatedElection);
               
               // Update the election in the UI
               setElections(prev => prev.map(e => 
@@ -851,8 +877,17 @@ const ManageElection = () => {
       'Other'
     ];
     
+    // Log the election type we received
+    console.log('Current election type:', election.type);
+    
     // Check if the current election type is in our valid types list
     const hasValidType = election.type && validElectionTypes.includes(election.type);
+    
+    // If not valid, log a warning
+    if (!hasValidType) {
+      console.warn('Election has invalid type:', election.type);
+      console.warn('Valid types are:', validElectionTypes);
+    }
     
     // Prepare the election data for editing, combining title and name fields
     const electionForEdit = {

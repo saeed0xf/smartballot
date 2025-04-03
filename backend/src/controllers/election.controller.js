@@ -308,7 +308,8 @@ exports.getElectionStatus = async (req, res) => {
         active: election.isActive,
         election: {
           id: election._id,
-          name: election.name,
+          name: election.name || election.title,
+          title: election.title,
           type: election.type,
           description: election.description,
           startDate: election.startDate,
@@ -333,7 +334,8 @@ exports.getElectionStatus = async (req, res) => {
       active: election.isActive,
       election: {
         id: election._id,
-        name: election.name,
+        name: election.name || election.title,
+        title: election.title,
         type: election.type,
         description: election.description,
         startDate: election.startDate,
@@ -568,6 +570,8 @@ exports.getElectionResults = async (req, res) => {
       election: {
         id: election._id,
         title: election.title,
+        name: election.name || election.title,
+        type: election.type,
         description: election.description,
         startDate: election.startDate,
         endDate: election.endDate
