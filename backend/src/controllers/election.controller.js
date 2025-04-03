@@ -55,16 +55,29 @@ exports.createElection = async (req, res) => {
     
     // Use name or title (frontend sends name, but schema expects title)
     const electionTitle = title || name;
+    const electionType = type || 'Lok Sabha Elections (General Elections)';
+    
+    // Log the election type being used
+    console.log('Using election type:', electionType);
     
     // Validate required fields
-    if (!electionTitle || !type || !description || !startDate || !endDate) {
-      return res.status(400).json({ message: 'All fields are required' });
+    if (!electionTitle || !electionType || !description || !startDate || !endDate) {
+      return res.status(400).json({ 
+        message: 'All fields are required',
+        details: { 
+          title: !electionTitle ? 'Election title is required' : null,
+          type: !electionType ? 'Election type is required' : null,
+          description: !description ? 'Description is required' : null,
+          startDate: !startDate ? 'Start date is required' : null,
+          endDate: !endDate ? 'End date is required' : null
+        }
+      });
     }
     
     // Create new election
     const newElection = new Election({
       title: electionTitle, // Use the electionTitle variable
-      type,
+      type: electionType,   // Use the electionType variable
       description,
       startDate: new Date(startDate),
       endDate: new Date(endDate),
@@ -104,14 +117,20 @@ exports.updateElection = async (req, res) => {
       return res.status(400).json({ message: 'Invalid election ID format' });
     }
     
-    const { name, type, description, startDate, endDate } = req.body;
+    const { name, title, type, description, startDate, endDate } = req.body;
+    
+    // Use title or name, and ensure type is preserved
+    const electionTitle = title || name;
+    const electionType = type || 'Lok Sabha Elections (General Elections)';
+    
+    console.log('Using election type for update:', electionType);
     
     // Find and update election
     const updatedElection = await Election.findByIdAndUpdate(
       id,
       { 
-        name, 
-        type, 
+        title: electionTitle, 
+        type: electionType,
         description, 
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,

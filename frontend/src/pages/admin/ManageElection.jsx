@@ -33,7 +33,7 @@ const ManageElection = () => {
   const [newElection, setNewElection] = useState({
     name: '',
     title: '',
-    type: 'General Elections',
+    type: 'Lok Sabha Elections (General Elections)',
     description: '',
     startDate: '',
     endDate: '',
@@ -110,14 +110,24 @@ const ManageElection = () => {
         }
         
         // Process elections to ensure they have both name and title fields
-        formattedElections = formattedElections.map(election => ({
-          ...election,
-          name: election.name || election.title || 'Untitled Election',
-          title: election.title || election.name || 'Untitled Election',
-          // Ensure _id is set for proper identification
-          _id: election._id || election.id,
-          id: election.id || election._id
-        }));
+        formattedElections = formattedElections.map(election => {
+          const defaultType = 'Lok Sabha Elections (General Elections)';
+          
+          // Log the election before processing to help with debugging
+          console.log('Processing election data:', election);
+          
+          return {
+            ...election,
+            // Ensure name and title are consistent
+            name: election.name || election.title || 'Untitled Election',
+            title: election.title || election.name || 'Untitled Election',
+            // Ensure type is never empty
+            type: election.type || defaultType,
+            // Ensure _id is set for proper identification
+            _id: election._id || election.id,
+            id: election.id || election._id
+          };
+        });
         
         console.log('Formatted elections:', formattedElections);
         setElections(formattedElections);
@@ -195,8 +205,11 @@ const ManageElection = () => {
     if (!newElection.name && !newElection.title) errors.name = 'Election name is required';
     
     // Don't validate type if it's already set (especially when editing)
-    if (!newElection.type && newElection.type !== 'General Elections' && 
-        newElection.type !== 'State Elections' && newElection.type !== 'Local Elections') {
+    if (!newElection.type && 
+        newElection.type !== 'Lok Sabha Elections (General Elections)' && 
+        newElection.type !== 'Vidhan Sabha Elections (State Assembly Elections)' && 
+        newElection.type !== 'Local Body Elections (Municipal)' && 
+        newElection.type !== 'Other') {
       errors.type = 'Election type is required';
     }
     
@@ -255,7 +268,7 @@ const ManageElection = () => {
       
       let response;
       
-      // Attempt to determine if MongoDB is connected
+      // Attempt to determine if MongoDB is connected - improve health check handling
       try {
         // Fix the health check URL
         const healthCheckUrl = `${API_URL}/health`;
@@ -264,10 +277,14 @@ const ManageElection = () => {
         const healthResponse = await axios.get(healthCheckUrl);
         console.log('Health check response:', healthResponse.data);
         
-        if (!healthResponse.data || healthResponse.data.mongodb !== 'connected') {
+        // More explicit check for MongoDB connection status
+        const isMongoConnected = healthResponse.data && 
+                                healthResponse.data.mongodb === 'connected';
+        
+        if (!isMongoConnected) {
           console.warn('MongoDB not connected according to health check');
-          // Don't throw an error, just set a warning
-          setError('Warning: MongoDB may not be properly connected. Data changes might not be saved permanently.');
+          // Continue with operation but inform user of potential issues
+          setError('Warning: MongoDB is not connected. Changes will be stored locally but not in the database.');
         } else {
           console.log('MongoDB connection confirmed via health check');
           // Clear any previous MongoDB connection warnings
@@ -278,7 +295,7 @@ const ManageElection = () => {
       } catch (healthError) {
         console.error('Health check failed:', healthError);
         // Continue with the operation, but warn the user
-        setError('Warning: Cannot verify MongoDB connection. Data might not be saved permanently.');
+        setError('Warning: Cannot verify MongoDB connection. Attempting to save data anyway.');
       }
       
       // If editing, update existing election
@@ -295,47 +312,28 @@ const ManageElection = () => {
         
         console.log(`Updating election with ID: ${electionId}`, electionData);
         
+        // Additional validation before sending
+        if (!electionData.name && !electionData.title) {
+          setError('Election name or title is required');
+          setIsSubmitting(false);
+          return;
+        }
+        
         try {
           // First try the admin endpoint
           const endpoint = `${API_URL}/admin/election/${electionId}`;
           console.log(`Trying to update with endpoint: ${endpoint}`);
           
-          response = await axios.put(endpoint, electionData, {
-            headers: headers
-          });
-          
-          console.log('Update response:', response.data);
-          
-          // Process the updated election response
-          const updatedElection = {
-            ...response.data,
-            // Ensure name and title are consistent
-            name: response.data.name || response.data.title,
-            title: response.data.title || response.data.name,
-            // Ensure IDs are preserved
-            id: response.data._id || electionId,
-            _id: response.data._id || electionId
-          };
-          
-          // Update the election in the UI
-          setElections(prev => prev.map(e => 
-            (e._id === electionId || e.id === electionId) ? updatedElection : e
-          ));
-          
-          setSuccessMessage("Election successfully updated in the database!");
-        } catch (adminError) {
-          console.error('Admin endpoint update failed:', adminError);
-          
-          // Try the direct endpoint
           try {
-            const directEndpoint = `${API_URL}/election/${electionId}`;
-            console.log(`Trying to update with direct endpoint: ${directEndpoint}`);
-            
-            response = await axios.put(directEndpoint, electionData, {
-              headers: headers
+            response = await axios.put(endpoint, electionData, {
+              headers: {
+                ...headers,
+                'Content-Type': 'application/json'
+              },
+              timeout: 8000 // 8 second timeout
             });
             
-            console.log('Direct endpoint update response:', response.data);
+            console.log('Admin endpoint update success - response:', response.data);
             
             // Process the updated election response
             const updatedElection = {
@@ -348,105 +346,266 @@ const ManageElection = () => {
               _id: response.data._id || electionId
             };
             
-            // Update the election in the UI
+            // Update the election in the UI - be sure to match correctly
             setElections(prev => prev.map(e => 
               (e._id === electionId || e.id === electionId) ? updatedElection : e
             ));
             
             setSuccessMessage("Election successfully updated in the database!");
-          } catch (directError) {
-            console.error('Direct endpoint update failed:', directError);
             
-            // Even if API call fails, update UI for demo purposes
-            const updatedElection = {
-              ...newElection,
-              id: editingElection.id,
-              _id: editingElection._id,
-              startDate: new Date(newElection.startDate),
-              endDate: new Date(newElection.endDate)
-            };
+            // Reset form after success
+            setTimeout(() => {
+              resetForm();
+              setSuccessMessage("");
+              setActiveTab('list');
+            }, 3000);
             
-            // Update UI with local changes
-            setElections(prev => prev.map(e => 
-              (e._id === editingElection._id || e.id === editingElection.id) 
-                ? updatedElection
-                : e
-            ));
+            return; // Exit early on success
+          } catch (adminError) {
+            console.error('Admin endpoint update failed:', adminError);
             
-            setSuccessMessage("Election updated locally (MongoDB connection failed)");
-            setError("Warning: Could not save to database. Changes are only stored locally.");
+            // Try the direct endpoint
+            const directEndpoint = `${API_URL}/election/${electionId}`;
+            console.log(`Trying to update with direct endpoint: ${directEndpoint}`);
+            
+            try {
+              response = await axios.put(directEndpoint, electionData, {
+                headers: {
+                  ...headers,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 8000 // 8 second timeout
+              });
+              
+              console.log('Direct endpoint update success - response:', response.data);
+              
+              // Process the updated election response
+              const updatedElection = {
+                ...response.data,
+                // Ensure name and title are consistent
+                name: response.data.name || response.data.title,
+                title: response.data.title || response.data.name,
+                // Ensure IDs are preserved
+                id: response.data._id || electionId,
+                _id: response.data._id || electionId
+              };
+              
+              // Update the election in the UI
+              setElections(prev => prev.map(e => 
+                (e._id === electionId || e.id === electionId) ? updatedElection : e
+              ));
+              
+              setSuccessMessage("Election successfully updated in the database!");
+              
+              // Reset form after success
+              setTimeout(() => {
+                resetForm();
+                setSuccessMessage("");
+                setActiveTab('list');
+              }, 3000);
+              
+              return; // Exit early on success
+            } catch (directError) {
+              console.error('All update endpoints failed:', directError);
+              
+              // Provide detailed error message based on the error
+              let detailedError = 'Failed to update election in database.';
+              
+              if (directError.response) {
+                // The request was made and the server responded with an error status
+                console.error('Error response status:', directError.response.status);
+                console.error('Error response data:', directError.response.data);
+                
+                if (directError.response.status === 400) {
+                  detailedError = `Validation error: ${directError.response.data.message || 'Please check your form fields.'}`;
+                  
+                  // Check for specific MongoDB validation errors
+                  if (directError.response.data.details && directError.response.data.details.length > 0) {
+                    const fields = directError.response.data.details.map(d => d.field).join(', ');
+                    detailedError = `Validation failed for fields: ${fields}`;
+                  }
+                } else if (directError.response.status === 401) {
+                  detailedError = 'Your session has expired. Please log in again.';
+                } else if (directError.response.status === 404) {
+                  detailedError = 'Election not found in database. It may have been deleted.';
+                } else if (directError.response.status === 500) {
+                  detailedError = `Server error: ${directError.response.data.message || 'Internal database error'}`;
+                }
+              } else if (directError.request) {
+                // The request was made but no response was received
+                detailedError = 'No response from server. Please check your connection.';
+              }
+              
+              // Show the detailed error but continue with local update
+              setError(detailedError);
+              
+              // Still update locally even if API call fails
+              const updatedElection = {
+                ...electionData,
+                id: electionId,
+                _id: electionId,
+                updatedAt: new Date().toISOString()
+              };
+              
+              // Update UI with local changes
+              setElections(prev => prev.map(e => 
+                (e._id === electionId || e.id === electionId) ? updatedElection : e
+              ));
+              
+              setSuccessMessage("Election updated locally only. Database update failed.");
+              
+              // Reset form after 3 seconds regardless
+              setTimeout(() => {
+                resetForm();
+                setSuccessMessage("");
+                setActiveTab('list');
+              }, 3000);
+            }
           }
+        } catch (overallError) {
+          console.error('Overall election update error:', overallError);
+          setError(`Failed to update election: ${overallError.message}`);
+          setIsSubmitting(false);
         }
       } else {
         // Otherwise, add a new election
         try {
           // First try the admin endpoint
           const endpoint = `${API_URL}/admin/election`;
-          console.log(`Trying to create with endpoint: ${endpoint}`);
+          console.log(`Trying to create with endpoint: ${endpoint}`, electionData);
           
-          response = await axios.post(endpoint, electionData, {
-            headers: headers
-          });
+          // Additional validation before sending
+          if (!electionData.name && !electionData.title) {
+            throw new Error('Election name or title is required');
+          }
           
-          console.log('API response:', response.data);
-          
-          // Add the new election to the UI
-          const newId = elections.length > 0 ? Math.max(...elections.map(e => e.id || 0)) + 1 : 1;
-          const electionToAdd = {
-            ...newElection,
-            id: response.data._id || newId,
-            _id: response.data._id,
-          };
-          
-          setElections(prev => [...prev, electionToAdd]);
-          setSuccessMessage("Election successfully added to the database!");
-        } catch (adminError) {
-          console.error('Admin endpoint creation failed:', adminError);
-          
-          // Try the direct endpoint
+          // Add more explicit error handling
           try {
-            const directEndpoint = `${API_URL}/election`;
-            console.log(`Trying to create with direct endpoint: ${directEndpoint}`);
-            
-            response = await axios.post(directEndpoint, electionData, {
-              headers: headers
+            response = await axios.post(endpoint, electionData, {
+              headers: {
+                ...headers,
+                'Content-Type': 'application/json'
+              },
+              timeout: 8000 // 8 second timeout
             });
             
-            console.log('Direct endpoint creation response:', response.data);
+            console.log('Admin endpoint success - API response:', response.data);
+            
+            // Process the response to ensure consistent data format
+            const savedElection = {
+              ...response.data,
+              // Ensure name and title are consistent
+              name: response.data.name || response.data.title,
+              title: response.data.title || response.data.name,
+              // Ensure IDs are consistent
+              id: response.data._id || response.data.id,
+              _id: response.data._id || response.data.id
+            };
             
             // Add the new election to the UI
-            const newId = elections.length > 0 ? Math.max(...elections.map(e => e.id || 0)) + 1 : 1;
-            const electionToAdd = {
-              ...newElection,
-              id: response.data._id || newId,
-              _id: response.data._id,
-            };
-            
-            setElections(prev => [...prev, electionToAdd]);
+            setElections(prev => [...prev, savedElection]);
             setSuccessMessage("Election successfully added to the database!");
-          } catch (directError) {
-            console.error('Direct endpoint creation failed:', directError);
             
-            // If API call fails, still update UI for demo purposes
-            const newId = elections.length > 0 ? Math.max(...elections.map(e => e.id || 0)) + 1 : 1;
-            const electionToAdd = {
-              ...newElection,
-              id: newId,
-            };
+            // Reset form after success
+            setTimeout(() => {
+              resetForm();
+              setSuccessMessage("");
+              setActiveTab('list');
+            }, 3000);
             
-            setElections(prev => [...prev, electionToAdd]);
-            setSuccessMessage("Election added locally (MongoDB connection failed)");
-            setError("Warning: Could not save to database. Election is only stored locally.");
+            return; // Exit early on success
+          } catch (adminError) {
+            console.error('Admin endpoint creation failed:', adminError);
+            
+            // Try the direct endpoint as fallback
+            const directEndpoint = `${API_URL}/election`;
+            console.log(`Trying fallback with direct endpoint: ${directEndpoint}`);
+            
+            try {
+              response = await axios.post(directEndpoint, electionData, {
+                headers: {
+                  ...headers,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 8000 // 8 second timeout
+              });
+              
+              console.log('Direct endpoint success - API response:', response.data);
+              
+              // Process the response to ensure consistent data format
+              const savedElection = {
+                ...response.data,
+                // Ensure name and title are consistent
+                name: response.data.name || response.data.title,
+                title: response.data.title || response.data.name,
+                // Ensure IDs are consistent
+                id: response.data._id || response.data.id,
+                _id: response.data._id || response.data.id
+              };
+              
+              // Add the new election to the UI
+              setElections(prev => [...prev, savedElection]);
+              setSuccessMessage("Election successfully added to the database!");
+              
+              // Reset form after success
+              setTimeout(() => {
+                resetForm();
+                setSuccessMessage("");
+                setActiveTab('list');
+              }, 3000);
+              
+              return; // Exit early on success
+            } catch (directError) {
+              console.error('All endpoints failed:', directError);
+              
+              // Provide detailed error message based on the error
+              let detailedError = 'Failed to save election to database.';
+              
+              if (directError.response) {
+                // The request was made and the server responded with an error status
+                console.error('Error response status:', directError.response.status);
+                console.error('Error response data:', directError.response.data);
+                
+                if (directError.response.status === 400) {
+                  detailedError = `Validation error: ${directError.response.data.message || 'Please check your form fields.'}`;
+                  
+                  // Check for specific MongoDB validation errors
+                  if (directError.response.data.details && directError.response.data.details.length > 0) {
+                    const fields = directError.response.data.details.map(d => d.field).join(', ');
+                    detailedError = `Validation failed for fields: ${fields}`;
+                  }
+                } else if (directError.response.status === 401) {
+                  detailedError = 'Your session has expired. Please log in again.';
+                } else if (directError.response.status === 500) {
+                  detailedError = `Server error: ${directError.response.data.message || 'Internal database error'}`;
+                }
+              } else if (directError.request) {
+                // The request was made but no response was received
+                detailedError = 'No response from server. Please check your connection.';
+              }
+              
+              // Show the detailed error
+              setError(detailedError);
+              
+              // Still add locally if it's a database issue but we have a UI
+              const newId = `local_${Date.now()}`;
+              const electionToAdd = {
+                ...electionData,
+                id: newId,
+                _id: newId,
+                isActive: false,
+                createdAt: new Date().toISOString()
+              };
+              
+              setElections(prev => [...prev, electionToAdd]);
+              setSuccessMessage("Election added locally only. Database save failed.");
+            }
           }
+        } catch (overallError) {
+          console.error('Overall election creation error:', overallError);
+          setError(`Failed to create election: ${overallError.message}`);
         }
       }
-      
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        resetForm();
-        setSuccessMessage("");
-        setActiveTab('list');
-      }, 3000);
       
     } catch (error) {
       console.error('Error adding/updating election:', error);
@@ -684,13 +843,24 @@ const ManageElection = () => {
       }
     };
     
+    // Define the available election types
+    const validElectionTypes = [
+      'Lok Sabha Elections (General Elections)',
+      'Vidhan Sabha Elections (State Assembly Elections)',
+      'Local Body Elections (Municipal)',
+      'Other'
+    ];
+    
+    // Check if the current election type is in our valid types list
+    const hasValidType = election.type && validElectionTypes.includes(election.type);
+    
     // Prepare the election data for editing, combining title and name fields
     const electionForEdit = {
       ...election,
       name: election.name || election.title || '',
       title: election.title || election.name || '',
-      // Default to General Elections if type is missing
-      type: election.type || 'General Elections',
+      // Use the current type if valid, otherwise default to the first option
+      type: hasValidType ? election.type : 'Lok Sabha Elections (General Elections)',
       description: election.description || '',
       startDate: formatDateForInput(election.startDate),
       endDate: formatDateForInput(election.endDate),
@@ -712,7 +882,7 @@ const ManageElection = () => {
     setNewElection({
       name: '',
       title: '',
-      type: 'General Elections', // Default value
+      type: 'Lok Sabha Elections (General Elections)', // Updated default value
       description: '',
       startDate: '',
       endDate: '',
@@ -821,7 +991,9 @@ const ManageElection = () => {
                       {elections.map((election) => (
                         <tr key={election.id || election._id}>
                           <td>{election.title || election.name}</td>
-                          <td>{election.type}</td>
+                          <td className="text-nowrap">
+                            {election.type || 'Lok Sabha Elections (General Elections)'}
+                          </td>
                           <td>{formatDate(election.startDate)}</td>
                           <td>{formatDate(election.endDate)}</td>
                           <td>
@@ -927,13 +1099,14 @@ const ManageElection = () => {
                         <Form.Label>Election Type <span className="text-danger">*</span></Form.Label>
                         <Form.Select
                           name="type"
-                          value={newElection.type || 'General Elections'}
+                          value={newElection.type || 'Lok Sabha Elections (General Elections)'}
                           onChange={handleInputChange}
                           isInvalid={!!formErrors.type}
                         >
-                          <option value="General Elections">General Elections</option>
-                          <option value="State Elections">State Elections</option>
-                          <option value="Local Elections">Local Elections</option>
+                          <option value="Lok Sabha Elections (General Elections)">Lok Sabha Elections (General Elections)</option>
+                          <option value="Vidhan Sabha Elections (State Assembly Elections)">Vidhan Sabha Elections (State Assembly Elections)</option>
+                          <option value="Local Body Elections (Municipal)">Local Body Elections (Municipal)</option>
+                          <option value="Other">Other</option>
                         </Form.Select>
                         <Form.Control.Feedback type="invalid">
                           {formErrors.type}
