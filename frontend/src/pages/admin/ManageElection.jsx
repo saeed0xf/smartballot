@@ -259,7 +259,8 @@ const ManageElection = () => {
       // Create form data for API - ensure both name and title are set explicitly
       const electionData = {
         ...newElection,
-        title: newElection.title || newElection.name || '',
+        // Ensure both name and title are set to the same value for consistency
+        title: newElection.name || newElection.title || '',
         name: newElection.name || newElection.title || ''
       };
       

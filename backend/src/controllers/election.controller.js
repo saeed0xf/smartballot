@@ -120,16 +120,20 @@ exports.updateElection = async (req, res) => {
     const { name, title, type, description, startDate, endDate } = req.body;
     
     // Use title or name, and ensure type is preserved
-    const electionTitle = title || name;
+    const electionTitle = title || name || '';
+    const electionName = name || title || '';
     const electionType = type || 'Lok Sabha Elections (General Elections)';
     
+    console.log('Using election title:', electionTitle);
+    console.log('Using election name:', electionName);
     console.log('Using election type for update:', electionType);
     
-    // Find and update election
+    // Find and update election with both name and title fields explicitly
     const updatedElection = await Election.findByIdAndUpdate(
       id,
       { 
         title: electionTitle, 
+        name: electionName,  // Explicitly save the name field
         type: electionType,
         description, 
         startDate: startDate ? new Date(startDate) : undefined,
