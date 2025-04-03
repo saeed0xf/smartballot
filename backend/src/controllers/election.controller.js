@@ -7,7 +7,9 @@ const {
   castVoteOnBlockchain,
   getVoterStatusFromBlockchain,
   getCandidateFromBlockchain,
-  getElectionStatusFromBlockchain
+  getElectionStatusFromBlockchain,
+  startElectionOnBlockchain,
+  endElectionOnBlockchain
 } = require('../utils/blockchain.util');
 const mongoose = require('mongoose');
 
@@ -207,26 +209,112 @@ exports.startElection = async (req, res) => {
       return res.status(400).json({ message: 'Election is already active' });
     }
     
-    // Check if there are candidates for this election
-    const candidatesCount = await Candidate.countDocuments({ electionType: election.type });
+    // Check if there are candidates matching this election type
+    // Make the query more flexible to match different formats
+    const candidateQuery = {
+      $or: [
+        { electionType: election.type },
+        // For backward compatibility
+        { electionType: 'Presidential' },
+        { electionType: 'Parliamentary' }
+      ]
+    };
+    
+    const candidatesCount = await Candidate.countDocuments(candidateQuery);
+    console.log(`Found ${candidatesCount} candidates for election type: ${election.type}`);
+    
     if (candidatesCount === 0) {
-      return res.status(400).json({ message: 'Cannot start an election without candidates' });
+      return res.status(400).json({ 
+        message: 'Cannot start an election without candidates',
+        details: 'Please add candidates with matching election type before starting the election'
+      });
     }
     
-    // Start the election
-    election.isActive = true;
-    election.startedAt = Date.now();
-    await election.save();
-    
-    console.log('Election started successfully:', election);
-    
-    // TODO: Blockchain integration - Record the election start on blockchain
-    // This would be implemented according to your blockchain setup
-    
-    res.status(200).json({ 
-      message: 'Election started successfully',
-      election
-    });
+    try {
+      // Start the election in the database
+      election.isActive = true;
+      election.startedAt = Date.now();
+      
+      // Get all candidates for this election
+      const candidates = await Candidate.find(candidateQuery);
+      console.log(`Retrieved ${candidates.length} candidates for election`);
+      
+      // Start election on blockchain
+      let blockchainTxHash = null;
+      let blockchainError = null;
+      
+      try {
+        // Prepare candidate data for blockchain
+        const candidateIds = candidates.map(c => c.blockchainId || c._id.toString());
+        const candidateNames = candidates.map(c => `${c.firstName} ${c.lastName}`);
+        
+        console.log('Starting election on blockchain with candidates:', candidateNames);
+        
+        // Call blockchain integration
+        const blockchainResult = await startElectionOnBlockchain(
+          election._id.toString(),
+          election.title || election.name,
+          candidateIds,
+          candidateNames
+        );
+        
+        if (blockchainResult && blockchainResult.success) {
+          blockchainTxHash = blockchainResult.txHash;
+          console.log(`Election started on blockchain with transaction hash: ${blockchainTxHash}`);
+        } else {
+          blockchainError = blockchainResult?.error || 'Unknown blockchain error';
+          console.warn('Blockchain integration failed or returned no transaction hash');
+          console.warn(blockchainError);
+        }
+      } catch (blockchainError) {
+        console.error('Error starting election on blockchain:', blockchainError);
+        // We'll still continue with database update even if blockchain fails
+      }
+      
+      // Save blockchain transaction hash if we got one
+      if (blockchainTxHash) {
+        election.blockchainStartTxHash = blockchainTxHash;
+      }
+      
+      // Save the election with updated fields
+      await election.save();
+      
+      // Associate candidates with this election and mark them as in an active election
+      // This makes it easy to find candidates for a specific election
+      const updatePromises = candidates.map(candidate => {
+        return Candidate.findByIdAndUpdate(
+          candidate._id,
+          { 
+            election: election._id,
+            inActiveElection: true
+          },
+          { new: true }
+        );
+      });
+      
+      // Execute all updates in parallel
+      await Promise.all(updatePromises);
+      
+      console.log('Election started successfully:', election);
+      
+      // Return success response with blockchain status
+      res.status(200).json({ 
+        message: 'Election started successfully',
+        election,
+        candidatesCount: candidates.length,
+        blockchain: {
+          success: !!blockchainTxHash,
+          txHash: blockchainTxHash,
+          error: blockchainError
+        }
+      });
+    } catch (dbError) {
+      console.error('Database error while starting election:', dbError);
+      res.status(500).json({
+        message: 'Failed to update election status in database',
+        error: dbError.message
+      });
+    }
   } catch (error) {
     console.error('Error starting election:', error);
     res.status(500).json({ message: 'Failed to start election', error: error.message });
@@ -259,14 +347,45 @@ exports.endElection = async (req, res) => {
     election.endedAt = Date.now();
     await election.save();
     
+    // Update all candidates associated with this election
+    await Candidate.updateMany(
+      { election: election._id },
+      { inActiveElection: false }
+    );
+    
     console.log('Election ended successfully:', election);
     
-    // TODO: Blockchain integration - Record the election end and results on blockchain
-    // This would be implemented according to your blockchain setup
+    // Try blockchain integration for election end
+    let blockchainTxHash = null;
+    let blockchainError = null;
+    
+    try {
+      // Call blockchain integration if available
+      if (typeof endElectionOnBlockchain === 'function') {
+        const blockchainResult = await endElectionOnBlockchain(election._id.toString());
+        
+        if (blockchainResult && blockchainResult.success) {
+          blockchainTxHash = blockchainResult.txHash;
+          console.log(`Election ended on blockchain with transaction hash: ${blockchainTxHash}`);
+        } else {
+          blockchainError = blockchainResult?.error || 'Unknown blockchain error';
+          console.warn('Blockchain integration failed or returned no transaction hash');
+          console.warn(blockchainError);
+        }
+      }
+    } catch (blockchainError) {
+      console.error('Error ending election on blockchain:', blockchainError);
+      // We'll still return success since the database was updated
+    }
     
     res.status(200).json({ 
       message: 'Election ended successfully',
-      election
+      election,
+      blockchain: {
+        success: !!blockchainTxHash,
+        txHash: blockchainTxHash,
+        error: blockchainError
+      }
     });
   } catch (error) {
     console.error('Error ending election:', error);
@@ -280,7 +399,34 @@ exports.getActiveElections = async (req, res) => {
     console.log('Fetching active elections');
     const activeElections = await Election.find({ isActive: true });
     console.log(`Found ${activeElections.length} active elections`);
-    res.status(200).json(activeElections);
+    
+    // For each active election, fetch associated candidates
+    const electionsWithCandidates = await Promise.all(
+      activeElections.map(async (election) => {
+        // Find candidates for this election type
+        const candidates = await Candidate.find({
+          $or: [
+            { election: election._id },
+            { electionType: election.type }
+          ]
+        });
+        
+        // Convert to plain object to add candidates
+        const electionObj = election.toObject();
+        electionObj.candidates = candidates.map(c => ({
+          id: c._id,
+          name: `${c.firstName} ${c.middleName ? c.middleName + ' ' : ''}${c.lastName}`,
+          partyName: c.partyName,
+          partySymbol: c.partySymbol,
+          photoUrl: c.photoUrl,
+          constituency: c.constituency
+        }));
+        
+        return electionObj;
+      })
+    );
+    
+    res.status(200).json(electionsWithCandidates);
   } catch (error) {
     console.error('Error fetching active elections:', error);
     res.status(500).json({ message: 'Failed to fetch active elections', error: error.message });

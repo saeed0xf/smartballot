@@ -26,7 +26,7 @@ const candidateSchema = new mongoose.Schema({
   gender: {
     type: String,
     required: true,
-    enum: ['Male', 'Female', 'Other']
+    enum: ['Male', 'Female', 'Other', 'Prefer not to say']
   },
   dateOfBirth: {
     type: Date
@@ -45,7 +45,20 @@ const candidateSchema = new mongoose.Schema({
   electionType: {
     type: String,
     required: true,
-    enum: ['Presidential', 'Parliamentary', 'Regional', 'Local']
+    enum: [
+      'Lok Sabha Elections (General Elections)',
+      'Lok Sabha Elections',
+      'Vidhan Sabha Elections (State Assembly Elections)',
+      'Vidhan Sabha Elections',
+      'Local Body Elections (Municipal)',
+      'Local Body Elections',
+      'Other',
+      'Presidential',
+      'Parliamentary',
+      'Regional',
+      'Local'
+    ],
+    default: 'Lok Sabha Elections (General Elections)'
   },
   constituency: {
     type: String,
@@ -74,7 +87,7 @@ const candidateSchema = new mongoose.Schema({
     lowercase: true
   },
   blockchainId: {
-    type: Number
+    type: String
   },
   blockchainTxHash: {
     type: String
@@ -90,14 +103,41 @@ const candidateSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  },
+  // Reference to election to link candidates with specific elections
+  election: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Election'
+  },
+  // Flag to track if the candidate is associated with an active election
+  inActiveElection: {
+    type: Boolean,
+    default: false
   }
 });
 
 // Add a pre-save hook to log when a candidate is being saved
 candidateSchema.pre('save', function(next) {
+  this.updatedAt = Date.now();
   console.log('Saving candidate to MongoDB:', this);
   next();
 });
+
+// Virtual for fullname - make it easier to access the candidate's full name
+candidateSchema.virtual('name').get(function() {
+  let fullName = this.firstName;
+  if (this.middleName) fullName += ' ' + this.middleName;
+  fullName += ' ' + this.lastName;
+  return fullName;
+});
+
+// Make virtual fields show up in JSONs
+candidateSchema.set('toJSON', { virtuals: true });
+candidateSchema.set('toObject', { virtuals: true });
 
 const Candidate = mongoose.model('Candidate', candidateSchema);
 

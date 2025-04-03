@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
 import { formatImageUrl, isPreviewUrl } from '../../utils/imageUtils';
+import { Link } from 'react-router-dom';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -12,6 +13,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const ManageCandidates = () => {
   const { isAuthenticated } = useContext(AuthContext);
   const [candidates, setCandidates] = useState([]);
+  const [elections, setElections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('list');
@@ -28,6 +30,7 @@ const ManageCandidates = () => {
     partyName: '',
     partySymbol: '',
     electionType: 'Lok Sabha Elections',
+    electionId: '', // Add election ID field
     constituency: '',
     manifesto: '',
     education: '',
@@ -54,9 +57,28 @@ const ManageCandidates = () => {
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   };
 
+  // Fetch elections for the dropdown
+  const fetchElections = async () => {
+    try {
+      const headers = getAuthHeaders();
+      console.log('Fetching elections...');
+      
+      const response = await axios.get(`${API_URL}/admin/elections`, {
+        headers: headers
+      });
+      
+      console.log('Elections data:', response.data);
+      setElections(response.data || []);
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching elections:', err);
+      return [];
+    }
+  };
+
   // Fetch real data from the API
   useEffect(() => {
-    const fetchCandidates = async () => {
+    const fetchAllData = async () => {
       try {
         setLoading(true);
         setError(null);
@@ -65,6 +87,10 @@ const ManageCandidates = () => {
         const headers = getAuthHeaders();
         console.log('Authorization headers:', headers);
         
+        // First, fetch elections
+        const electionsList = await fetchElections();
+        
+        // Then fetch candidates
         const response = await axios.get(`${API_URL}/admin/candidates`, {
           headers: headers
         });
@@ -76,11 +102,17 @@ const ManageCandidates = () => {
           // Ensure the age is calculated from date of birth
           const calculatedAge = candidate.dateOfBirth ? calculateAge(candidate.dateOfBirth) : candidate.age;
           
+          // Find election name from elections list
+          const electionName = candidate.election ? 
+            electionsList.find(e => e._id === candidate.election)?.title || "Unknown Election" : 
+            "No Election";
+          
           return {
             ...candidate,
             photoUrl: formatImageUrl(candidate.photoUrl),
             partySymbol: formatImageUrl(candidate.partySymbol),
-            age: calculatedAge
+            age: calculatedAge,
+            electionName: electionName
           };
         });
         
@@ -101,7 +133,7 @@ const ManageCandidates = () => {
     };
     
     if (isAuthenticated) {
-      fetchCandidates();
+      fetchAllData();
     }
   }, [isAuthenticated]);
   
@@ -121,6 +153,31 @@ const ManageCandidates = () => {
     }
     
     return age >= 0 ? age.toString() : '';
+  };
+
+  // Handle election change to update the election type
+  const handleElectionChange = (e) => {
+    const electionId = e.target.value;
+    const selectedElection = elections.find(election => election._id === electionId);
+    
+    if (selectedElection) {
+      setNewCandidate(prev => ({ 
+        ...prev, 
+        electionId: electionId,
+        electionType: selectedElection.type || 'Lok Sabha Elections'
+      }));
+      
+      // Clear error if there was one
+      if (formErrors.electionId) {
+        setFormErrors(prev => ({ ...prev, electionId: null }));
+      }
+    } else {
+      setNewCandidate(prev => ({ 
+        ...prev, 
+        electionId: '',
+        electionType: 'Lok Sabha Elections'
+      }));
+    }
   };
 
   // Modify the handleInputChange function to calculate age when DOB changes
@@ -171,7 +228,7 @@ const ManageCandidates = () => {
     }
   };
   
-  // Update the validateForm function to validate date of birth instead of age
+  // Update the validateForm function to require an election
   const validateForm = () => {
     const errors = {};
     
@@ -186,7 +243,7 @@ const ManageCandidates = () => {
       }
     }
     if (!newCandidate.partyName) errors.partyName = 'Party name is required';
-    if (!newCandidate.electionType) errors.electionType = 'Election type is required';
+    if (!newCandidate.electionId) errors.electionId = 'Please select an election';
     if (!newCandidate.constituency) errors.constituency = 'Constituency is required';
     if (!newCandidate.photoUrl) errors.photoUrl = 'Candidate photo is required';
     
@@ -249,6 +306,9 @@ const ManageCandidates = () => {
           
           console.log('Update response:', response.data);
           
+          // Find the election name
+          const electionName = elections.find(e => e._id === newCandidate.electionId)?.title || "Unknown Election";
+          
           // Update the candidate in the UI
           setCandidates(prev => prev.map(c => 
             (c._id === candidateId || c.id === candidateId) 
@@ -258,7 +318,8 @@ const ManageCandidates = () => {
                   _id: response.data._id || candidateId,
                   photoUrl: response.data.photoUrl || newCandidate.photoUrl,
                   partySymbol: response.data.partySymbol || newCandidate.partySymbol,
-                  age: calculateAge(newCandidate.dateOfBirth)
+                  age: calculateAge(newCandidate.dateOfBirth),
+                  electionName: electionName
                 }
               : c
           ));
@@ -272,13 +333,16 @@ const ManageCandidates = () => {
           }
           
           // Even if API call fails, update UI for demo purposes
+          const electionName = elections.find(e => e._id === newCandidate.electionId)?.title || "Unknown Election";
+          
           setCandidates(prev => prev.map(c => 
             (c._id === editingCandidate._id || c.id === editingCandidate.id) 
               ? {
                   ...newCandidate,
                   id: editingCandidate.id,
                   _id: editingCandidate._id,
-                  age: calculateAge(newCandidate.dateOfBirth)
+                  age: calculateAge(newCandidate.dateOfBirth),
+                  electionName: electionName
                 }
               : c
           ));
@@ -297,13 +361,17 @@ const ManageCandidates = () => {
           
           console.log('API response:', response.data);
           
+          // Find the election name
+          const electionName = elections.find(e => e._id === newCandidate.electionId)?.title || "Unknown Election";
+          
           // Add the new candidate to the UI
           const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id || 0)) + 1 : 1;
           const candidateToAdd = {
             ...newCandidate,
             id: response.data._id || newId, // Use ID from MongoDB if available
             _id: response.data._id,
-            age: calculateAge(newCandidate.dateOfBirth)
+            age: calculateAge(newCandidate.dateOfBirth),
+            electionName: electionName
           };
           
           setCandidates(prev => [...prev, candidateToAdd]);
@@ -317,10 +385,13 @@ const ManageCandidates = () => {
           
           // If API call fails, still update UI for demo purposes
           const newId = candidates.length > 0 ? Math.max(...candidates.map(c => c.id || 0)) + 1 : 1;
+          const electionName = elections.find(e => e._id === newCandidate.electionId)?.title || "Unknown Election";
+          
           const candidateToAdd = {
             ...newCandidate,
             id: newId,
-            age: calculateAge(newCandidate.dateOfBirth)
+            age: calculateAge(newCandidate.dateOfBirth),
+            electionName: electionName
           };
           
           setCandidates(prev => [...prev, candidateToAdd]);
@@ -416,11 +487,19 @@ const ManageCandidates = () => {
 
   // Update the edit candidate function to calculate age when populating the form
   const handleEditClick = (candidate) => {
+    // Check if candidate is in an active election
+    if (candidate.inActiveElection) {
+      setError("Cannot edit a candidate who is part of an active election. End the election first.");
+      return;
+    }
+    
     // Set the form fields to the candidate's current values
     const candidateForEdit = {
       ...candidate,
       // Convert any date strings to the format expected by the date input
-      dateOfBirth: candidate.dateOfBirth ? new Date(candidate.dateOfBirth).toISOString().split('T')[0] : ''
+      dateOfBirth: candidate.dateOfBirth ? new Date(candidate.dateOfBirth).toISOString().split('T')[0] : '',
+      // Make sure to include the election ID
+      electionId: candidate.election || ''
     };
     
     // Ensure age is calculated from date of birth
@@ -447,6 +526,7 @@ const ManageCandidates = () => {
       partyName: '',
       partySymbol: '',
       electionType: 'Lok Sabha Elections',
+      electionId: '', // Reset election ID
       constituency: '',
       manifesto: '',
       education: '',
@@ -542,10 +622,10 @@ const ManageCandidates = () => {
                         <th width="8%">Photo</th>
                         <th width="20%">Name</th>
                         <th width="8%">Age</th>
-                        <th width="18%">Party</th>
-                        <th width="18%">Election Type</th>
-                        <th width="18%">Constituency</th>
-                        <th width="10%">Actions</th>
+                        <th width="15%">Party</th>
+                        <th width="18%">Election</th>
+                        <th width="15%">Constituency</th>
+                        <th width="16%">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -583,7 +663,12 @@ const ManageCandidates = () => {
                               {candidate.partyName}
                             </div>
                           </td>
-                          <td>{candidate.electionType}</td>
+                          <td>
+                            {candidate.electionName || "No Election"}
+                            {candidate.inActiveElection && (
+                              <Badge bg="success" className="ms-2">Active</Badge>
+                            )}
+                          </td>
                           <td>{candidate.constituency}</td>
                           <td>
                             <Button
@@ -601,6 +686,7 @@ const ManageCandidates = () => {
                               className="me-2"
                               title="Edit Candidate"
                               onClick={() => handleEditClick(candidate)}
+                              disabled={candidate.inActiveElection}
                             >
                               <FaEdit />
                             </Button>
@@ -609,6 +695,7 @@ const ManageCandidates = () => {
                               size="sm"
                               title="Delete Candidate"
                               onClick={() => handleDeleteClick(candidate)}
+                              disabled={candidate.inActiveElection}
                             >
                               <FaTrashAlt />
                             </Button>
@@ -870,25 +957,41 @@ const ManageCandidates = () => {
                   </Row>
                   
                   <Row>
-                    <Col md={6}>
+                    <Col md={12}>
                       <Form.Group className="mb-3">
-                        <Form.Label>Election Type <span className="text-danger">*</span></Form.Label>
+                        <Form.Label>Select Election <span className="text-danger">*</span></Form.Label>
                         <Form.Select
-                          name="electionType"
-                          value={newCandidate.electionType}
-                          onChange={handleInputChange}
-                          isInvalid={!!formErrors.electionType}
+                          name="electionId"
+                          value={newCandidate.electionId}
+                          onChange={handleElectionChange}
+                          isInvalid={!!formErrors.electionId}
+                          disabled={isEditing} // Can't change election when editing
                         >
-                          <option value="Lok Sabha Elections">Lok Sabha Elections (General Elections)</option>
-                          <option value="Vidhan Sabha Elections">Vidhan Sabha Elections (State Assembly Elections)</option>
-                          <option value="Local Body Elections">Local Body Elections (Municipal)</option>
-                          <option value="Other">Other</option>
+                          <option value="">-- Select an Election --</option>
+                          {elections.map(election => (
+                            <option key={election._id} value={election._id}>
+                              {election.title || election.name} ({election.type})
+                            </option>
+                          ))}
                         </Form.Select>
+                        {elections.length === 0 && (
+                          <Alert variant="warning" className="mt-2">
+                            <small>
+                              No elections found. <Link to="/admin/elections">Create an election</Link> first before adding candidates.
+                            </small>
+                          </Alert>
+                        )}
                         <Form.Control.Feedback type="invalid">
-                          {formErrors.electionType}
+                          {formErrors.electionId}
                         </Form.Control.Feedback>
+                        <Form.Text className="text-muted">
+                          Candidates must be associated with an election
+                        </Form.Text>
                       </Form.Group>
                     </Col>
+                  </Row>
+                  
+                  <Row>
                     <Col md={6}>
                       <Form.Group className="mb-3">
                         <Form.Label>Constituency/Region <span className="text-danger">*</span></Form.Label>

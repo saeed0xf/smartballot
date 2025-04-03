@@ -417,7 +417,7 @@ exports.addCandidate = async (req, res) => {
   try {
     console.log('Add candidate API called');
     console.log('Request body:', req.body);
-    console.log('Request files:', req.files);
+    console.log('Request files:', req.files ? Object.keys(req.files) : 'No files');
     
     const {
       firstName,
@@ -428,6 +428,7 @@ exports.addCandidate = async (req, res) => {
       dateOfBirth,
       partyName,
       electionType,
+      electionId, // Make sure we capture election ID
       constituency,
       manifesto,
       education,
@@ -456,25 +457,79 @@ exports.addCandidate = async (req, res) => {
       education,
       experience,
       criminalRecord: criminalRecord || 'None',
-      email
+      email,
+      election: electionId // Make sure to associate with election
     });
 
-    // Handle file uploads
+    // Process uploaded files if any
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Ensure upload directories exist
+    const uploadsDir = path.join(__dirname, '../../uploads');
+    const candidatesDir = path.join(uploadsDir, 'candidates');
+    const partiesDir = path.join(uploadsDir, 'parties');
+    
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    if (!fs.existsSync(candidatesDir)) {
+      fs.mkdirSync(candidatesDir, { recursive: true });
+    }
+    if (!fs.existsSync(partiesDir)) {
+      fs.mkdirSync(partiesDir, { recursive: true });
+    }
+
+    // Handle file uploads for express-fileupload
     if (req.files) {
       console.log('Processing uploaded files:', Object.keys(req.files));
       
-      if (req.files.candidatePhoto && req.files.candidatePhoto.length > 0) {
-        console.log('Candidate photo file:', req.files.candidatePhoto[0].filename);
-        newCandidate.photoUrl = `/uploads/${req.files.candidatePhoto[0].filename}`;
+      if (req.files.candidatePhoto) {
+        const photo = req.files.candidatePhoto;
+        console.log('Candidate photo file:', photo.name);
+        
+        // Generate unique filename
+        const photoFileName = `candidate_${Date.now()}_${photo.name}`;
+        const photoFilePath = path.join(candidatesDir, photoFileName);
+        
+        try {
+          // Move the uploaded file
+          await photo.mv(photoFilePath);
+          console.log(`Candidate photo saved to: ${photoFilePath}`);
+          newCandidate.photoUrl = `/uploads/candidates/${photoFileName}`;
+        } catch (fileError) {
+          console.error('Error saving candidate photo:', fileError);
+          // Continue without the photo
+        }
       }
       
-      if (req.files.partySymbol && req.files.partySymbol.length > 0) {
-        console.log('Party symbol file:', req.files.partySymbol[0].filename);
-        newCandidate.partySymbol = `/uploads/${req.files.partySymbol[0].filename}`;
+      if (req.files.partySymbol) {
+        const symbol = req.files.partySymbol;
+        console.log('Party symbol file:', symbol.name);
+        
+        // Generate unique filename
+        const symbolFileName = `party_${Date.now()}_${symbol.name}`;
+        const symbolFilePath = path.join(partiesDir, symbolFileName);
+        
+        try {
+          // Move the uploaded file
+          await symbol.mv(symbolFilePath);
+          console.log(`Party symbol saved to: ${symbolFilePath}`);
+          newCandidate.partySymbol = `/uploads/parties/${symbolFileName}`;
+        } catch (fileError) {
+          console.error('Error saving party symbol:', fileError);
+          // Continue without the symbol
+        }
       }
     }
 
-    console.log('Prepared candidate object for saving:', newCandidate);
+    console.log('Prepared candidate object for saving:', {
+      firstName: newCandidate.firstName,
+      lastName: newCandidate.lastName,
+      election: newCandidate.election,
+      photoUrl: newCandidate.photoUrl ? 'Set' : 'Not set',
+      partySymbol: newCandidate.partySymbol ? 'Set' : 'Not set'
+    });
 
     // Save to database
     try {

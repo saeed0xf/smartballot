@@ -647,10 +647,48 @@ const ManageElection = () => {
     if (!actionElection) return;
     
     setProcessingAction(true);
+    setError(null);
     
     try {
-      const headers = getAuthHeaders();
       const electionId = actionElection._id || actionElection.id;
+      console.log(`Starting election with ID: ${electionId}`);
+      
+      // Check MongoDB health first
+      let isMongoDBConnected = false;
+      try {
+        const healthCheck = await axios.get(`${API_URL}/health`);
+        isMongoDBConnected = healthCheck.data && healthCheck.data.mongodb && healthCheck.data.mongodb.connected;
+        console.log('MongoDB connection status:', isMongoDBConnected);
+      } catch (healthError) {
+        console.error('MongoDB health check failed:', healthError);
+        // Continue even if health check fails
+      }
+
+      const headers = getAuthHeaders();
+      
+      // First check if we have candidates with matching election type
+      let candidatesMatched = false;
+      try {
+        const candidatesResponse = await axios.get(`${API_URL}/admin/candidates`, { headers });
+        const candidates = candidatesResponse.data || [];
+        const matchingCandidates = candidates.filter(candidate => 
+          candidate.electionType === actionElection.type ||
+          // For backward compatibility with old values
+          ['Presidential', 'Parliamentary', 'Regional', 'Local'].includes(candidate.electionType)
+        );
+        
+        candidatesMatched = matchingCandidates.length > 0;
+        console.log(`Found ${matchingCandidates.length} matching candidates for election type: ${actionElection.type}`);
+        
+        if (!candidatesMatched) {
+          setError(`No candidates found for election type: ${actionElection.type}. Please add candidates before starting the election.`);
+          setProcessingAction(false);
+          return;
+        }
+      } catch (candidatesError) {
+        console.error('Error checking candidates:', candidatesError);
+        // Continue even if candidate check fails
+      }
       
       // Try different endpoint patterns
       const endpoints = [
@@ -661,6 +699,7 @@ const ManageElection = () => {
       ];
       
       let successResponse = null;
+      let lastError = null;
       
       for (const endpoint of endpoints) {
         try {
@@ -674,6 +713,7 @@ const ManageElection = () => {
           break;
         } catch (err) {
           console.error(`Failed with endpoint ${endpoint}:`, err.message);
+          lastError = err;
           // Continue to next endpoint
         }
       }
@@ -686,16 +726,48 @@ const ManageElection = () => {
       ));
       
       if (successResponse) {
+        // Update related candidates to show they are in an active election
+        try {
+          const candidateUpdateResponse = await axios.post(
+            `${API_URL}/admin/candidates/update-status`, 
+            { 
+              electionId,
+              electionType: actionElection.type,
+              status: 'inActiveElection',
+              value: true
+            },
+            { headers }
+          );
+          console.log('Candidate status update response:', candidateUpdateResponse.data);
+        } catch (updateError) {
+          console.error('Failed to update candidate status:', updateError);
+          // Continue even if candidate update fails
+        }
+        
         setSuccessMessage("Election started successfully and recorded on blockchain!");
       } else {
-        setSuccessMessage("Election started locally (MongoDB/blockchain connection failed)");
+        // If we have candidates but API call failed, it's likely a MongoDB connection issue
+        if (candidatesMatched) {
+          setSuccessMessage(isMongoDBConnected 
+            ? "Election started locally but blockchain connection failed" 
+            : "Election started locally (MongoDB/blockchain connection failed)"
+          );
+        } else if (lastError && lastError.response && lastError.response.status === 400) {
+          // 400 status suggests a validation error or similar issue
+          const errorMessage = lastError.response.data?.message || 
+                              lastError.response.data?.details || 
+                              "Cannot start election due to validation errors";
+          setError(errorMessage);
+        } else {
+          setError("Failed to start election. Please check MongoDB connection and try again.");
+        }
       }
       
       setShowStartModal(false);
       setActionElection(null);
     } catch (error) {
       console.error('Error starting election:', error);
-      setError('Failed to start election. Please try again.');
+      setError('Failed to start election. Please check your connection and try again.');
     } finally {
       setProcessingAction(false);
     }

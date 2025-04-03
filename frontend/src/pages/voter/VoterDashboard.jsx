@@ -1,17 +1,126 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Container, Row, Col, Card, Button, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Card, Button, Alert, Badge, Spinner } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaVoteYea, FaUserCheck, FaClipboardList } from 'react-icons/fa';
+import { FaVoteYea, FaUserCheck, FaClipboardList, FaCalendarAlt, FaClock } from 'react-icons/fa';
 import axios from 'axios';
 import Layout from '../../components/Layout';
 import { AuthContext } from '../../context/AuthContext';
+
+// Get API URL from environment variables
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// Display candidates for an active election
+const ElectionCandidatesList = ({ candidates }) => {
+  if (!candidates || candidates.length === 0) {
+    return (
+      <p className="text-muted">No candidates found for this election.</p>
+    );
+  }
+
+  return (
+    <div className="mt-3">
+      <h6 className="mb-3 border-bottom pb-2">Candidates</h6>
+      <Row xs={1} md={2} lg={3} className="g-3">
+        {candidates.map((candidate) => (
+          <Col key={candidate.id || candidate._id}>
+            <Card className="h-100 candidate-card">
+              <div className="text-center pt-3">
+                {candidate.photoUrl ? (
+                  <div className="candidate-img-container mx-auto">
+                    <img 
+                      src={candidate.photoUrl.startsWith('http') 
+                        ? candidate.photoUrl 
+                        : `${API_URL}${candidate.photoUrl}`
+                      } 
+                      alt={candidate.name || `${candidate.firstName} ${candidate.lastName}`} 
+                      className="rounded-circle candidate-img"
+                      style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '50%' }}
+                    />
+                  </div>
+                ) : (
+                  <div 
+                    className="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center"
+                    style={{ width: '80px', height: '80px' }}
+                  >
+                    <FaUserCheck size={30} />
+                  </div>
+                )}
+              </div>
+              <Card.Body className="text-center">
+                <Card.Title>{candidate.name || `${candidate.firstName} ${candidate.lastName}`}</Card.Title>
+                <div className="d-flex align-items-center justify-content-center mb-2">
+                  {candidate.partySymbol && (
+                    <img 
+                      src={candidate.partySymbol.startsWith('http') 
+                        ? candidate.partySymbol 
+                        : `${API_URL}${candidate.partySymbol}`
+                      } 
+                      alt={candidate.partyName} 
+                      className="me-2" 
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  )}
+                  <span className="text-muted">{candidate.partyName}</span>
+                </div>
+                {candidate.constituency && (
+                  <p className="small text-muted mb-0">
+                    Constituency: {candidate.constituency}
+                  </p>
+                )}
+              </Card.Body>
+            </Card>
+          </Col>
+        ))}
+      </Row>
+    </div>
+  );
+};
 
 const VoterDashboard = () => {
   const { user } = useContext(AuthContext);
   const [voterProfile, setVoterProfile] = useState(null);
   const [electionStatus, setElectionStatus] = useState(null);
+  const [activeElections, setActiveElections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [voteStatus, setVoteStatus] = useState(null);
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString();
+    } catch (error) {
+      return dateString || 'N/A';
+    }
+  };
+
+  // Calculate time remaining
+  const getTimeRemaining = (endDate) => {
+    try {
+      const end = new Date(endDate);
+      const now = new Date();
+      const diff = end - now;
+
+      if (diff <= 0) {
+        return "Ended";
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+      if (days > 0) {
+        return `${days}d ${hours}h remaining`;
+      }
+      if (hours > 0) {
+        return `${hours}h ${minutes}m remaining`;
+      }
+      return `${minutes}m remaining`;
+    } catch (error) {
+      return "Time unknown";
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -19,13 +128,73 @@ const VoterDashboard = () => {
         setLoading(true);
         setError(null);
 
-        // Fetch voter profile
-        const profileResponse = await axios.get('/api/voter/profile');
-        setVoterProfile(profileResponse.data.voter);
+        // Get auth headers
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-        // Fetch election status
-        const electionResponse = await axios.get('/api/election/status');
-        setElectionStatus(electionResponse.data);
+        // Fetch voter profile
+        try {
+          const profileResponse = await axios.get(`${API_URL}/voter/profile`, { headers });
+          console.log('Voter profile:', profileResponse.data);
+          setVoterProfile(profileResponse.data.voter);
+        } catch (profileError) {
+          console.error('Error fetching voter profile:', profileError);
+          // Continue with other fetches even if profile fails
+        }
+
+        // Fetch all active elections (this should now include candidates)
+        try {
+          const activeElectionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
+          console.log('Active elections:', activeElectionsResponse.data);
+          
+          // Handle different response formats
+          let electionsData = [];
+          if (Array.isArray(activeElectionsResponse.data)) {
+            electionsData = activeElectionsResponse.data;
+          } else if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
+            electionsData = activeElectionsResponse.data.elections;
+          } else {
+            electionsData = [activeElectionsResponse.data]; // Assume it's a single election object
+          }
+          
+          setActiveElections(electionsData);
+          
+          // If we have active elections, set the first one as the current election status
+          if (electionsData.length > 0) {
+            setElectionStatus({
+              active: true,
+              election: electionsData[0],
+              currentTime: new Date()
+            });
+          }
+        } catch (electionsError) {
+          console.error('Error fetching active elections:', electionsError);
+          // Try fetching a single election status as fallback
+          try {
+            const electionResponse = await axios.get(`${API_URL}/election/status`, { headers });
+            console.log('Election status:', electionResponse.data);
+            setElectionStatus(electionResponse.data);
+          } catch (statusError) {
+            console.error('Error fetching election status:', statusError);
+            setElectionStatus({
+              active: false,
+              election: null,
+              currentTime: new Date()
+            });
+          }
+        }
+
+        // Check if voter has already voted
+        try {
+          const voteCheckResponse = await axios.get(`${API_URL}/voter/vote/status`, { headers });
+          console.log('Vote status:', voteCheckResponse.data);
+          setVoteStatus(voteCheckResponse.data);
+        } catch (voteError) {
+          console.error('Error checking vote status:', voteError);
+          // Just set vote status to null if there's an error - assume not voted
+          setVoteStatus(null);
+        }
+
       } catch (err) {
         console.error('Error fetching data:', err);
         setError('Failed to load dashboard data. Please try again later.');
@@ -37,14 +206,28 @@ const VoterDashboard = () => {
     fetchData();
   }, []);
 
+  // Check if voter has already voted
+  const hasVoted = () => {
+    if (voteStatus && voteStatus.hasVoted) {
+      return true;
+    }
+    
+    // Also check blockchain status if available
+    if (voterProfile && voterProfile.blockchainStatus && voterProfile.blockchainStatus.hasVoted) {
+      return true;
+    }
+    
+    return false;
+  };
+
   if (loading) {
     return (
       <Layout>
         <Container className="py-5 text-center">
-          <div className="spinner-border text-primary" role="status">
+          <Spinner animation="border" variant="primary" role="status">
             <span className="visually-hidden">Loading...</span>
-          </div>
-          <p className="mt-3">Loading dashboard...</p>
+          </Spinner>
+          <p className="mt-3">Loading voter dashboard...</p>
         </Container>
       </Layout>
     );
@@ -69,7 +252,7 @@ const VoterDashboard = () => {
                     <img 
                       src={voterProfile.profileImage.startsWith('http') 
                         ? voterProfile.profileImage 
-                        : `http://localhost:5000${voterProfile.profileImage}`
+                        : `${API_URL}${voterProfile.profileImage}`
                       } 
                       alt="Profile" 
                       className="img-fluid rounded-circle" 
@@ -80,7 +263,7 @@ const VoterDashboard = () => {
                       className="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center"
                       style={{ width: '150px', height: '150px', margin: '0 auto' }}
                     >
-                      <span className="h1">{voterProfile.firstName.charAt(0)}{voterProfile.lastName.charAt(0)}</span>
+                      <span className="h1">{voterProfile.firstName?.charAt(0)}{voterProfile.lastName?.charAt(0)}</span>
                     </div>
                   )}
                 </Col>
@@ -92,13 +275,17 @@ const VoterDashboard = () => {
                   
                   <div>
                     <span className={`badge ${voterProfile.status === 'approved' ? 'bg-success' : voterProfile.status === 'rejected' ? 'bg-danger' : 'bg-warning'} me-2`}>
-                      {voterProfile.status.charAt(0).toUpperCase() + voterProfile.status.slice(1)}
+                      {voterProfile.status?.charAt(0).toUpperCase() + voterProfile.status?.slice(1)}
                     </span>
                     
                     {voterProfile.status === 'rejected' && voterProfile.rejectionReason && (
                       <span className="text-danger small">
                         Reason: {voterProfile.rejectionReason}
                       </span>
+                    )}
+                    
+                    {hasVoted() && (
+                      <Badge bg="info" className="ms-2">Vote Cast</Badge>
                     )}
                   </div>
                 </Col>
@@ -107,37 +294,98 @@ const VoterDashboard = () => {
           </Card>
         )}
         
-        {electionStatus && (
-          <Card className="mb-4 shadow-sm">
-            <Card.Header className="bg-light">
-              <h4 className="mb-0">Election Status</h4>
-            </Card.Header>
-            <Card.Body>
-              {electionStatus.active ? (
-                <>
-                  <Alert variant="success">
-                    <strong>Election is currently active!</strong>
-                  </Alert>
-                  <p>
-                    <strong>Title:</strong> {electionStatus.election.title}
-                  </p>
-                  {electionStatus.election.description && (
+        {/* Active Elections Section */}
+        <Card className="mb-4 shadow-sm">
+          <Card.Header className="bg-light d-flex justify-content-between align-items-center">
+            <h4 className="mb-0">Election Status</h4>
+            {activeElections.length > 0 && (
+              <Badge bg="success">{activeElections.length} Active Election{activeElections.length !== 1 ? 's' : ''}</Badge>
+            )}
+          </Card.Header>
+          <Card.Body>
+            {activeElections.length > 0 ? (
+              <>
+                {activeElections.map((election, index) => (
+                  <Card key={election._id || index} className={index > 0 ? "mt-4 border" : "border"}>
+                    <Card.Body>
+                      <div className="d-flex justify-content-between align-items-start">
+                        <div>
+                          <h5>{election.title || election.name}</h5>
+                          <p className="text-muted">
+                            <FaCalendarAlt className="me-2" />
+                            {election.type || "General Election"}
+                          </p>
+                          {election.description && (
+                            <p>{election.description}</p>
+                          )}
+                        </div>
+                        <div className="text-end">
+                          <Badge bg="success" className="mb-2">Active</Badge>
+                          <p className="small text-muted mb-1">
+                            <FaClock className="me-1" />
+                            {getTimeRemaining(election.endDate)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="d-flex justify-content-between mt-3">
+                        <div>
+                          <p className="small text-muted mb-0">
+                            Started: {formatDate(election.startDate)}
+                          </p>
+                          <p className="small text-muted">
+                            Ends: {formatDate(election.endDate)}
+                          </p>
+                        </div>
+                        <Button 
+                          as={Link} 
+                          to="/voter/vote" 
+                          variant="primary"
+                          disabled={hasVoted() || voterProfile?.status !== 'approved'}
+                        >
+                          {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
+                        </Button>
+                      </div>
+
+                      {/* Display candidates for this election */}
+                      {election.candidates && election.candidates.length > 0 && (
+                        <ElectionCandidatesList candidates={election.candidates} />
+                      )}
+                    </Card.Body>
+                  </Card>
+                ))}
+              </>
+            ) : electionStatus && electionStatus.active ? (
+              <Alert variant="success">
+                <div className="d-flex justify-content-between align-items-start">
+                  <div>
+                    <h5>{electionStatus.election.title || electionStatus.election.name}</h5>
                     <p>
-                      <strong>Description:</strong> {electionStatus.election.description}
+                      <strong>Description:</strong> {electionStatus.election.description || "No description available"}
                     </p>
-                  )}
-                  <p>
-                    <strong>Started:</strong> {new Date(electionStatus.election.startDate).toLocaleString()}
-                  </p>
-                </>
-              ) : (
-                <Alert variant="info">
-                  No active election at the moment. Please check back later.
-                </Alert>
-              )}
-            </Card.Body>
-          </Card>
-        )}
+                    <p>
+                      <strong>Started:</strong> {formatDate(electionStatus.election.startDate)}
+                    </p>
+                    <p>
+                      <strong>Ends:</strong> {formatDate(electionStatus.election.endDate)}
+                    </p>
+                  </div>
+                  <Button 
+                    as={Link} 
+                    to="/voter/vote" 
+                    variant="primary"
+                    disabled={hasVoted() || voterProfile?.status !== 'approved'}
+                  >
+                    {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
+                  </Button>
+                </div>
+              </Alert>
+            ) : (
+              <Alert variant="info">
+                No active election at the moment. Please check back later.
+              </Alert>
+            )}
+          </Card.Body>
+        </Card>
         
         <h4 className="mb-3">Quick Actions</h4>
         <Row>
@@ -178,9 +426,9 @@ const VoterDashboard = () => {
                   to="/voter/vote" 
                   variant="outline-primary" 
                   className="mt-auto"
-                  disabled={!electionStatus?.active || (voterProfile?.blockchainStatus?.hasVoted)}
+                  disabled={!electionStatus?.active || hasVoted() || voterProfile?.status !== 'approved'}
                 >
-                  Cast Vote
+                  {hasVoted() ? 'Already Voted' : 'Cast Vote'}
                 </Button>
               </Card.Body>
             </Card>

@@ -210,20 +210,86 @@ const addCandidateOnBlockchain = async (name, party, slogan) => {
 };
 
 // Start election on blockchain
-const startElectionOnBlockchain = async () => {
+const startElectionOnBlockchain = async (electionId, electionName, candidateIds = [], candidateNames = []) => {
   try {
     if (!voteSureContract) {
+      console.error('Contract not initialized when starting election');
       return { success: false, error: 'Contract not initialized' };
     }
     
-    const tx = await voteSureContract.startElection();
-    const receipt = await tx.wait();
+    if (!adminWallet) {
+      console.error('Admin wallet not initialized when starting election');
+      return { success: false, error: 'Admin wallet not initialized. Check ADMIN_PRIVATE_KEY in .env file.' };
+    }
     
-    console.log('Election started on blockchain');
+    console.log(`Starting election on blockchain: ${electionName} (ID: ${electionId})`);
+    console.log(`Using admin wallet ${adminWallet.address} to start election`);
+    
+    // Check if we need to add candidates first
+    if (candidateIds && candidateIds.length > 0) {
+      console.log(`Ensuring ${candidateIds.length} candidates are on the blockchain`);
+      
+      // If we have candidate information, make sure they are all registered on the blockchain
+      for (let i = 0; i < candidateIds.length; i++) {
+        const candidateId = candidateIds[i];
+        const candidateName = candidateNames[i] || `Candidate ${i+1}`;
+        
+        try {
+          // Check if candidate exists on blockchain already
+          let onChainCandidate = null;
+          try {
+            // Try to get candidate from blockchain by ID
+            // This might be a blockchain-specific ID or our database ID
+            onChainCandidate = await voteSureContract.getCandidate(candidateId);
+            console.log(`Candidate found on blockchain: ${candidateName} (ID: ${candidateId})`);
+          } catch (checkError) {
+            console.log(`Candidate not found on blockchain, will add: ${candidateName}`);
+          }
+          
+          // If candidate doesn't exist, add them
+          if (!onChainCandidate || onChainCandidate.name === "") {
+            console.log(`Adding candidate to blockchain: ${candidateName}`);
+            const addTx = await voteSureContract.addCandidate(
+              candidateName,
+              "Party", // Default party if not provided
+              "Vote for me" // Default slogan if not provided
+            );
+            
+            const addReceipt = await addTx.wait();
+            console.log(`Candidate added to blockchain: ${candidateName}, tx: ${addReceipt.transactionHash}`);
+          }
+        } catch (candidateError) {
+          console.warn(`Error processing candidate ${candidateName}:`, candidateError.message);
+          // Continue with other candidates even if one fails
+        }
+      }
+    }
+    
+    // Now start the election
+    console.log('Submitting startElection transaction to blockchain...');
+    let tx;
+    
+    // Check if our contract has a method to set the election ID
+    if (typeof voteSureContract.startElectionWithId === 'function') {
+      tx = await voteSureContract.startElectionWithId(electionId, electionName);
+    } else {
+      // Fallback to standard method without ID
+      tx = await voteSureContract.startElection();
+    }
+    
+    console.log(`Start election transaction submitted, hash: ${tx.hash}`);
+    const receipt = await tx.wait();
+    console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+    
+    console.log('Election started on blockchain successfully');
     return { success: true, txHash: receipt.transactionHash };
   } catch (error) {
-    console.error('Error starting election on blockchain:', error.message);
-    return { success: false, error: error.message };
+    console.error('Error starting election on blockchain:', error);
+    return { 
+      success: false, 
+      error: error.message,
+      details: error.toString()
+    };
   }
 };
 
