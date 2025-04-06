@@ -73,6 +73,49 @@ mongoose.connect(MONGODB_URI, mongooseOptions)
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
+
+    // Add election auto-end and archive check scheduler
+    // Note: This functionality is now fully integrated in the server, so the separate 
+    // election-status-check.js script is no longer required but is kept for manual checks
+    const { 
+      checkAndAutoEndElections,
+      checkAndArchiveInactiveElections
+    } = require('./controllers/election.controller');
+
+    // Run checks once at startup
+    setTimeout(async () => {
+      console.log('Running initial election status checks...');
+      try {
+        // First, archive any inactive elections that aren't archived yet
+        const archivedCount = await checkAndArchiveInactiveElections();
+        console.log(`Initial archive check completed. ${archivedCount} inactive elections were retroactively archived.`);
+        
+        // Next, auto-end any active elections that have passed their end date
+        const endedCount = await checkAndAutoEndElections();
+        console.log(`Initial auto-end check completed. ${endedCount} elections were automatically ended.`);
+      } catch (error) {
+        console.error('Error in initial election status checks:', error);
+      }
+    }, 5000); // Wait 5 seconds after server start
+
+    // Schedule regular checks every 10 minutes
+    const AUTO_END_CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes in milliseconds
+    setInterval(async () => {
+      console.log('Running scheduled election status checks...');
+      try {
+        // First, archive any inactive elections that aren't archived yet
+        const archivedCount = await checkAndArchiveInactiveElections();
+        console.log(`Scheduled archive check completed. ${archivedCount} inactive elections were retroactively archived.`);
+        
+        // Next, auto-end any active elections that have passed their end date
+        const endedCount = await checkAndAutoEndElections();
+        console.log(`Scheduled auto-end check completed. ${endedCount} elections were automatically ended.`);
+      } catch (error) {
+        console.error('Error in scheduled election status checks:', error);
+      }
+    }, AUTO_END_CHECK_INTERVAL);
+
+    console.log(`Election status checks scheduled to run every ${AUTO_END_CHECK_INTERVAL / 60000} minutes`);
   })
   .catch((err) => {
     console.error('MongoDB connection error:', err.message);

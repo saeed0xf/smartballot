@@ -29,6 +29,33 @@ router.delete('/election/:id', electionController.deleteElection);
 router.post('/election/start', electionController.startElection);
 router.post('/election/end', electionController.endElection);
 
+// Election maintenance - add this new route for manual triggering
+router.post('/elections/check-status', async (req, res) => {
+  try {
+    console.log('Manual election status check triggered by admin');
+    
+    // First, archive any inactive elections that aren't archived yet
+    const archivedCount = await electionController.checkAndArchiveInactiveElections();
+    
+    // Next, auto-end any active elections that have passed their end date
+    const endedCount = await electionController.checkAndAutoEndElections();
+    
+    res.status(200).json({
+      message: 'Election status check completed successfully',
+      results: {
+        archivedCount,
+        endedCount
+      }
+    });
+  } catch (error) {
+    console.error('Error in manual election status check:', error);
+    res.status(500).json({
+      message: 'Failed to complete election status check',
+      error: error.message
+    });
+  }
+});
+
 // Voter management
 router.get('/voters', adminController.getAllVoters || ((req, res) => {
   res.status(200).json({ message: 'Get voters placeholder', data: [] });

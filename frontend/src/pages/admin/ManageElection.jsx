@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Container, Row, Col, Card, Form, Button, Table, Tab, Tabs, Alert, Badge, Modal, Spinner } from 'react-bootstrap';
-import { FaPlus, FaEdit, FaTrashAlt, FaEye, FaPlay, FaStop, FaCalendarAlt } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrashAlt, FaEye, FaPlay, FaStop, FaCalendarAlt, FaArchive } from 'react-icons/fa';
 import Layout from '../../components/Layout';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
 import { formatImageUrl } from '../../utils/imageUtils';
+import { Link } from 'react-router-dom';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -59,78 +60,14 @@ const ManageElection = () => {
         const headers = getAuthHeaders();
         console.log('Authorization headers:', headers);
         
-        // Try with both /admin/elections and /elections patterns
-        let response = null;
-        let responseError = null;
+        // Updated to fetch only non-archived elections
+        const endpoint = `${API_URL}/admin/elections?archived=false`;
+        console.log('Fetching elections from:', endpoint);
         
-        // Attempt with admin/elections first (preferred)
-        try {
-          const adminEndpoint = `${API_URL}/admin/elections`;
-          console.log('Trying to fetch from admin endpoint:', adminEndpoint);
-          response = await axios.get(adminEndpoint, { headers });
-          console.log('Admin endpoint success:', response.data);
-        } catch (adminError) {
-          console.error('Admin endpoint failed:', adminError.message);
-          responseError = adminError;
-          
-          // Try with direct /elections endpoint
-          try {
-            const directEndpoint = `${API_URL}/elections`;
-            console.log('Trying to fetch from direct endpoint:', directEndpoint);
-            response = await axios.get(directEndpoint, { headers });
-            console.log('Direct endpoint success:', response.data);
-          } catch (directError) {
-            console.error('Direct endpoint failed:', directError.message);
-            // Both attempts failed, use the admin error as the main error
-            throw responseError;
-          }
-        }
+        const response = await axios.get(endpoint, { headers });
+        console.log('Fetched elections:', response.data);
         
-        // Process response data
-        if (!response || !response.data) {
-          throw new Error('No data returned from API');
-        }
-        
-        // Handle different response formats
-        let formattedElections = [];
-        if (Array.isArray(response.data)) {
-          formattedElections = response.data;
-        } else if (response.data.elections && Array.isArray(response.data.elections)) {
-          formattedElections = response.data.elections;
-        } else if (response.data.data && Array.isArray(response.data.data)) {
-          formattedElections = response.data.data;
-        } else {
-          console.warn('Unexpected response format:', response.data);
-          // Try to use whatever we got if it has expected shape
-          if (response.data && typeof response.data === 'object') {
-            formattedElections = [response.data];
-          } else {
-            formattedElections = [];
-          }
-        }
-        
-        // Process elections to ensure they have both name and title fields
-        formattedElections = formattedElections.map(election => {
-          const defaultType = 'Lok Sabha Elections (General Elections)';
-          
-          // Log the election before processing to help with debugging
-          console.log('Processing election data:', election);
-          
-          return {
-            ...election,
-            // Ensure name and title are consistent
-            name: election.name || election.title || 'Untitled Election',
-            title: election.title || election.name || 'Untitled Election',
-            // Ensure type is never empty
-            type: election.type || defaultType,
-            // Ensure _id is set for proper identification
-            _id: election._id || election.id,
-            id: election.id || election._id
-          };
-        });
-        
-        console.log('Formatted elections:', formattedElections);
-        setElections(formattedElections);
+        setElections(response.data || []);
       } catch (err) {
         console.error('Error fetching elections:', err);
         
@@ -642,195 +579,99 @@ const ManageElection = () => {
     }
   };
   
-  // Handle election start
+  // Handle start election
   const handleStartElection = async () => {
     if (!actionElection) return;
     
     setProcessingAction(true);
-    setError(null);
     
     try {
+      // First request MetaMask connection
+      console.log('Requesting MetaMask connection...');
+      try {
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        console.log('MetaMask accounts connected');
+      } catch (metaMaskError) {
+        console.error('MetaMask connection failed:', metaMaskError);
+        setError('MetaMask connection failed. Please ensure MetaMask is installed and unlocked.');
+        setProcessingAction(false);
+        return;
+      }
+      
+      const headers = getAuthHeaders();
       const electionId = actionElection._id || actionElection.id;
+      
       console.log(`Starting election with ID: ${electionId}`);
       
-      // Check MongoDB health first
-      let isMongoDBConnected = false;
-      try {
-        const healthCheck = await axios.get(`${API_URL}/health`);
-        isMongoDBConnected = healthCheck.data && healthCheck.data.mongodb && healthCheck.data.mongodb.connected;
-        console.log('MongoDB connection status:', isMongoDBConnected);
-      } catch (healthError) {
-        console.error('MongoDB health check failed:', healthError);
-        // Continue even if health check fails
-      }
-
-      const headers = getAuthHeaders();
+      // Send request to backend
+      const response = await axios.post(`${API_URL}/admin/election/start`, { electionId }, {
+        headers: headers
+      });
       
-      // First check if we have candidates with matching election type
-      let candidatesMatched = false;
-      try {
-        const candidatesResponse = await axios.get(`${API_URL}/admin/candidates`, { headers });
-        const candidates = candidatesResponse.data || [];
-        const matchingCandidates = candidates.filter(candidate => 
-          candidate.electionType === actionElection.type ||
-          // For backward compatibility with old values
-          ['Presidential', 'Parliamentary', 'Regional', 'Local'].includes(candidate.electionType)
-        );
-        
-        candidatesMatched = matchingCandidates.length > 0;
-        console.log(`Found ${matchingCandidates.length} matching candidates for election type: ${actionElection.type}`);
-        
-        if (!candidatesMatched) {
-          setError(`No candidates found for election type: ${actionElection.type}. Please add candidates before starting the election.`);
-          setProcessingAction(false);
-          return;
-        }
-      } catch (candidatesError) {
-        console.error('Error checking candidates:', candidatesError);
-        // Continue even if candidate check fails
-      }
+      console.log('Start election response:', response.data);
       
-      // Try different endpoint patterns
-      const endpoints = [
-        `${API_URL}/admin/election/start`,
-        `${API_URL}/admin/elections/start`,
-        `${API_URL}/election/start`,
-        `${API_URL}/elections/start`
-      ];
-      
-      let successResponse = null;
-      let lastError = null;
-      
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`Trying to start election with endpoint: ${endpoint}`);
-          const response = await axios.post(endpoint, { electionId }, {
-            headers: headers
-          });
-          
-          console.log('Election start response:', response.data);
-          successResponse = response;
-          break;
-        } catch (err) {
-          console.error(`Failed with endpoint ${endpoint}:`, err.message);
-          lastError = err;
-          // Continue to next endpoint
-        }
-      }
-      
-      // Update the election status in the UI regardless of API result
+      // Update elections in the UI
       setElections(prev => prev.map(e => 
         (e._id === electionId || e.id === electionId) 
           ? { ...e, isActive: true }
           : e
       ));
       
-      if (successResponse) {
-        // Update related candidates to show they are in an active election
-        try {
-          const candidateUpdateResponse = await axios.post(
-            `${API_URL}/admin/candidates/update-status`, 
-            { 
-              electionId,
-              electionType: actionElection.type,
-              status: 'inActiveElection',
-              value: true
-            },
-            { headers }
-          );
-          console.log('Candidate status update response:', candidateUpdateResponse.data);
-        } catch (updateError) {
-          console.error('Failed to update candidate status:', updateError);
-          // Continue even if candidate update fails
-        }
-        
-        setSuccessMessage("Election started successfully and recorded on blockchain!");
-      } else {
-        // If we have candidates but API call failed, it's likely a MongoDB connection issue
-        if (candidatesMatched) {
-          setSuccessMessage(isMongoDBConnected 
-            ? "Election started locally but blockchain connection failed" 
-            : "Election started locally (MongoDB/blockchain connection failed)"
-          );
-        } else if (lastError && lastError.response && lastError.response.status === 400) {
-          // 400 status suggests a validation error or similar issue
-          const errorMessage = lastError.response.data?.message || 
-                              lastError.response.data?.details || 
-                              "Cannot start election due to validation errors";
-          setError(errorMessage);
-        } else {
-          setError("Failed to start election. Please check MongoDB connection and try again.");
-        }
-      }
-      
+      setSuccessMessage("Election started successfully!");
       setShowStartModal(false);
       setActionElection(null);
     } catch (error) {
       console.error('Error starting election:', error);
-      setError('Failed to start election. Please check your connection and try again.');
+      setError('Failed to start election. ' + (error.response?.data?.message || error.message));
     } finally {
       setProcessingAction(false);
     }
   };
   
-  // Handle election stop
+  // Handle stop election
   const handleStopElection = async () => {
     if (!actionElection) return;
     
     setProcessingAction(true);
     
     try {
+      // First request MetaMask connection
+      console.log('Requesting MetaMask connection...');
+      try {
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        console.log('MetaMask accounts connected');
+      } catch (metaMaskError) {
+        console.error('MetaMask connection failed:', metaMaskError);
+        setError('MetaMask connection failed. Please ensure MetaMask is installed and unlocked.');
+        setProcessingAction(false);
+        return;
+      }
+      
       const headers = getAuthHeaders();
       const electionId = actionElection._id || actionElection.id;
       
-      // Try different endpoint patterns
-      const endpoints = [
-        `${API_URL}/admin/election/end`,
-        `${API_URL}/admin/elections/end`,
-        `${API_URL}/election/end`,
-        `${API_URL}/elections/end`,
-        `${API_URL}/admin/election/stop`,
-        `${API_URL}/admin/elections/stop`,
-        `${API_URL}/election/stop`,
-        `${API_URL}/elections/stop`
-      ];
+      console.log(`Stopping election with ID: ${electionId}`);
       
-      let successResponse = null;
+      // Send request to backend
+      const response = await axios.post(`${API_URL}/admin/election/end`, { electionId }, {
+        headers: headers
+      });
       
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`Trying to stop election with endpoint: ${endpoint}`);
-          const response = await axios.post(endpoint, { electionId }, {
-            headers: headers
-          });
-          
-          console.log('Election stop response:', response.data);
-          successResponse = response;
-          break;
-        } catch (err) {
-          console.error(`Failed with endpoint ${endpoint}:`, err.message);
-          // Continue to next endpoint
-        }
-      }
+      console.log('Election stop response:', response.data);
       
-      // Update the election status in the UI regardless of API result
+      // Update the election status in the UI
       setElections(prev => prev.map(e => 
         (e._id === electionId || e.id === electionId) 
           ? { ...e, isActive: false }
           : e
       ));
       
-      if (successResponse) {
-        setSuccessMessage("Election stopped successfully and finalized on blockchain!");
-      } else {
-        setSuccessMessage("Election stopped locally (MongoDB/blockchain connection failed)");
-      }
-      
+      setSuccessMessage("Election stopped successfully and finalized on blockchain!");
       setShowStopModal(false);
       setActionElection(null);
     } catch (error) {
       console.error('Error stopping election:', error);
-      setError('Failed to stop election. Please try again.');
+      setError('Failed to stop election. ' + (error.response?.data?.message || error.message));
     } finally {
       setProcessingAction(false);
     }
@@ -838,6 +679,18 @@ const ManageElection = () => {
   
   // Handle delete election
   const handleDeleteClick = (election) => {
+    // Check if the election is archived
+    if (election.isArchived) {
+      setError("Cannot delete an archived election. Archived elections are preserved for historical records.");
+      return;
+    }
+    
+    // Check if the election is active
+    if (election.isActive) {
+      setError("Cannot delete an active election. Please end the election first.");
+      return;
+    }
+    
     setDeletingId({
       id: election.id,
       _id: election._id || election.id
@@ -923,6 +776,12 @@ const ManageElection = () => {
     setError(null);
     
     console.log('Editing election:', election);
+    
+    // Check if the election is archived
+    if (election.isArchived) {
+      setError("Cannot edit an archived election. Archived elections are read-only for historical records.");
+      return;
+    }
     
     // Format the date-time for the form inputs
     const formatDateForInput = (dateString) => {
@@ -1015,6 +874,52 @@ const ManageElection = () => {
     setShowStopModal(true);
   };
   
+  // In the render section, before the actions buttons in election list table
+  // Add this helper function inside the ManageElection component, before the return statement
+  const isElectionExpired = (election) => {
+    if (!election || !election.endDate) return false;
+    const now = new Date();
+    const endDate = new Date(election.endDate);
+    return endDate < now;
+  };
+  
+  // Handle manual election status check
+  const handleManualStatusCheck = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Get auth headers
+      const headers = getAuthHeaders();
+      
+      console.log('Triggering manual election status check');
+      const response = await axios.post(`${API_URL}/admin/elections/check-status`, {}, {
+        headers: headers
+      });
+      
+      console.log('Status check response:', response.data);
+      
+      // Show success message with results
+      const { archivedCount, endedCount } = response.data.results;
+      setSuccessMessage(`Election status check completed: ${endedCount} elections automatically ended and ${archivedCount} elections archived.`);
+      
+      // Refresh elections list
+      const refreshResponse = await axios.get(`${API_URL}/admin/elections`, { headers });
+      console.log('Refreshed elections data:', refreshResponse.data);
+      setElections(refreshResponse.data || []);
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 5000);
+    } catch (error) {
+      console.error('Error triggering election status check:', error);
+      setError('Failed to complete election status check. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   return (
     <Layout>
       <Container className="py-4">
@@ -1026,6 +931,13 @@ const ManageElection = () => {
             </p>
           </div>
         </div>
+        
+        <Alert variant="info" className="mb-4">
+          <FaArchive className="me-2" /> 
+          <strong>Note:</strong> Archived elections have been moved to a separate page. 
+          You can view them at <Link to="/admin/archived-elections">Archived Elections</Link>.
+          This page now only shows active and upcoming elections.
+        </Alert>
         
         {error && (
           <Alert variant="danger" className="mb-4">
@@ -1046,12 +958,28 @@ const ManageElection = () => {
         >
           <Tab eventKey="list" title="All Elections">
             <Card className="border-0 shadow-sm">
-              <Card.Header className="bg-white py-3">
-                <div className="d-flex justify-content-between align-items-center">
-                  <h5 className="mb-0">Election List</h5>
+              <Card.Header className="d-flex justify-content-between align-items-center py-3 bg-white border-bottom border-light">
+                <div>
+                  <h5 className="mb-0">Manage Elections</h5>
+                  <p className="text-muted small mb-0">View and manage all non-archived elections</p>
+                </div>
+                <div className="d-flex gap-2">
+                  <Link 
+                    to="/admin/archived-elections" 
+                    className="btn btn-outline-secondary d-flex align-items-center"
+                  >
+                    <FaArchive className="me-2" /> View Archives
+                  </Link>
+                  <Button
+                    variant="outline-primary"
+                    onClick={handleManualStatusCheck}
+                    className="d-flex align-items-center"
+                    disabled={loading}
+                  >
+                    <FaCalendarAlt className="me-2" /> Check Status
+                  </Button>
                   <Button
                     variant="primary"
-                    size="sm"
                     onClick={() => {
                       resetForm();
                       setActiveTab('add');
@@ -1063,6 +991,12 @@ const ManageElection = () => {
                 </div>
               </Card.Header>
               <Card.Body className="p-0">
+                <Alert variant="info" className="m-3">
+                  <FaArchive className="me-2 d-inline" /> 
+                  <strong>Looking for past elections?</strong> Archived elections are now available in a dedicated section. 
+                  Use the <strong>View Archives</strong> button to access all completed and archived elections.
+                </Alert>
+                
                 {loading ? (
                   <div className="text-center py-5">
                     <Spinner animation="border" variant="primary" />
@@ -1084,82 +1018,111 @@ const ManageElection = () => {
                     </Button>
                   </div>
                 ) : (
-                  <Table responsive hover className="mb-0">
-                    <thead className="bg-light">
-                      <tr>
-                        <th>Election Name</th>
-                        <th>Type</th>
-                        <th>Start Date</th>
-                        <th>End Date</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {elections.map((election) => (
-                        <tr key={election.id || election._id}>
-                          <td>{election.title || election.name}</td>
-                          <td className="text-nowrap">
-                            {election.type || 'Lok Sabha Elections (General Elections)'}
-                          </td>
-                          <td>{formatDate(election.startDate)}</td>
-                          <td>{formatDate(election.endDate)}</td>
-                          <td>
-                            {election.isActive ? (
-                              <Badge bg="success">Active</Badge>
-                            ) : (
-                              <Badge bg="secondary">Inactive</Badge>
-                            )}
-                          </td>
-                          <td>
-                            <div className="d-flex">
-                              <Button
-                                variant="warning"
-                                size="sm"
-                                className="me-2"
-                                title="Edit Election"
-                                onClick={() => handleEditClick(election)}
-                              >
-                                <FaEdit />
-                              </Button>
-                              
-                              {!election.isActive ? (
-                                <Button
-                                  variant="success"
-                                  size="sm"
-                                  className="me-2"
-                                  title="Start Election"
-                                  onClick={() => handleStartClick(election)}
-                                >
-                                  <FaPlay />
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="danger"
-                                  size="sm"
-                                  className="me-2"
-                                  title="Stop Election"
-                                  onClick={() => handleStopClick(election)}
-                                >
-                                  <FaStop />
-                                </Button>
-                              )}
-                              
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                title="Delete Election"
-                                onClick={() => handleDeleteClick(election)}
-                                disabled={election.isActive}
-                              >
-                                <FaTrashAlt />
-                              </Button>
-                            </div>
-                          </td>
+                  <div className="table-responsive">
+                    <Table responsive striped hover className="align-middle mb-0 bg-white rounded">
+                      <thead className="bg-light">
+                        <tr>
+                          <th style={{ width: '25%' }} className="py-3 px-4">Election</th>
+                          <th style={{ width: '15%' }} className="py-3">Type</th>
+                          <th style={{ width: '15%' }} className="py-3">Status</th>
+                          <th style={{ width: '20%' }} className="py-3">Period</th>
+                          <th style={{ width: '25%' }} className="py-3 px-4">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </Table>
+                      </thead>
+                      <tbody>
+                        {elections.map((election) => {
+                          const isExpired = isElectionExpired(election);
+                          return (
+                            <tr key={election._id} className="border-bottom">
+                              <td className="py-3 px-4">
+                                <div className="fw-bold">{election.title || election.name}</div>
+                                <small className="text-muted text-truncate d-inline-block" style={{ maxWidth: '250px' }}>
+                                  {election.description}
+                                </small>
+                              </td>
+                              <td className="py-3">
+                                <Badge bg={
+                                  election.type === 'Lok Sabha Elections (General Elections)' ? 'danger' :
+                                  election.type === 'Vidhan Sabha Elections (State Assembly Elections)' ? 'primary' :
+                                  election.type === 'Local Body Elections (Municipal)' ? 'success' :
+                                  'secondary'
+                                } className="px-2 py-1">
+                                  {election.type || 'Other'}
+                                </Badge>
+                              </td>
+                              <td className="py-3">
+                                {election.isActive ? (
+                                  <Badge bg="success" className="px-3 py-2">Active</Badge>
+                                ) : isExpired ? (
+                                  <Badge bg="danger" className="px-3 py-2">Expired</Badge>
+                                ) : (
+                                  <Badge bg="warning" text="dark" className="px-3 py-2">Pending</Badge>
+                                )}
+                              </td>
+                              <td className="py-3">
+                                <div className="d-flex flex-column">
+                                  <small>
+                                    <span className="fw-bold">Start:</span> {formatDate(election.startDate)}
+                                  </small>
+                                  <small>
+                                    <span className="fw-bold">End:</span> {formatDate(election.endDate)}
+                                  </small>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="d-flex flex-wrap gap-2">
+                                  <Button
+                                    variant="outline-primary"
+                                    size="sm"
+                                    className="rounded-pill d-flex align-items-center"
+                                    title={election.isArchived ? "Cannot edit archived elections" : "Edit this election"}
+                                    onClick={() => handleEditClick(election)}
+                                    disabled={election.isArchived}
+                                  >
+                                    <FaEdit className="me-1" /> Edit
+                                  </Button>
+                                  
+                                  <Button
+                                    variant={election.isActive ? "outline-danger" : "outline-success"}
+                                    size="sm"
+                                    className="rounded-pill d-flex align-items-center"
+                                    title={
+                                      election.isArchived ? "Cannot manage archived elections" :
+                                      isExpired ? "Cannot start an expired election" :
+                                      election.isActive ? "Stop this election" : "Start this election"
+                                    }
+                                    onClick={() => election.isActive ? handleStopClick(election) : handleStartClick(election)}
+                                    disabled={election.isArchived || (isExpired && !election.isActive)}
+                                  >
+                                    {election.isActive ? (
+                                      <><FaStop className="me-1" /> Stop</>
+                                    ) : (
+                                      <><FaPlay className="me-1" /> Start</>
+                                    )}
+                                  </Button>
+                                  
+                                  <Button
+                                    variant="outline-danger"
+                                    size="sm"
+                                    className="rounded-pill d-flex align-items-center"
+                                    title={
+                                      election.isArchived ? "Cannot delete archived elections" :
+                                      election.isActive ? "Cannot delete an active election" :
+                                      "Delete this election"
+                                    }
+                                    onClick={() => handleDeleteClick(election)}
+                                    disabled={election.isActive || election.isArchived}
+                                  >
+                                    <FaTrashAlt className="me-1" /> Delete
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </Table>
+                  </div>
                 )}
               </Card.Body>
             </Card>
@@ -1273,6 +1236,11 @@ const ManageElection = () => {
                         <Form.Control.Feedback type="invalid">
                           {formErrors.endDate}
                         </Form.Control.Feedback>
+                        {newElection.endDate && new Date(newElection.endDate) < new Date() && (
+                          <Alert variant="warning" className="mt-2 py-1 px-2">
+                            <small>This end date is in the past. The election cannot be started.</small>
+                          </Alert>
+                        )}
                       </Form.Group>
                     </Col>
                   </Row>

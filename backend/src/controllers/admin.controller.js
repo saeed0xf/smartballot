@@ -11,6 +11,7 @@ const {
   getVoterStatusFromBlockchain
 } = require('../utils/blockchain.util');
 const { sendVoterApprovalEmail, sendVoterRejectionEmail } = require('../utils/email.util');
+const mongoose = require('mongoose');
 
 // Get all voters
 exports.getAllVoters = async (req, res) => {
@@ -559,28 +560,65 @@ exports.addCandidate = async (req, res) => {
 // Get all candidates
 exports.getAllCandidates = async (req, res) => {
   try {
-    const { electionType, archived } = req.query;
+    console.log('Admin getting candidates with query params:', req.query);
+    const { electionType, archived, election } = req.query;
     
     // Build query
     const query = {};
+    
+    // Handle election type filter
     if (electionType) {
       query.electionType = electionType;
+      console.log(`Filtering candidates by election type: ${electionType}`);
+    }
+    
+    // Handle election ID filter
+    if (election) {
+      if (mongoose.Types.ObjectId.isValid(election)) {
+        query.election = election;
+        console.log(`Filtering candidates by election ID: ${election}`);
+      } else {
+        console.warn(`Invalid election ID format provided: ${election}`);
+      }
     }
     
     // Handle archived filter
     if (archived === 'true') {
       query.isArchived = true;
-    } else if (archived === 'false' || archived === undefined) {
+      console.log('Getting archived candidates');
+    } else if (archived === 'false') {
       query.isArchived = false;
+      console.log('Getting non-archived candidates');
     }
     
-    // Find candidates
-    const candidates = await Candidate.find(query).sort({ createdAt: -1 });
+    console.log('Final candidate query:', JSON.stringify(query));
     
-    res.status(200).json(candidates);
+    // Find candidates with populated election data if available
+    const candidates = await Candidate.find(query)
+      .populate('election', 'title name type isActive isArchived')
+      .sort({ voteCount: -1, createdAt: -1 });
+    
+    console.log(`Found ${candidates.length} candidates matching the query`);
+    
+    // Transform candidates to ensure consistent format
+    const formattedCandidates = candidates.map(candidate => {
+      const candidateObj = candidate.toObject();
+      
+      // For legacy compatibility - ensure electionType is always present
+      if (!candidateObj.electionType && candidateObj.election && candidateObj.election.type) {
+        candidateObj.electionType = candidateObj.election.type;
+      }
+      
+      return candidateObj;
+    });
+    
+    res.status(200).json(formattedCandidates);
   } catch (error) {
     console.error('Error getting candidates:', error);
-    res.status(500).json({ message: 'Server error while getting candidates', error: error.message });
+    res.status(500).json({ 
+      message: 'Server error while getting candidates', 
+      error: error.message 
+    });
   }
 };
 
@@ -739,10 +777,35 @@ exports.archiveElection = async (req, res) => {
 // Get archived elections
 exports.getArchivedElections = async (req, res) => {
   try {
-    // Find archived elections
-    const archivedElections = await Election.find({ isArchived: true }).sort({ archivedAt: -1 });
+    console.log('Fetching archived elections with query params:', req.query);
     
-    res.status(200).json(archivedElections);
+    // Build query to find archived elections
+    const query = { isArchived: true };
+    
+    // Add type filter if present in request
+    if (req.query.type) {
+      query.type = req.query.type;
+      console.log(`Filtering archived elections by type: ${req.query.type}`);
+    }
+    
+    // Find archived elections and sort by most recently archived first
+    const archivedElections = await Election.find(query).sort({ archivedAt: -1 });
+    
+    console.log(`Found ${archivedElections.length} archived elections`);
+    
+    // Transform results to ensure compatibility with frontend
+    const formattedElections = archivedElections.map(election => {
+      const electionObj = election.toObject();
+      
+      // Ensure backwards compatibility - if old data uses electionType field
+      if (!electionObj.electionType) {
+        electionObj.electionType = electionObj.type;
+      }
+      
+      return electionObj;
+    });
+    
+    res.status(200).json(formattedElections);
   } catch (error) {
     console.error('Error getting archived elections:', error);
     res.status(500).json({

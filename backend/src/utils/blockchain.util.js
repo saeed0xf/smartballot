@@ -210,20 +210,26 @@ const addCandidateOnBlockchain = async (name, party, slogan) => {
 };
 
 // Start election on blockchain
-const startElectionOnBlockchain = async (electionId, electionName, candidateIds = [], candidateNames = []) => {
+const startElectionOnBlockchain = async (electionId, electionName, candidateIds = [], candidateNames = [], signer = null) => {
   try {
     if (!voteSureContract) {
       console.error('Contract not initialized when starting election');
       return { success: false, error: 'Contract not initialized' };
     }
     
-    if (!adminWallet) {
-      console.error('Admin wallet not initialized when starting election');
-      return { success: false, error: 'Admin wallet not initialized. Check ADMIN_PRIVATE_KEY in .env file.' };
+    // Use provided signer (from MetaMask) or fall back to admin wallet
+    const effectiveSigner = signer || adminWallet;
+    
+    if (!effectiveSigner) {
+      console.error('No signer available for blockchain transaction');
+      return { success: false, error: 'No signer available. Check ADMIN_PRIVATE_KEY in .env file or connect with MetaMask.' };
     }
     
     console.log(`Starting election on blockchain: ${electionName} (ID: ${electionId})`);
-    console.log(`Using admin wallet ${adminWallet.address} to start election`);
+    console.log(`Using signer ${typeof signer === 'object' ? 'from MetaMask' : 'from admin wallet'}`);
+    
+    // Connect contract to the signer
+    const connectedContract = voteSureContract.connect(effectiveSigner);
     
     // Check if we need to add candidates first
     if (candidateIds && candidateIds.length > 0) {
@@ -240,7 +246,7 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
           try {
             // Try to get candidate from blockchain by ID
             // This might be a blockchain-specific ID or our database ID
-            onChainCandidate = await voteSureContract.getCandidate(candidateId);
+            onChainCandidate = await connectedContract.getCandidate(candidateId);
             console.log(`Candidate found on blockchain: ${candidateName} (ID: ${candidateId})`);
           } catch (checkError) {
             console.log(`Candidate not found on blockchain, will add: ${candidateName}`);
@@ -249,7 +255,7 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
           // If candidate doesn't exist, add them
           if (!onChainCandidate || onChainCandidate.name === "") {
             console.log(`Adding candidate to blockchain: ${candidateName}`);
-            const addTx = await voteSureContract.addCandidate(
+            const addTx = await connectedContract.addCandidate(
               candidateName,
               "Party", // Default party if not provided
               "Vote for me" // Default slogan if not provided
@@ -270,11 +276,11 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
     let tx;
     
     // Check if our contract has a method to set the election ID
-    if (typeof voteSureContract.startElectionWithId === 'function') {
-      tx = await voteSureContract.startElectionWithId(electionId, electionName);
+    if (typeof connectedContract.startElectionWithId === 'function') {
+      tx = await connectedContract.startElectionWithId(electionId, electionName);
     } else {
       // Fallback to standard method without ID
-      tx = await voteSureContract.startElection();
+      tx = await connectedContract.startElection();
     }
     
     console.log(`Start election transaction submitted, hash: ${tx.hash}`);
@@ -294,13 +300,24 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
 };
 
 // End election on blockchain
-const endElectionOnBlockchain = async () => {
+const endElectionOnBlockchain = async (signer = null) => {
   try {
     if (!voteSureContract) {
       return { success: false, error: 'Contract not initialized' };
     }
     
-    const tx = await voteSureContract.endElection();
+    // Use provided signer (from MetaMask) or fall back to admin wallet
+    const effectiveSigner = signer || adminWallet;
+    
+    if (!effectiveSigner) {
+      console.error('No signer available for blockchain transaction');
+      return { success: false, error: 'No signer available. Check ADMIN_PRIVATE_KEY in .env file or connect with MetaMask.' };
+    }
+    
+    // Connect contract to the signer
+    const connectedContract = voteSureContract.connect(effectiveSigner);
+    
+    const tx = await connectedContract.endElection();
     const receipt = await tx.wait();
     
     console.log('Election ended on blockchain');

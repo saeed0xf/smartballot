@@ -16,9 +16,23 @@ const mongoose = require('mongoose');
 // Get all elections
 exports.getAllElections = async (req, res) => {
   try {
-    console.log('Fetching all elections');
-    const elections = await Election.find();
-    console.log(`Found ${elections.length} elections`);
+    console.log('Fetching elections with query params:', req.query);
+    
+    // Build query based on parameters
+    const query = {};
+    
+    // Filter by archive status if specified
+    if (req.query.archived !== undefined) {
+      // Convert string 'true'/'false' to boolean
+      const isArchived = req.query.archived === 'true';
+      query.isArchived = isArchived;
+      console.log(`Filtering elections where isArchived = ${isArchived}`);
+    }
+    
+    // Execute query
+    const elections = await Election.find(query);
+    console.log(`Found ${elections.length} elections matching query`);
+    
     res.status(200).json(elections);
   } catch (error) {
     console.error('Error fetching elections:', error);
@@ -119,6 +133,20 @@ exports.updateElection = async (req, res) => {
       return res.status(400).json({ message: 'Invalid election ID format' });
     }
     
+    // Find the election first to check its status
+    const existingElection = await Election.findById(id);
+    if (!existingElection) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    // Check if the election is archived
+    if (existingElection.isArchived) {
+      return res.status(403).json({ 
+        message: 'Cannot update an archived election',
+        details: 'Archived elections are read-only for historical record purposes'
+      });
+    }
+    
     const { name, title, type, description, startDate, endDate } = req.body;
     
     // Use title or name, and ensure type is preserved
@@ -145,10 +173,6 @@ exports.updateElection = async (req, res) => {
       { new: true, runValidators: true }
     );
     
-    if (!updatedElection) {
-      return res.status(404).json({ message: 'Election not found' });
-    }
-    
     console.log('Election updated successfully:', updatedElection);
     res.status(200).json(updatedElection);
   } catch (error) {
@@ -167,7 +191,7 @@ exports.deleteElection = async (req, res) => {
       return res.status(400).json({ message: 'Invalid election ID format' });
     }
     
-    // Check if election is active
+    // Check election status
     const election = await Election.findById(id);
     if (!election) {
       return res.status(404).json({ message: 'Election not found' });
@@ -175,6 +199,13 @@ exports.deleteElection = async (req, res) => {
     
     if (election.isActive) {
       return res.status(400).json({ message: 'Cannot delete an active election' });
+    }
+    
+    if (election.isArchived) {
+      return res.status(403).json({ 
+        message: 'Cannot delete an archived election',
+        details: 'Archived elections are preserved for historical records'
+      });
     }
     
     // Delete the election
@@ -188,11 +219,99 @@ exports.deleteElection = async (req, res) => {
   }
 };
 
+// Auto-end elections that have passed their end date
+exports.checkAndAutoEndElections = async () => {
+  try {
+    console.log('Checking for elections that need to be auto-ended...');
+    
+    // Find active elections that have passed their end date
+    const now = new Date();
+    const expiredElections = await Election.find({
+      isActive: true,
+      endDate: { $lt: now }
+    });
+    
+    console.log(`Found ${expiredElections.length} expired elections that need to be auto-ended`);
+    
+    let archivedCandidatesCount = 0;
+    
+    // Process each expired election
+    for (const election of expiredElections) {
+      console.log(`Auto-ending expired election: ${election.title} (ID: ${election._id})`);
+      
+      // Update election status
+      election.isActive = false;
+      election.endedAt = now;
+      await election.save();
+      
+      // Find all candidates associated with this election
+      const candidates = await Candidate.find({
+        $or: [
+          { election: election._id },
+          { electionType: election.type }
+        ]
+      });
+      
+      console.log(`Found ${candidates.length} candidates for election ${election.title}`);
+      
+      // Update candidates - mark as not in active election and archived
+      if (candidates.length > 0) {
+        await Candidate.updateMany(
+          { 
+            $or: [
+              { election: election._id },
+              { electionType: election.type }
+            ]
+          },
+          { 
+            inActiveElection: false,
+            isArchived: true 
+          }
+        );
+        archivedCandidatesCount += candidates.length;
+      }
+      
+      // Archive the election
+      election.isArchived = true;
+      election.archivedAt = now;
+      await election.save();
+      
+      console.log(`Successfully auto-ended and archived election: ${election.title}`);
+      
+      // Try blockchain integration for election end
+      try {
+        // Call blockchain integration if available
+        if (typeof endElectionOnBlockchain === 'function') {
+          const blockchainResult = await endElectionOnBlockchain(election._id.toString());
+          
+          if (blockchainResult && blockchainResult.success) {
+            election.blockchainEndTxHash = blockchainResult.txHash;
+            await election.save();
+            console.log(`Election ended on blockchain with transaction hash: ${blockchainResult.txHash}`);
+          } else {
+            console.warn('Blockchain integration failed:', blockchainResult?.error || 'Unknown blockchain error');
+          }
+        }
+      } catch (blockchainError) {
+        console.error('Error ending election on blockchain:', blockchainError);
+        // Continue with next election
+      }
+    }
+    
+    console.log(`Auto-ended ${expiredElections.length} elections and archived ${archivedCandidatesCount} candidates`);
+    
+    return expiredElections.length;
+  } catch (error) {
+    console.error('Error in auto-end elections function:', error);
+    return 0;
+  }
+};
+
 // Start an election
 exports.startElection = async (req, res) => {
   try {
     const { electionId } = req.body;
-    console.log(`Starting election with id: ${electionId}`);
+    console.log(`Request to start election with ID: ${electionId}`);
     
     if (!mongoose.Types.ObjectId.isValid(electionId)) {
       return res.status(400).json({ message: 'Invalid election ID format' });
@@ -204,31 +323,40 @@ exports.startElection = async (req, res) => {
       return res.status(404).json({ message: 'Election not found' });
     }
     
-    // Check if the election is already active
+    // Check if election is already active
     if (election.isActive) {
       return res.status(400).json({ message: 'Election is already active' });
     }
     
-    // Check if there are candidates matching this election type
-    // Make the query more flexible to match different formats
-    const candidateQuery = {
-      $or: [
-        { electionType: election.type },
-        // For backward compatibility
-        { electionType: 'Presidential' },
-        { electionType: 'Parliamentary' }
-      ]
-    };
-    
-    const candidatesCount = await Candidate.countDocuments(candidateQuery);
-    console.log(`Found ${candidatesCount} candidates for election type: ${election.type}`);
-    
-    if (candidatesCount === 0) {
-      return res.status(400).json({ 
-        message: 'Cannot start an election without candidates',
-        details: 'Please add candidates with matching election type before starting the election'
+    // Check if election is archived
+    if (election.isArchived) {
+      return res.status(403).json({ 
+        message: 'Cannot start an archived election',
+        details: 'Archived elections are read-only for historical record purposes'
       });
     }
+    
+    // Check if election end date has passed
+    const now = new Date();
+    const endDate = new Date(election.endDate);
+    if (endDate < now) {
+      return res.status(400).json({ 
+        message: 'Cannot start an election that has already ended',
+        details: 'The end date for this election has passed'
+      });
+    }
+    
+    // Build candidate query based on election type
+    const candidateQuery = { electionType: election.type };
+    if (election.region) {
+      candidateQuery.region = election.region;
+    }
+    
+    console.log('Candidate query for election start:', candidateQuery);
+    
+    // Get MetaMask signer from request, if available
+    const { metaMaskAddress } = req.body;
+    const usesMetaMask = !!metaMaskAddress;
     
     try {
       // Start the election in the database
@@ -250,12 +378,13 @@ exports.startElection = async (req, res) => {
         
         console.log('Starting election on blockchain with candidates:', candidateNames);
         
-        // Call blockchain integration
+        // Call blockchain integration with MetaMask info if available
         const blockchainResult = await startElectionOnBlockchain(
           election._id.toString(),
           election.title || election.name,
           candidateIds,
-          candidateNames
+          candidateNames,
+          usesMetaMask ? { address: metaMaskAddress } : null // Pass MetaMask address if available
         );
         
         if (blockchainResult && blockchainResult.success) {
@@ -325,7 +454,7 @@ exports.startElection = async (req, res) => {
 exports.endElection = async (req, res) => {
   try {
     const { electionId } = req.body;
-    console.log(`Ending election with id: ${electionId}`);
+    console.log(`Request to end election with ID: ${electionId}`);
     
     if (!mongoose.Types.ObjectId.isValid(electionId)) {
       return res.status(400).json({ message: 'Invalid election ID format' });
@@ -337,32 +466,33 @@ exports.endElection = async (req, res) => {
       return res.status(404).json({ message: 'Election not found' });
     }
     
-    // Check if the election is active
+    // Check if election is already inactive
     if (!election.isActive) {
       return res.status(400).json({ message: 'Election is not active' });
     }
     
-    // End the election
-    election.isActive = false;
-    election.endedAt = Date.now();
-    await election.save();
-    
-    // Update all candidates associated with this election
-    await Candidate.updateMany(
-      { election: election._id },
-      { inActiveElection: false }
-    );
-    
-    console.log('Election ended successfully:', election);
-    
-    // Try blockchain integration for election end
-    let blockchainTxHash = null;
-    let blockchainError = null;
+    // Get MetaMask signer from request, if available
+    const { metaMaskAddress } = req.body;
+    const usesMetaMask = !!metaMaskAddress;
     
     try {
-      // Call blockchain integration if available
-      if (typeof endElectionOnBlockchain === 'function') {
-        const blockchainResult = await endElectionOnBlockchain(election._id.toString());
+      // End the election in the database
+      election.isActive = false;
+      election.endedAt = Date.now();
+      
+      // Also archive the election when it ends
+      election.isArchived = true;
+      election.archivedAt = Date.now();
+      
+      // End election on blockchain
+      let blockchainTxHash = null;
+      let blockchainError = null;
+      
+      try {
+        // Call blockchain integration with MetaMask info if available
+        const blockchainResult = await endElectionOnBlockchain(
+          usesMetaMask ? { address: metaMaskAddress } : null // Pass MetaMask address if available
+        );
         
         if (blockchainResult && blockchainResult.success) {
           blockchainTxHash = blockchainResult.txHash;
@@ -370,23 +500,65 @@ exports.endElection = async (req, res) => {
         } else {
           blockchainError = blockchainResult?.error || 'Unknown blockchain error';
           console.warn('Blockchain integration failed or returned no transaction hash');
-          console.warn(blockchainError);
         }
+      } catch (blockchainError) {
+        console.error('Error ending election on blockchain:', blockchainError);
+        // We'll still continue with database update even if blockchain fails
       }
-    } catch (blockchainError) {
-      console.error('Error ending election on blockchain:', blockchainError);
-      // We'll still return success since the database was updated
+      
+      // Save blockchain transaction hash if we got one
+      if (blockchainTxHash) {
+        election.blockchainEndTxHash = blockchainTxHash;
+      }
+      
+      // Save the election with updated fields
+      await election.save();
+      
+      // Get candidates for this election
+      const candidates = await Candidate.find({ 
+        $or: [
+          { election: election._id },
+          { electionType: election.type }
+        ]
+      });
+      
+      console.log(`Found ${candidates.length} candidates associated with this election to archive`);
+      
+      // Update candidates to mark them as archived and no longer in an active election
+      const updatePromises = candidates.map(candidate => {
+        return Candidate.findByIdAndUpdate(
+          candidate._id,
+          { 
+            inActiveElection: false,
+            isArchived: true
+          },
+          { new: true }
+        );
+      });
+      
+      // Execute all updates in parallel
+      await Promise.all(updatePromises);
+      
+      console.log('Election ended and archived successfully:', election);
+      
+      // Return success response with blockchain status
+      res.status(200).json({ 
+        message: 'Election ended and archived successfully',
+        election,
+        archivedCandidates: candidates.length,
+        blockchain: {
+          success: !!blockchainTxHash,
+          txHash: blockchainTxHash,
+          error: blockchainError
+        }
+      });
+    } catch (dbError) {
+      console.error('Database error while ending election:', dbError);
+      res.status(500).json({
+        message: 'Failed to update election status in database',
+        error: dbError.message
+      });
     }
-    
-    res.status(200).json({ 
-      message: 'Election ended successfully',
-      election,
-      blockchain: {
-        success: !!blockchainTxHash,
-        txHash: blockchainTxHash,
-        error: blockchainError
-      }
-    });
   } catch (error) {
     console.error('Error ending election:', error);
     res.status(500).json({ message: 'Failed to end election', error: error.message });
@@ -732,5 +904,72 @@ exports.getElectionResults = async (req, res) => {
   } catch (error) {
     console.error('Get election results error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Check and archive inactive elections that are past their end date
+exports.checkAndArchiveInactiveElections = async () => {
+  try {
+    console.log('Checking for inactive elections that need to be archived...');
+    
+    // Find inactive elections past their end date that aren't archived yet
+    const now = new Date();
+    const unarchived = await Election.find({
+      isActive: false,
+      endDate: { $lt: now },
+      isArchived: { $ne: true }
+    });
+    
+    console.log(`Found ${unarchived.length} inactive elections that need to be archived`);
+    
+    let totalArchivedCandidates = 0;
+    
+    // Archive each unarchived election
+    for (const election of unarchived) {
+      console.log(`Archiving election: ${election.title} (ID: ${election._id})`);
+      
+      // Find candidates associated with this election
+      const candidates = await Candidate.find({
+        $or: [
+          { election: election._id },
+          { electionType: election.type }
+        ]
+      });
+      
+      console.log(`Found ${candidates.length} candidates associated with election ${election.title}`);
+      
+      if (candidates.length > 0) {
+        // Update all candidates to mark them as archived and no longer in active election
+        const candidateUpdateResult = await Candidate.updateMany(
+          { 
+            $or: [
+              { election: election._id },
+              { electionType: election.type }
+            ]
+          },
+          { 
+            inActiveElection: false,
+            isArchived: true 
+          }
+        );
+        
+        totalArchivedCandidates += candidates.length;
+        console.log(`Updated ${candidateUpdateResult.modifiedCount} candidates to archived status`);
+      }
+      
+      // Archive the election
+      election.isArchived = true;
+      election.archivedAt = now;
+      await election.save();
+      
+      console.log(`Successfully archived election: ${election.title} and ${candidates.length} candidates`);
+    }
+    
+    console.log(`Archive operation completed: ${unarchived.length} elections and ${totalArchivedCandidates} candidates archived`);
+    
+    return unarchived.length;
+  } catch (error) {
+    console.error('Error in archive inactive elections function:', error);
+    return 0;
   }
 }; 
