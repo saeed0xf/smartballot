@@ -606,7 +606,7 @@ exports.getCandidateById = async (req, res) => {
 // Update candidate
 exports.updateCandidate = async (req, res) => {
   try {
-    const { candidateId } = req.params;
+    const { id } = req.params;
     const updateData = { ...req.body };
     
     // Handle file uploads
@@ -621,7 +621,7 @@ exports.updateCandidate = async (req, res) => {
     
     // Update candidate
     const updatedCandidate = await Candidate.findByIdAndUpdate(
-      candidateId,
+      id,
       updateData,
       { new: true }
     );
@@ -640,10 +640,10 @@ exports.updateCandidate = async (req, res) => {
 // Delete candidate
 exports.deleteCandidate = async (req, res) => {
   try {
-    const { candidateId } = req.params;
+    const { id } = req.params;
     
     // Delete candidate
-    const deletedCandidate = await Candidate.findByIdAndDelete(candidateId);
+    const deletedCandidate = await Candidate.findByIdAndDelete(id);
     
     if (!deletedCandidate) {
       return res.status(404).json({ message: 'Candidate not found' });
