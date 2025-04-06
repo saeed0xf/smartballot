@@ -85,12 +85,70 @@ const ArchivedElections = () => {
     setShowCandidatesModal(true);
     
     try {
+      const electionId = election._id;
+      console.log(`Viewing candidates for election: ${election.title} (ID: ${electionId})`);
+      
+      // Use the dedicated endpoint for getting candidates by election ID
+      const apiUrl = env.API_URL || 'http://localhost:5000/api';
+      const endpoint = `${apiUrl}/admin/elections/${electionId}/candidates`;
+      console.log(`Fetching candidates from dedicated endpoint: ${endpoint}`);
+      
+      const response = await axios.get(endpoint);
+      console.log('Candidates response:', response.data);
+      
+      // If we got data back in the expected format
+      if (response.data && response.data.candidates) {
+        // Format images for display
+        const formattedCandidates = response.data.candidates.map(candidate => ({
+          ...candidate,
+          photoUrl: formatImageUrl(candidate.photoUrl),
+          partySymbol: formatImageUrl(candidate.partySymbol)
+        }));
+        
+        console.log(`Successfully loaded ${formattedCandidates.length} candidates`);
+        
+        // Check if we found any candidates *before* setting state
+        if (formattedCandidates.length === 0) {
+          setError(`No candidates found for this election. This election may not have had any candidates registered.`);
+        } else {
+          // Only set candidates if we found some
+          setElectionCandidates(formattedCandidates);
+        }
+        
+        // Update the selected election with any additional data from the API
+        if (response.data.election) {
+          setSelectedElection(prev => ({
+            ...prev,
+            ...response.data.election,
+            totalVotes: response.data.election.totalVotes
+          }));
+        }
+      } else {
+        // Fallback to the old method if the endpoint doesn't return expected format
+        console.warn('New endpoint did not return expected data format, falling back to legacy method');
+        await fallbackCandidateLoading(election);
+      }
+    } catch (err) {
+      console.error('Error fetching election candidates:', err);
+      // Try fallback method if the new endpoint fails
+      if (err.response && (err.response.status === 404 || err.response.status === 400)) {
+        console.warn('New endpoint failed, falling back to legacy candidate fetching method');
+        await fallbackCandidateLoading(election);
+      } else {
+        setError(`Failed to load candidates: ${err.message}`);
+      }
+    } finally {
+      setLoadingCandidates(false);
+    }
+  };
+  
+  // Fallback method for loading candidates using the old approach
+  const fallbackCandidateLoading = async (election) => {
+    console.log('Using legacy candidate loading method');
+    try {
       // Get the election type and ID for this election
       const electionType = getElectionType(election);
       const electionId = election._id;
-      
-      console.log(`Viewing candidates for election: ${election.title}`);
-      console.log(`Election ID: ${electionId}, Type: ${electionType}`);
       
       // If we don't have candidates loaded yet, fetch them
       if (candidates.length === 0) {
@@ -102,8 +160,6 @@ const ArchivedElections = () => {
       }
       
       console.log(`Currently have ${candidates.length} total candidates in state`);
-      
-      // Try multiple methods to find matching candidates:
       
       // 1. First try to match by direct election reference
       let matchingCandidatesByElection = candidates.filter(candidate => {
@@ -137,42 +193,6 @@ const ArchivedElections = () => {
         }
       }
       
-      // If still no candidates found, try a direct API call
-      if (matchingCandidatesByElection.length === 0) {
-        console.log('No candidates found in our cache, trying a direct API lookup...');
-        const apiUrl = env.API_URL || 'http://localhost:5000/api';
-        
-        try {
-          // Try to get candidates using election ID first (most specific match)
-          const byIdUrl = `${apiUrl}/admin/candidates?election=${electionId}&archived=true`;
-          console.log(`Fetching candidates by election ID: ${byIdUrl}`);
-          
-          const idResponse = await axios.get(byIdUrl);
-          
-          if (idResponse.data && idResponse.data.length > 0) {
-            console.log(`Successfully found ${idResponse.data.length} candidates by election ID`);
-            matchingCandidatesByElection = idResponse.data;
-          } else {
-            // If that fails, try by election type
-            console.log('No candidates found by ID, trying by election type...');
-            const byTypeUrl = `${apiUrl}/admin/candidates?electionType=${encodeURIComponent(electionType)}&archived=true`;
-            console.log(`Fetching candidates by election type: ${byTypeUrl}`);
-            
-            const typeResponse = await axios.get(byTypeUrl);
-            
-            if (typeResponse.data && typeResponse.data.length > 0) {
-              console.log(`Successfully found ${typeResponse.data.length} candidates by election type`);
-              matchingCandidatesByElection = typeResponse.data;
-            } else {
-              console.log('No candidates found by election type either.');
-            }
-          }
-        } catch (directFetchError) {
-          console.error('Error directly fetching candidates:', directFetchError);
-          setError(`Failed to fetch candidates from server: ${directFetchError.message}`);
-        }
-      }
-      
       // Format candidate data with proper URLs and handle missing images
       const formattedCandidates = matchingCandidatesByElection.map(candidate => ({
         ...candidate,
@@ -186,21 +206,22 @@ const ArchivedElections = () => {
       formattedCandidates.sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0));
       
       console.log(`Final result: ${formattedCandidates.length} candidates formatted and sorted`);
-      setElectionCandidates(formattedCandidates);
       
+      // Check if we found any candidates before setting state
       if (formattedCandidates.length === 0) {
         setError(`No candidates found for this election. This election may not have had any candidates registered.`);
+      } else {
+        // Only set candidates if we found some
+        setElectionCandidates(formattedCandidates);
       }
     } catch (err) {
-      console.error('Error fetching election candidates:', err);
-      setError(`Failed to load candidates: ${err.message}`);
-    } finally {
-      setLoadingCandidates(false);
+      console.error('Error in fallback candidate loading:', err);
+      setError(`Failed to load candidates using fallback method: ${err.message}`);
     }
   };
   
   // Download election results as CSV
-  const downloadElectionResults = (election) => {
+  const downloadElectionResults = async (election) => {
     try {
       if (!election) {
         console.error('No election provided for download');
@@ -210,29 +231,49 @@ const ArchivedElections = () => {
       
       console.log(`Preparing download for election: ${election.title}`);
       
-      // Find candidates for this election using our helper function
-      const electionType = getElectionType(election);
+      // First try to get candidates using the dedicated endpoint
+      const apiUrl = env.API_URL || 'http://localhost:5000/api';
+      const endpoint = `${apiUrl}/admin/elections/${election._id}/candidates`;
+      console.log(`Fetching candidates for download from: ${endpoint}`);
       
-      // Try to match candidates by both election ID and type
-      const matchingCandidates = candidates.filter(candidate => {
-        // Check for direct election reference
-        if (candidate.election) {
-          const candidateElectionId = typeof candidate.election === 'object' 
-            ? candidate.election._id 
-            : candidate.election;
-            
-          if (candidateElectionId === election._id) {
-            return true;
-          }
-        }
+      let electionCandidates = [];
+      let totalVotes = election.totalVotes || 0;
+      
+      try {
+        const response = await axios.get(endpoint);
         
-        // Fall back to election type match
-        return candidate.electionType === electionType;
-      });
+        if (response.data && response.data.candidates) {
+          electionCandidates = response.data.candidates;
+          totalVotes = response.data.election.totalVotes || totalVotes;
+          console.log(`Successfully fetched ${electionCandidates.length} candidates for download`);
+        }
+      } catch (apiError) {
+        console.warn('Error fetching from dedicated endpoint, falling back to cached candidates', apiError);
+        
+        // Fall back to using the cached candidates
+        const electionType = getElectionType(election);
+        
+        // Try to match candidates by both election ID and type
+        electionCandidates = candidates.filter(candidate => {
+          // Check for direct election reference
+          if (candidate.election) {
+            const candidateElectionId = typeof candidate.election === 'object' 
+              ? candidate.election._id 
+              : candidate.election;
+              
+            if (candidateElectionId === election._id) {
+              return true;
+            }
+          }
+          
+          // Fall back to election type match
+          return candidate.electionType === electionType;
+        });
+        
+        console.log(`Fallback: found ${electionCandidates.length} candidates for download`);
+      }
       
-      console.log(`Found ${matchingCandidates.length} candidates for download`);
-      
-      if (matchingCandidates.length === 0) {
+      if (electionCandidates.length === 0) {
         setError(`No candidates found for ${election.title}. Cannot generate report.`);
         return;
       }
@@ -242,21 +283,26 @@ const ArchivedElections = () => {
       
       // CSV Header with election details
       csvContent += `# Election Results: ${election.title}\n`;
-      csvContent += `# Type: ${electionType}\n`;
+      csvContent += `# Type: ${getElectionType(election)}\n`;
       csvContent += `# Date: ${formatDate(election.endDate)}\n`;
-      csvContent += `# Total Votes: ${election.totalVotes || 0}\n\n`;
+      csvContent += `# Total Votes: ${totalVotes || 0}\n\n`;
       
       // Column headers
       csvContent += "Candidate Name,Party,Constituency,Votes,Percentage\n";
       
-      // Calculate total votes
-      const totalVotes = election.totalVotes || 
-        matchingCandidates.reduce((sum, c) => sum + (c.voteCount || 0), 0);
+      // Calculate total votes from the candidates if not provided
+      if (!totalVotes) {
+        totalVotes = electionCandidates.reduce((sum, c) => sum + (c.voteCount || 0), 0);
+      }
       
       // Add candidate rows
-      matchingCandidates.forEach(candidate => {
-        const fullName = `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`;
-        const percentage = totalVotes > 0 ? ((candidate.voteCount || 0) / totalVotes * 100).toFixed(2) : '0.00';
+      electionCandidates.forEach(candidate => {
+        const fullName = candidate.fullName || 
+          `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`;
+        
+        const percentage = candidate.percentage || 
+          (totalVotes > 0 ? ((candidate.voteCount || 0) / totalVotes * 100).toFixed(2) : '0.00');
+        
         const constituency = candidate.constituency || 'N/A';
         
         csvContent += `"${fullName}","${candidate.partyName}","${constituency}",${candidate.voteCount || 0},${percentage}%\n`;

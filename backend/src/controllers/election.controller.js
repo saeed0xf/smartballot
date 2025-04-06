@@ -29,6 +29,14 @@ exports.getAllElections = async (req, res) => {
       console.log(`Filtering elections where isArchived = ${isArchived}`);
     }
     
+    // Filter by active status if specified
+    if (req.query.active !== undefined) {
+      // Convert string 'true'/'false' to boolean
+      const isActive = req.query.active === 'true';
+      query.isActive = isActive;
+      console.log(`Filtering elections where isActive = ${isActive}`);
+    }
+    
     // Execute query
     const elections = await Election.find(query);
     console.log(`Found ${elections.length} elections matching query`);
@@ -147,6 +155,14 @@ exports.updateElection = async (req, res) => {
       });
     }
     
+    // Check if the election is active
+    if (existingElection.isActive) {
+      return res.status(403).json({ 
+        message: 'Cannot update an active election',
+        details: 'Active elections cannot be modified to maintain election integrity'
+      });
+    }
+    
     const { name, title, type, description, startDate, endDate } = req.body;
     
     // Use title or name, and ensure type is preserved
@@ -242,7 +258,38 @@ exports.checkAndAutoEndElections = async () => {
       // Update election status
       election.isActive = false;
       election.endedAt = now;
-      await election.save();
+      
+      // Find and link unlinked candidates (having election type but no election reference)
+      const unlinkedCandidates = await Candidate.find({
+        electionType: election.type,
+        $or: [
+          { election: { $exists: false } },
+          { election: null }
+        ]
+      });
+      
+      if (unlinkedCandidates.length > 0) {
+        console.log(`Found ${unlinkedCandidates.length} candidates with matching type but no election reference`);
+        
+        // Link these candidates to this election
+        const linkResult = await Candidate.updateMany(
+          { 
+            electionType: election.type,
+            $or: [
+              { election: { $exists: false } },
+              { election: null }
+            ]
+          },
+          {
+            $set: {
+              election: election._id,
+              inActiveElection: false
+            }
+          }
+        );
+        
+        console.log(`Linked ${linkResult.modifiedCount} candidates to election ${election.title}`);
+      }
       
       // Find all candidates associated with this election
       const candidates = await Candidate.find({
@@ -256,7 +303,7 @@ exports.checkAndAutoEndElections = async () => {
       
       // Update candidates - mark as not in active election and archived
       if (candidates.length > 0) {
-        await Candidate.updateMany(
+        const updateResult = await Candidate.updateMany(
           { 
             $or: [
               { election: election._id },
@@ -264,12 +311,24 @@ exports.checkAndAutoEndElections = async () => {
             ]
           },
           { 
-            inActiveElection: false,
-            isArchived: true 
+            $set: {
+              inActiveElection: false,
+              isArchived: true,
+              election: election._id // Explicitly ensure election reference is preserved
+            }
           }
         );
+        
+        console.log(`Updated ${updateResult.modifiedCount} candidates to archived status`);
         archivedCandidatesCount += candidates.length;
       }
+      
+      // Calculate total votes for the election
+      const votes = await Vote.find({ election: election._id });
+      const totalVotes = votes.length;
+      
+      // Save total votes to the election
+      election.totalVotes = totalVotes;
       
       // Archive the election
       election.isArchived = true;
@@ -310,8 +369,12 @@ exports.checkAndAutoEndElections = async () => {
 // Start an election
 exports.startElection = async (req, res) => {
   try {
-    const { electionId } = req.body;
+    const { electionId, metaMaskAddress } = req.body;
     console.log(`Request to start election with ID: ${electionId}`);
+    
+    if (metaMaskAddress) {
+      console.log(`Using MetaMask with address: ${metaMaskAddress}`);
+    }
     
     if (!mongoose.Types.ObjectId.isValid(electionId)) {
       return res.status(400).json({ message: 'Invalid election ID format' });
@@ -354,9 +417,12 @@ exports.startElection = async (req, res) => {
     
     console.log('Candidate query for election start:', candidateQuery);
     
-    // Get MetaMask signer from request, if available
-    const { metaMaskAddress } = req.body;
-    const usesMetaMask = !!metaMaskAddress;
+    // Prepare signer object for MetaMask if address is provided
+    let signer = null;
+    if (metaMaskAddress && typeof metaMaskAddress === 'string' && metaMaskAddress.startsWith('0x')) {
+      signer = { address: metaMaskAddress };
+      console.log(`Prepared MetaMask signer with address: ${metaMaskAddress}`);
+    }
     
     try {
       // Start the election in the database
@@ -384,7 +450,7 @@ exports.startElection = async (req, res) => {
           election.title || election.name,
           candidateIds,
           candidateNames,
-          usesMetaMask ? { address: metaMaskAddress } : null // Pass MetaMask address if available
+          signer // Pass signer object to blockchain utility
         );
         
         if (blockchainResult && blockchainResult.success) {
@@ -453,8 +519,12 @@ exports.startElection = async (req, res) => {
 // End an election
 exports.endElection = async (req, res) => {
   try {
-    const { electionId } = req.body;
+    const { electionId, metaMaskAddress } = req.body;
     console.log(`Request to end election with ID: ${electionId}`);
+    
+    if (metaMaskAddress) {
+      console.log(`Using MetaMask with address: ${metaMaskAddress}`);
+    }
     
     if (!mongoose.Types.ObjectId.isValid(electionId)) {
       return res.status(400).json({ message: 'Invalid election ID format' });
@@ -471,9 +541,12 @@ exports.endElection = async (req, res) => {
       return res.status(400).json({ message: 'Election is not active' });
     }
     
-    // Get MetaMask signer from request, if available
-    const { metaMaskAddress } = req.body;
-    const usesMetaMask = !!metaMaskAddress;
+    // Prepare signer object for MetaMask if address is provided
+    let signer = null;
+    if (metaMaskAddress && typeof metaMaskAddress === 'string' && metaMaskAddress.startsWith('0x')) {
+      signer = { address: metaMaskAddress };
+      console.log(`Prepared MetaMask signer with address: ${metaMaskAddress}`);
+    }
     
     try {
       // End the election in the database
@@ -490,9 +563,7 @@ exports.endElection = async (req, res) => {
       
       try {
         // Call blockchain integration with MetaMask info if available
-        const blockchainResult = await endElectionOnBlockchain(
-          usesMetaMask ? { address: metaMaskAddress } : null // Pass MetaMask address if available
-        );
+        const blockchainResult = await endElectionOnBlockchain(signer);
         
         if (blockchainResult && blockchainResult.success) {
           blockchainTxHash = blockchainResult.txHash;
@@ -511,10 +582,39 @@ exports.endElection = async (req, res) => {
         election.blockchainEndTxHash = blockchainTxHash;
       }
       
-      // Save the election with updated fields
-      await election.save();
+      // Step 1: Find all unlinked candidates (having election type but no election reference)
+      const unlinkedCandidates = await Candidate.find({
+        electionType: election.type,
+        $or: [
+          { election: { $exists: false } },
+          { election: null }
+        ]
+      });
       
-      // Get candidates for this election
+      if (unlinkedCandidates.length > 0) {
+        console.log(`Found ${unlinkedCandidates.length} candidates with matching type but no election reference`);
+        
+        // Link these candidates to this election
+        const linkResult = await Candidate.updateMany(
+          { 
+            electionType: election.type,
+            $or: [
+              { election: { $exists: false } },
+              { election: null }
+            ]
+          },
+          {
+            $set: {
+              election: election._id,
+              inActiveElection: false
+            }
+          }
+        );
+        
+        console.log(`Linked ${linkResult.modifiedCount} candidates to election ${election.title}`);
+      }
+      
+      // Step 2: Get all candidates for this election (either by direct reference or type)
       const candidates = await Candidate.find({ 
         $or: [
           { election: election._id },
@@ -524,21 +624,35 @@ exports.endElection = async (req, res) => {
       
       console.log(`Found ${candidates.length} candidates associated with this election to archive`);
       
-      // Update candidates to mark them as archived and no longer in an active election
-      const updatePromises = candidates.map(candidate => {
-        return Candidate.findByIdAndUpdate(
-          candidate._id,
-          { 
+      // Step 3: Calculate total votes for the election
+      const votes = await Vote.find({ election: election._id });
+      const totalVotes = votes.length;
+      
+      // Save total votes to the election
+      election.totalVotes = totalVotes;
+      
+      // Save the election with updated fields
+      await election.save();
+      
+      // Step 4: Update all candidates to mark them as archived and no longer active
+      // Ensure the election reference is preserved for all candidates
+      const updateResult = await Candidate.updateMany(
+        { 
+          $or: [
+            { election: election._id },
+            { electionType: election.type }
+          ]
+        },
+        { 
+          $set: {
             inActiveElection: false,
-            isArchived: true
-          },
-          { new: true }
-        );
-      });
+            isArchived: true,
+            election: election._id // Explicitly ensure election reference is preserved
+          }
+        }
+      );
       
-      // Execute all updates in parallel
-      await Promise.all(updatePromises);
-      
+      console.log(`Updated ${updateResult.modifiedCount} candidates to archived status`);
       console.log('Election ended and archived successfully:', election);
       
       // Return success response with blockchain status
@@ -546,6 +660,7 @@ exports.endElection = async (req, res) => {
         message: 'Election ended and archived successfully',
         election,
         archivedCandidates: candidates.length,
+        totalVotes,
         blockchain: {
           success: !!blockchainTxHash,
           txHash: blockchainTxHash,
@@ -928,7 +1043,31 @@ exports.checkAndArchiveInactiveElections = async () => {
     for (const election of unarchived) {
       console.log(`Archiving election: ${election.title} (ID: ${election._id})`);
       
-      // Find candidates associated with this election
+      // Find candidates associated with this election by type but without an election reference
+      const unlinkedCandidates = await Candidate.find({
+        electionType: election.type,
+        election: { $exists: false }
+      });
+      
+      // Add election reference to unlinked candidates
+      if (unlinkedCandidates.length > 0) {
+        console.log(`Found ${unlinkedCandidates.length} candidates with matching type but no election reference`);
+        
+        // Update these candidates to link them to this election
+        const linkResult = await Candidate.updateMany(
+          { 
+            electionType: election.type,
+            election: { $exists: false }
+          },
+          {
+            election: election._id
+          }
+        );
+        
+        console.log(`Linked ${linkResult.modifiedCount} candidates to election ${election.title}`);
+      }
+      
+      // Find all candidates associated with this election (either by ID or type)
       const candidates = await Candidate.find({
         $or: [
           { election: election._id },
@@ -939,7 +1078,7 @@ exports.checkAndArchiveInactiveElections = async () => {
       console.log(`Found ${candidates.length} candidates associated with election ${election.title}`);
       
       if (candidates.length > 0) {
-        // Update all candidates to mark them as archived and no longer in active election
+        // Update all candidates to mark them as archived while PRESERVING election reference
         const candidateUpdateResult = await Candidate.updateMany(
           { 
             $or: [
@@ -948,21 +1087,28 @@ exports.checkAndArchiveInactiveElections = async () => {
             ]
           },
           { 
-            inActiveElection: false,
-            isArchived: true 
+            $set: {
+              inActiveElection: false,
+              isArchived: true,
+              election: election._id // Explicitly set the election reference to ensure it's preserved
+            }
           }
         );
         
         totalArchivedCandidates += candidates.length;
-        console.log(`Updated ${candidateUpdateResult.modifiedCount} candidates to archived status`);
+        console.log(`Updated ${candidateUpdateResult.modifiedCount} candidates to archived status while preserving election reference`);
       }
+      
+      // Calculate and save total votes for the election (helps with reporting)
+      const totalVotes = await Vote.countDocuments({ election: election._id });
       
       // Archive the election
       election.isArchived = true;
       election.archivedAt = now;
+      election.totalVotes = totalVotes;
       await election.save();
       
-      console.log(`Successfully archived election: ${election.title} and ${candidates.length} candidates`);
+      console.log(`Successfully archived election: ${election.title} with ${candidates.length} candidates and ${totalVotes} votes`);
     }
     
     console.log(`Archive operation completed: ${unarchived.length} elections and ${totalArchivedCandidates} candidates archived`);

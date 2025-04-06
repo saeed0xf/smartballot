@@ -92,4 +92,7 @@ router.get('/election/status', adminController.getElectionStatus || electionCont
   res.status(200).json({ message: 'Election status placeholder', active: false });
 }));
 
+// Get candidates by election ID (specifically for archived elections) - add after existing candidate routes
+router.get('/elections/:electionId/candidates', adminController.getCandidatesByElectionId);
+
 module.exports = router; 

@@ -61,13 +61,18 @@ const ManageCandidates = () => {
   const fetchElections = async () => {
     try {
       const headers = getAuthHeaders();
-      console.log('Fetching elections...');
+      console.log('Fetching elections for candidate dropdown...');
       
+      // Update query to only get elections that are pending (not active, not archived)
       const response = await axios.get(`${API_URL}/admin/elections`, {
-        headers: headers
+        headers: headers,
+        params: {
+          active: false,
+          archived: false
+        }
       });
       
-      console.log('Elections data:', response.data);
+      console.log('Available elections for candidates:', response.data);
       setElections(response.data || []);
       return response.data;
     } catch (err) {
@@ -102,10 +107,27 @@ const ManageCandidates = () => {
           // Ensure the age is calculated from date of birth
           const calculatedAge = candidate.dateOfBirth ? calculateAge(candidate.dateOfBirth) : candidate.age;
           
-          // Find election name from elections list
-          const electionName = candidate.election ? 
-            electionsList.find(e => e._id === candidate.election)?.title || "Unknown Election" : 
-            "No Election";
+          // Find election name from elections list - check both direct reference and type
+          let electionName = "No Election";
+          
+          // Check if candidate has a direct election reference
+          if (candidate.election) {
+            const matchedElection = electionsList.find(e => e._id === (typeof candidate.election === 'object' ? candidate.election._id : candidate.election));
+            if (matchedElection) {
+              electionName = matchedElection.title || matchedElection.name;
+            }
+          }
+          
+          // If no direct match was found, try matching by election type
+          if (electionName === "No Election" && candidate.electionType) {
+            const typeMatch = electionsList.find(e => e.type === candidate.electionType);
+            if (typeMatch) {
+              electionName = typeMatch.title || typeMatch.name;
+            } else {
+              // If we can't find a matching election, use the election type for display
+              electionName = `${candidate.electionType} (Unlinked)`;
+            }
+          }
           
           return {
             ...candidate,
@@ -967,7 +989,7 @@ const ManageCandidates = () => {
                           isInvalid={!!formErrors.electionId}
                           disabled={isEditing} // Can't change election when editing
                         >
-                          <option value="">-- Select an Election --</option>
+                          <option value="">-- Select a Pending Election --</option>
                           {elections.map(election => (
                             <option key={election._id} value={election._id}>
                               {election.title || election.name} ({election.type})
@@ -977,7 +999,7 @@ const ManageCandidates = () => {
                         {elections.length === 0 && (
                           <Alert variant="warning" className="mt-2">
                             <small>
-                              No elections found. <Link to="/admin/elections">Create an election</Link> first before adding candidates.
+                              No pending elections found. <Link to="/admin/elections">Create a new election</Link> first before adding candidates. Candidates can only be added to elections that haven't started yet.
                             </small>
                           </Alert>
                         )}
@@ -985,7 +1007,7 @@ const ManageCandidates = () => {
                           {formErrors.electionId}
                         </Form.Control.Feedback>
                         <Form.Text className="text-muted">
-                          Candidates must be associated with an election
+                          Only pending elections (not started, not archived) are shown. Candidates can only be added to pending elections.
                         </Form.Text>
                       </Form.Group>
                     </Col>

@@ -226,9 +226,10 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
     }
     
     console.log(`Starting election on blockchain: ${electionName} (ID: ${electionId})`);
-    console.log(`Using signer ${typeof signer === 'object' ? 'from MetaMask' : 'from admin wallet'}`);
+    console.log(`Using signer ${typeof signer === 'object' && signer?.address ? 'from MetaMask' : 'from admin wallet'}`);
     
-    // Connect contract to the signer
+    // Check if we're using MetaMask or admin wallet
+    const usingMetaMask = typeof signer === 'object' && signer?.address;
     const connectedContract = voteSureContract.connect(effectiveSigner);
     
     // Check if we need to add candidates first
@@ -273,22 +274,59 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
     
     // Now start the election
     console.log('Submitting startElection transaction to blockchain...');
-    let tx;
+    let txHash;
     
-    // Check if our contract has a method to set the election ID
-    if (typeof connectedContract.startElectionWithId === 'function') {
-      tx = await connectedContract.startElectionWithId(electionId, electionName);
+    if (usingMetaMask) {
+      // Use eth_sendTransaction with MetaMask
+      console.log('Using eth_sendTransaction with MetaMask to start election');
+      
+      // Get contract data for the startElection function call
+      let txData;
+      if (typeof connectedContract.startElectionWithId === 'function') {
+        // Use the function with ID if available
+        txData = voteSureContract.interface.encodeFunctionData('startElectionWithId', [electionId, electionName]);
+      } else {
+        // Fallback to standard method without ID
+        txData = voteSureContract.interface.encodeFunctionData('startElection', []);
+      }
+      
+      // Prepare transaction parameters
+      const txParams = {
+        from: signer.address,
+        to: voteSureContract.address,
+        data: txData,
+        // Don't include gas limit or gas price - let MetaMask determine these
+      };
+      
+      // Send transaction using MetaMask
+      txHash = await provider.send('eth_sendTransaction', [txParams]);
+      console.log(`MetaMask transaction submitted with hash: ${txHash}`);
+      
+      // Wait for transaction to be mined
+      console.log('Waiting for transaction to be mined...');
+      const receipt = await provider.waitForTransaction(txHash);
+      console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+      
+      return { success: true, txHash: txHash };
     } else {
-      // Fallback to standard method without ID
-      tx = await connectedContract.startElection();
+      // Use standard ethers.js contract interaction
+      console.log('Using standard ethers.js contract call to start election');
+      
+      let tx;
+      // Check if our contract has a method to set the election ID
+      if (typeof connectedContract.startElectionWithId === 'function') {
+        tx = await connectedContract.startElectionWithId(electionId, electionName);
+      } else {
+        // Fallback to standard method without ID
+        tx = await connectedContract.startElection();
+      }
+      
+      console.log(`Standard transaction submitted, hash: ${tx.hash}`);
+      const receipt = await tx.wait();
+      console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+      
+      return { success: true, txHash: receipt.transactionHash };
     }
-    
-    console.log(`Start election transaction submitted, hash: ${tx.hash}`);
-    const receipt = await tx.wait();
-    console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
-    
-    console.log('Election started on blockchain successfully');
-    return { success: true, txHash: receipt.transactionHash };
   } catch (error) {
     console.error('Error starting election on blockchain:', error);
     return { 
@@ -314,14 +352,47 @@ const endElectionOnBlockchain = async (signer = null) => {
       return { success: false, error: 'No signer available. Check ADMIN_PRIVATE_KEY in .env file or connect with MetaMask.' };
     }
     
+    // Check if we're using MetaMask or admin wallet
+    const usingMetaMask = typeof signer === 'object' && signer?.address;
+    
     // Connect contract to the signer
     const connectedContract = voteSureContract.connect(effectiveSigner);
     
-    const tx = await connectedContract.endElection();
-    const receipt = await tx.wait();
-    
-    console.log('Election ended on blockchain');
-    return { success: true, txHash: receipt.transactionHash };
+    if (usingMetaMask) {
+      // Use eth_sendTransaction with MetaMask
+      console.log('Using eth_sendTransaction with MetaMask to end election');
+      
+      // Get contract data for the endElection function call
+      const txData = voteSureContract.interface.encodeFunctionData('endElection', []);
+      
+      // Prepare transaction parameters
+      const txParams = {
+        from: signer.address,
+        to: voteSureContract.address,
+        data: txData,
+        // Don't include gas limit or gas price - let MetaMask determine these
+      };
+      
+      // Send transaction using MetaMask
+      const txHash = await provider.send('eth_sendTransaction', [txParams]);
+      console.log(`MetaMask transaction submitted with hash: ${txHash}`);
+      
+      // Wait for transaction to be mined
+      console.log('Waiting for transaction to be mined...');
+      const receipt = await provider.waitForTransaction(txHash);
+      console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+      
+      return { success: true, txHash: txHash };
+    } else {
+      // Use standard ethers.js contract interaction
+      console.log('Using standard ethers.js contract call to end election');
+      
+      const tx = await connectedContract.endElection();
+      const receipt = await tx.wait();
+      
+      console.log('Election ended on blockchain');
+      return { success: true, txHash: receipt.transactionHash };
+    }
   } catch (error) {
     console.error('Error ending election on blockchain:', error.message);
     return { success: false, error: error.message };

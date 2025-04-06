@@ -439,8 +439,36 @@ exports.addCandidate = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!firstName || !lastName || !age || !gender || !partyName || !electionType) {
+    if (!firstName || !lastName || !age || !gender || !partyName) {
       return res.status(400).json({ message: 'Please provide all required fields' });
+    }
+
+    // Check if election exists and get its type
+    let election = null;
+    let actualElectionType = electionType;
+    
+    if (electionId && mongoose.Types.ObjectId.isValid(electionId)) {
+      try {
+        election = await Election.findById(electionId);
+        if (election) {
+          console.log(`Found election: ${election.title}, type: ${election.type}`);
+          // Use election's type if available
+          actualElectionType = election.type || electionType;
+        } else {
+          console.warn(`Election with ID ${electionId} not found`);
+        }
+      } catch (electionError) {
+        console.error('Error finding election:', electionError);
+        // Continue without election association if not found
+      }
+    }
+    
+    // Ensure we have a valid election type
+    if (!actualElectionType) {
+      return res.status(400).json({ 
+        message: 'Election type is required',
+        details: 'Either specify electionType or provide a valid electionId'
+      });
     }
 
     // Create new candidate
@@ -452,14 +480,15 @@ exports.addCandidate = async (req, res) => {
       gender,
       dateOfBirth,
       partyName,
-      electionType,
+      electionType: actualElectionType,
       constituency,
       manifesto,
       education,
       experience,
       criminalRecord: criminalRecord || 'None',
       email,
-      election: electionId // Make sure to associate with election
+      election: electionId, // Associate with the election
+      inActiveElection: election ? election.isActive : false // Set based on election status
     });
 
     // Process uploaded files if any
@@ -593,9 +622,13 @@ exports.getAllCandidates = async (req, res) => {
     
     console.log('Final candidate query:', JSON.stringify(query));
     
-    // Find candidates with populated election data if available
+    // Find candidates with populated election data
     const candidates = await Candidate.find(query)
-      .populate('election', 'title name type isActive isArchived')
+      .populate({
+        path: 'election',
+        select: 'title name type isActive isArchived startDate endDate totalVotes archivedAt',
+        options: { lean: true }
+      })
       .sort({ voteCount: -1, createdAt: -1 });
     
     console.log(`Found ${candidates.length} candidates matching the query`);
@@ -607,6 +640,11 @@ exports.getAllCandidates = async (req, res) => {
       // For legacy compatibility - ensure electionType is always present
       if (!candidateObj.electionType && candidateObj.election && candidateObj.election.type) {
         candidateObj.electionType = candidateObj.election.type;
+      }
+      
+      // Ensure voteCount is always at least 0
+      if (candidateObj.voteCount === undefined || candidateObj.voteCount === null) {
+        candidateObj.voteCount = 0;
       }
       
       return candidateObj;
@@ -1043,5 +1081,110 @@ exports.getDashboardData = async (req, res) => {
   } catch (error) {
     console.error('Error getting dashboard data:', error);
     res.status(500).json({ message: 'Failed to get dashboard data', error: error.message });
+  }
+};
+
+// Get candidates by election ID (specifically for archived elections)
+exports.getCandidatesByElectionId = async (req, res) => {
+  try {
+    const { electionId } = req.params;
+    console.log(`Getting candidates for election ID: ${electionId}`);
+    
+    if (!mongoose.Types.ObjectId.isValid(electionId)) {
+      return res.status(400).json({ 
+        message: 'Invalid election ID format',
+        details: 'The provided election ID is not in a valid MongoDB ObjectId format'
+      });
+    }
+    
+    // First verify the election exists
+    const election = await Election.findById(electionId);
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    console.log(`Found election: ${election.title}, type: ${election.type}, archived: ${election.isArchived}`);
+    
+    // Find candidates associated with this election - using both election ID and election type
+    // Don't filter by isArchived status to ensure we get all candidates
+    const query = { 
+      $or: [
+        // Match by direct election reference
+        { election: electionId },
+        // Match by election type as fallback
+        { electionType: election.type }
+      ]
+      // Removed isArchived filter to get all candidates associated with this election
+    };
+    
+    console.log('Candidate query:', JSON.stringify(query));
+    
+    // Find candidates for this specific election
+    const candidates = await Candidate.find(query)
+      .sort({ voteCount: -1 })
+      .lean();
+    
+    console.log(`Found ${candidates.length} candidates for election ${election.title}`);
+    
+    // If we found candidates using the election type but they don't have an election reference,
+    // update them to include the election reference for future queries
+    const candidatesNeedingElectionRef = candidates.filter(c => !c.election);
+    if (candidatesNeedingElectionRef.length > 0) {
+      console.log(`Updating ${candidatesNeedingElectionRef.length} candidates with missing election reference`);
+      
+      try {
+        // Update in background - don't wait for it to complete
+        Candidate.updateMany(
+          { electionType: election.type, election: { $exists: false } },
+          { $set: { election: electionId } }
+        ).then(result => {
+          console.log(`Updated ${result.modifiedCount} candidates with election reference`);
+        }).catch(err => {
+          console.error('Error updating candidates with election reference:', err);
+        });
+      } catch (updateError) {
+        console.error('Error updating candidates with election reference:', updateError);
+        // Continue with the response even if the update fails
+      }
+    }
+    
+    // Calculate total votes from the candidates if election doesn't have totalVotes field
+    const totalVotes = election.totalVotes || 
+      candidates.reduce((sum, candidate) => sum + (candidate.voteCount || 0), 0);
+    
+    // Format candidate data with additional details
+    const formattedCandidates = candidates.map(candidate => {
+      const percentage = totalVotes > 0 
+        ? ((candidate.voteCount || 0) / totalVotes * 100).toFixed(2) 
+        : '0.00';
+        
+      return {
+        ...candidate,
+        electionTitle: election.title,
+        electionType: election.type || candidate.electionType,
+        percentage,
+        fullName: `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`
+      };
+    });
+    
+    res.status(200).json({
+      election: {
+        _id: election._id,
+        title: election.title,
+        type: election.type,
+        startDate: election.startDate,
+        endDate: election.endDate,
+        archivedAt: election.archivedAt,
+        totalVotes
+      },
+      candidates: formattedCandidates,
+      totalCandidates: formattedCandidates.length
+    });
+  } catch (error) {
+    console.error('Error getting candidates by election ID:', error);
+    res.status(500).json({ 
+      message: 'Server error while getting candidates', 
+      error: error.message 
+    });
   }
 }; 
