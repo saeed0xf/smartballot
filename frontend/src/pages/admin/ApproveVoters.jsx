@@ -266,10 +266,16 @@ const ApproveVoters = () => {
 
   // Get image URL with proper path
   const getImageUrl = (imagePath) => {
-    if (!imagePath) return null;
+    if (!imagePath) {
+      console.log('No image path provided');
+      return null;
+    }
+    
+    console.log('Original image path:', imagePath);
     
     // If the path already includes http(s), it's a complete URL
     if (imagePath.startsWith('http')) {
+      console.log('Using complete URL:', imagePath);
       return imagePath;
     }
     
@@ -281,7 +287,9 @@ const ApproveVoters = () => {
     const cleanPath = imagePath.startsWith('/') ? imagePath.substring(1) : imagePath;
     
     // Make sure the path is correctly formatted
-    return `${baseUrl}/${cleanPath}`;
+    const finalUrl = `${baseUrl}/${cleanPath}`;
+    console.log('Constructed image URL:', finalUrl);
+    return finalUrl;
   };
 
   return (
@@ -516,7 +524,9 @@ const ApproveVoters = () => {
                             cursor: 'pointer'
                           }}
                           onClick={() => {
-                            setPreviewImageUrl(getImageUrl(selectedVoter.voterIdImage));
+                            const imageUrl = getImageUrl(selectedVoter.voterIdImage);
+                            console.log('Opening image in modal:', imageUrl);
+                            setPreviewImageUrl(imageUrl);
                             setShowImageModal(true);
                           }}
                           onError={(e) => {
@@ -528,7 +538,18 @@ const ApproveVoters = () => {
                           }}
                         />
                         <div className="d-flex justify-content-between align-items-center mt-2">
-                          <small className="text-muted">Click to enlarge</small>
+                          <Button 
+                            variant="outline-primary" 
+                            size="sm"
+                            onClick={() => {
+                              const imageUrl = getImageUrl(selectedVoter.voterIdImage);
+                              console.log('Opening image in modal via button:', imageUrl);
+                              setPreviewImageUrl(imageUrl);
+                              setShowImageModal(true);
+                            }}
+                          >
+                            Click to enlarge
+                          </Button>
                           <Button 
                             variant="outline-secondary" 
                             size="sm"
@@ -622,29 +643,41 @@ const ApproveVoters = () => {
           <Modal.Title>Voter ID Image</Modal.Title>
         </Modal.Header>
         <Modal.Body className="text-center p-0">
-          {previewImageUrl && (
+          {previewImageUrl ? (
             <img 
               src={previewImageUrl}
               alt="Voter ID Full Size" 
               className="img-fluid"
               style={{ maxHeight: '80vh' }}
+              onLoad={() => console.log('Image loaded successfully in modal')}
+              onError={(e) => {
+                console.error('Failed to load image in modal:', previewImageUrl);
+                e.target.onerror = null; // Prevent infinite loop
+                e.target.src = 'https://via.placeholder.com/800x600?text=Image+Failed+to+Load';
+              }}
             />
+          ) : (
+            <div className="p-5 text-center">
+              <p>No image available to preview</p>
+            </div>
           )}
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowImageModal(false)}>
             Close
           </Button>
-          <Button 
-            variant="primary" 
-            as="a"
-            href={previewImageUrl}
-            download
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Download
-          </Button>
+          {previewImageUrl && (
+            <Button 
+              variant="primary" 
+              as="a"
+              href={previewImageUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Download
+            </Button>
+          )}
         </Modal.Footer>
       </Modal>
     </Layout>
