@@ -82,19 +82,26 @@ const VoterRegistration = () => {
         throw new Error('Wallet not connected. Please connect your MetaMask wallet.');
       }
 
-      // Create form data
-      const formData = new FormData();
-      formData.append('firstName', values.firstName);
-      formData.append('middleName', values.middleName || '');
-      formData.append('lastName', values.lastName);
-      formData.append('fatherName', values.fatherName);
-      formData.append('gender', values.gender);
-      formData.append('dateOfBirth', values.dateOfBirth);
-      formData.append('email', values.email);
-      formData.append('voterId', values.voterId);
-      formData.append('walletAddress', walletAddress);
+      // Check if the voter ID image is set
+      if (!values.voterIdImage) {
+        throw new Error('Voter ID image is required.');
+      }
 
-      // Calculate age from date of birth
+      // Create a simplified form data object
+      const formData = new FormData();
+      
+      // Add all text fields
+      Object.keys(values).forEach(key => {
+        // Skip the file field, we'll handle it separately
+        if (key !== 'voterIdImage') {
+          formData.append(key, values[key] === undefined ? '' : values[key]);
+        }
+      });
+      
+      // Add wallet address
+      formData.append('walletAddress', walletAddress);
+      
+      // Calculate and add age
       const birthDate = new Date(values.dateOfBirth);
       const today = new Date();
       let age = today.getFullYear() - birthDate.getFullYear();
@@ -104,28 +111,72 @@ const VoterRegistration = () => {
       }
       formData.append('age', age);
 
-      // Add voter ID image
-      if (values.voterIdImage) {
-        console.log('Adding voter ID image:', values.voterIdImage.name);
-        formData.append('voterIdImage', values.voterIdImage);
+      // Add the file last to ensure it's properly attached
+      if (values.voterIdImage instanceof File) {
+        console.log('Adding voter ID image:', values.voterIdImage.name, 'Size:', values.voterIdImage.size, 'Type:', values.voterIdImage.type);
+        
+        // Explicitly set the file name as the third parameter to help some browsers
+        // This ensures the file name is preserved properly during upload
+        formData.append('voterIdImage', values.voterIdImage, values.voterIdImage.name);
+        
+        // Verify the file was actually added to the FormData
+        let fileAttached = false;
+        for (let [key, value] of formData.entries()) {
+          if (key === 'voterIdImage' && value instanceof File) {
+            fileAttached = true;
+            console.log('Confirmed file is attached to FormData');
+            break;
+          }
+        }
+        
+        if (!fileAttached) {
+          console.error('File appears to not be properly attached to FormData');
+          throw new Error('Error attaching file to form. Please try again with a different image.');
+        }
       } else {
-        console.log('No voter ID image provided');
+        throw new Error('Invalid voter ID image. Please select a valid image file.');
       }
 
-      // Log formData entries for debugging
+      // Debug: Log all form data entries
+      console.log('Form data contents:');
       for (let [key, value] of formData.entries()) {
-        console.log(`FormData: ${key} = ${value instanceof File ? value.name : value}`);
+        const displayValue = value instanceof File 
+          ? `[File] name: ${value.name}, type: ${value.type}, size: ${value.size} bytes` 
+          : value;
+        console.log(`${key}: ${displayValue}`);
       }
 
-      // Submit registration
-      await registerVoter(formData);
-
-      toast.success('Registration submitted successfully! Please wait for admin approval.');
-      resetForm();
-      navigate('/');
+      // Make the API request
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+      console.log(`Sending registration request to: ${apiUrl}/voter/register`);
+      
+      try {
+        // Use the fetch API instead of axios for more reliable file uploads
+        const response = await fetch(`${apiUrl}/voter/register`, {
+          method: 'POST',
+          body: formData, // FormData handles the Content-Type automatically
+        });
+        
+        // Check if the response is ok (status in the range 200-299)
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || `Server responded with status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Registration response:', data);
+        toast.success('Registration submitted successfully! Please wait for admin approval.');
+        resetForm();
+        navigate('/');
+      } catch (fetchError) {
+        console.error('Fetch error:', fetchError);
+        
+        throw new Error(fetchError.message || 'Registration failed. Please try again.');
+      }
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
+      setError(err.message || 'Registration failed. Please try again.');
+      toast.error(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
       setSubmitting(false);
@@ -349,7 +400,52 @@ const VoterRegistration = () => {
                       name="voterIdImage"
                       accept="image/*"
                       onChange={(e) => {
-                        setFieldValue('voterIdImage', e.currentTarget.files[0]);
+                        if (e.currentTarget.files && e.currentTarget.files[0]) {
+                          // Process the file to ensure it's properly handled
+                          const file = e.currentTarget.files[0];
+                          
+                          // Log detailed file information for debugging
+                          console.log('Selected file details:', {
+                            name: file.name,
+                            size: file.size,
+                            type: file.type,
+                            lastModified: file.lastModified
+                          });
+                          
+                          // Validate file size
+                          if (file.size > 5 * 1024 * 1024) {
+                            toast.error('File is too large. Maximum file size is 5MB.');
+                            setFieldValue('voterIdImage', null);
+                            return;
+                          }
+                          
+                          // Validate file type
+                          const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+                          if (!validTypes.includes(file.type)) {
+                            toast.error('Invalid file type. Please upload JPG, PNG, or GIF image.');
+                            setFieldValue('voterIdImage', null);
+                            return;
+                          }
+                          
+                          // Use FileReader to verify the file can be processed
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            // File was successfully read
+                            console.log('File successfully loaded');
+                            setFieldValue('voterIdImage', file);
+                          };
+                          reader.onerror = () => {
+                            console.error('Error reading file');
+                            toast.error('Error processing file. Please try another file.');
+                            setFieldValue('voterIdImage', null);
+                          };
+                          
+                          // Read the file as data URL
+                          reader.readAsDataURL(file);
+                        } else {
+                          console.log('No file selected');
+                          setFieldValue('voterIdImage', null);
+                        }
                       }}
                       isInvalid={touched.voterIdImage && errors.voterIdImage}
                     />
@@ -357,7 +453,7 @@ const VoterRegistration = () => {
                       {errors.voterIdImage}
                     </Form.Control.Feedback>
                     <Form.Text className="text-muted">
-                      Please upload a clear image of your voter ID card.
+                      Please upload a clear image of your voter ID card (JPG, PNG, or GIF, max 5MB).
                     </Form.Text>
                   </Form.Group>
 

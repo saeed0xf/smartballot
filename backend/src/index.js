@@ -5,6 +5,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const fileUpload = require('express-fileupload');
+const bodyParser = require('body-parser');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -17,22 +18,62 @@ const blockchainRoutes = require('./routes/blockchain.routes');
 // Create Express app
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Configure CORS with detailed options
+const corsOptions = {
+  origin: '*',
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
 
-// File upload middleware
+// Detailed error handling and validation
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Body parser middleware
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+
+// File upload middleware with detailed error handling
 app.use(fileUpload({
   createParentPath: true,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max file size
+  limits: { 
+    fileSize: 10 * 1024 * 1024 // 10MB max file size
+  },
+  abortOnLimit: true,
+  responseOnLimit: 'File size limit has been reached (10MB)',
+  useTempFiles: true,
+  tempFileDir: path.join(__dirname, '../temp'),
+  parseNested: true, // Parse nested form data
+  debug: true // Enable debug mode for file uploads
 }));
 
-// Create uploads directory if it doesn't exist
+// Create temp and uploads directories if they don't exist
+const tempDir = path.join(__dirname, '../temp');
 const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+
+[tempDir, uploadsDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    console.log(`Creating directory: ${dir}`);
+    fs.mkdirSync(dir, { recursive: true });
+  } else {
+    console.log(`Directory exists: ${dir}`);
+    // Log directory permissions
+    try {
+      const stats = fs.statSync(dir);
+      console.log(`Directory permissions: ${stats.mode.toString(8)}`);
+    } catch (err) {
+      console.error(`Error checking directory permissions: ${err.message}`);
+    }
+  }
+});
 
 // Serve uploaded files
 app.use('/uploads', express.static(uploadsDir));
@@ -130,6 +171,28 @@ mongoose.connect(MONGODB_URI, mongooseOptions)
     });
   });
 
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Global error handler caught:', err);
+  res.status(500).json({
+    message: 'An unexpected error occurred',
+    details: err.message
+  });
+});
+
+// Health check route
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' 
+  });
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Promise Rejection:', err);
+});
+
 // For debugging - Print registered routes
 app._router.stack.forEach((middleware) => {
   if (middleware.route) {
@@ -145,17 +208,4 @@ app._router.stack.forEach((middleware) => {
       }
     });
   }
-});
-
-// Health check route
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' 
-  });
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Promise Rejection:', err);
 }); 

@@ -283,10 +283,27 @@ export const AuthProvider = ({ children }) => {
       setError(null);
 
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
-      const response = await axios.post(`${apiUrl}/voter/register`, voterData); 
-
-      console.log('Voter registration response:', response.data);
-      return response.data;
+      
+      // Check if voterData is FormData
+      if (voterData instanceof FormData) {
+        console.log('Sending FormData to the server...');
+        // If it's FormData, ensure we set the correct headers
+        const response = await axios.post(`${apiUrl}/voter/register`, voterData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        console.log('Voter registration response:', response.data);
+        return response.data;
+      } else {
+        // For backward compatibility, handle regular JSON data
+        console.log('Sending JSON data to the server...');
+        const response = await axios.post(`${apiUrl}/voter/register`, voterData);
+        
+        console.log('Voter registration response:', response.data);
+        return response.data;
+      }
     } catch (err) {
       console.error('Error registering voter:', err);
       setError(err.message || 'Failed to register voter');

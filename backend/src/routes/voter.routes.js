@@ -2,12 +2,23 @@ const express = require('express');
 const router = express.Router();
 const voterController = require('../controllers/voter.controller');
 const { verifyToken, isVoter } = require('../middleware/auth.middleware');
-const upload = require('../middleware/upload.middleware');
 
-// Register voter profile
+// Register voter profile - using express-fileupload (no middleware needed)
 router.post(
   '/register',
-  upload.single('voterIdImage'),
+  (req, res, next) => {
+    console.log('Processing voter registration request');
+    console.log('Content-Type:', req.headers['content-type']);
+    
+    // If using express-fileupload, the file will be in req.files
+    if (req.files && req.files.voterIdImage) {
+      console.log('File detected in request:', req.files.voterIdImage.name);
+    } else {
+      console.log('No file detected in req.files');
+    }
+    
+    next();
+  },
   voterController.registerVoter
 );
 
@@ -19,7 +30,6 @@ router.put(
   '/profile',
   verifyToken,
   isVoter,
-  upload.single('voterIdImage'),
   voterController.updateVoterProfile
 );
 

@@ -1,6 +1,7 @@
 {
   "dependencies": {
-    "dateformat": "^5.0.3"
+    "dateformat": "^5.0.3",
+    "express-form-data": "^2.0.23"
   },
   "scripts": {
     "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
