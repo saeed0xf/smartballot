@@ -57,14 +57,18 @@ router.post('/elections/check-status', async (req, res) => {
 });
 
 // Voter management
+router.get('/voters/:voterId', adminController.getVoterDetails);
 router.get('/voters', adminController.getAllVoters || ((req, res) => {
   res.status(200).json({ message: 'Get voters placeholder', data: [] });
 }));
-router.put('/voters/:id/approve', adminController.approveVoter || ((req, res) => {
-  res.status(200).json({ message: 'Approve voter placeholder', id: req.params.id });
+router.put('/voters/:voterId/approve', adminController.approveVoter || ((req, res) => {
+  res.status(200).json({ message: 'Approve voter placeholder', id: req.params.voterId });
 }));
-router.put('/voters/:id/reject', adminController.rejectVoter || ((req, res) => {
-  res.status(200).json({ message: 'Reject voter placeholder', id: req.params.id });
+router.put('/voters/:voterId/approve-complete', adminController.approveVoterComplete || ((req, res) => {
+  res.status(200).json({ message: 'Complete voter approval placeholder', id: req.params.voterId });
+}));
+router.put('/voters/:voterId/reject', adminController.rejectVoter || ((req, res) => {
+  res.status(200).json({ message: 'Reject voter placeholder', id: req.params.voterId });
 }));
 
 // Results
