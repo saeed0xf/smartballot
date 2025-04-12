@@ -236,42 +236,37 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Sign message with MetaMask - using eth_sendTransaction for user approval   
+  // Sign message with MetaMask - using personal_sign for authentication
   const signMessage = async (address, nonce) => {
     try {
       console.log('Authenticating with address:', address, 'and nonce:', nonce);
-
-      // Instead of signing a message, we'll send a 0 ETH transaction to the user's own address
-      // This will trigger the MetaMask popup for approval
-      console.log('Using eth_sendTransaction method for user approval...');     
-
+      
+      // Create the message to sign
+      const message = `VoteSure Authentication: ${nonce}`;
+      console.log('Message to sign:', message);
+      
+      // Convert message to hex
+      const msgHex = ethers.utils.hexlify(ethers.utils.toUtf8Bytes(message));
+      
+      // Use personal_sign method - this will trigger MetaMask popup without the data restriction
+      console.log('Using personal_sign method for user approval...');
+      
       // Make sure the address is checksummed
       const checksummedAddress = ethers.utils.getAddress(address);
       console.log('Using checksummed address:', checksummedAddress);
       
-      // Create a transaction object - sending 0 ETH to self
-      const transactionParameters = {
-        to: checksummedAddress, // sending to self
-        from: checksummedAddress, // from the user's address
-        value: '0x0', // 0 ETH
-        // Include the nonce in the data field for verification
-        data: ethers.utils.hexlify(ethers.utils.toUtf8Bytes(`VoteSure Authentication: ${nonce}`))
-      };
-
-      console.log('Transaction parameters:', transactionParameters);
-
-      // Send the transaction - this will prompt the user for approval
-      const txHash = await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [transactionParameters],
+      // Sign the message - this will prompt the user for approval
+      const signature = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [msgHex, checksummedAddress]
       });
-
-      console.log('Transaction hash received:', txHash);
-
-      // Use the transaction hash as the signature
-      return txHash;
+      
+      console.log('Signature received:', signature);
+      
+      // Return the signature
+      return signature;
     } catch (err) {
-      console.error('Error during transaction:', err);
+      console.error('Error during message signing:', err);
       throw new Error(`Failed to authenticate: ${err.message || 'Unknown error'}`);
     }
   };

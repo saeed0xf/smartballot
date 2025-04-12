@@ -70,11 +70,11 @@ exports.login = async (req, res) => {
     const { address, signature } = req.body;
     
     console.log('Login attempt with address:', address);
-    console.log('Transaction hash provided:', signature ? signature : 'No');
+    console.log('Signature provided:', signature ? 'Yes' : 'No');
     
     if (!address || !signature) {
-      console.log('Missing address or transaction hash');
-      return res.status(400).json({ message: 'Address and transaction hash are required' });
+      console.log('Missing address or signature');
+      return res.status(400).json({ message: 'Address and signature are required' });
     }
     
     // Get the nonce for this address
@@ -86,11 +86,29 @@ exports.login = async (req, res) => {
     
     console.log('Found nonce for address:', address, 'Nonce:', nonce);
     
-    // For transaction-based authentication, we'll skip the signature verification
-    // In a production environment, you would verify the transaction on the blockchain
-    // to ensure it was actually sent by the user
-    console.log('Transaction hash received:', signature);
-    console.log('Skipping transaction verification for development');
+    // Verify the signature
+    try {
+      // Recreate the message that was signed
+      const message = `VoteSure Authentication: ${nonce}`;
+      console.log('Verifying message:', message);
+      
+      // Recover the address from the signature
+      const recoveredAddress = ethers.utils.verifyMessage(message, signature);
+      console.log('Recovered address from signature:', recoveredAddress);
+      
+      // Check if the recovered address matches the claimed address
+      if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
+        console.log('Signature verification failed. Addresses do not match.');
+        console.log('Recovered:', recoveredAddress.toLowerCase());
+        console.log('Claimed:', address.toLowerCase());
+        return res.status(401).json({ message: 'Invalid signature' });
+      }
+      
+      console.log('Signature verified successfully');
+    } catch (verifyError) {
+      console.error('Signature verification error:', verifyError);
+      return res.status(401).json({ message: 'Failed to verify signature' });
+    }
     
     // Check if this is the admin address
     const adminAddress = process.env.ADMIN_WALLET_ADDRESS;

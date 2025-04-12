@@ -26,6 +26,29 @@ This document summarizes the key changes made to the VoteSure election managemen
   - Modified controller functions to extract and pass MetaMask address
   - Enhanced frontend to properly handle MetaMask connections
 
+### 4. Voter Management Functionality
+- **Issue**: 404 errors when trying to view voter details or approve/reject voters
+- **Resolution**:
+  - Fixed missing route for `/admin/voters/:voterId` to retrieve voter details
+  - Updated route parameter names from `:id` to `:voterId` across voter-related routes to match controller expectations
+  - Enhanced error handling for voter management operations
+
+### 5. Voter ID Image Preview
+- **Issue**: "Click to enlarge" functionality not working in voter details
+- **Resolution**:
+  - Replaced static text with interactive button component
+  - Added proper event handlers for image preview modal
+  - Enhanced image URL construction with better logging and validation
+  - Improved error handling for image loading failures
+
+### 6. MetaMask Authentication Error
+- **Issue**: Login error "External transactions to internal accounts cannot include data" when trying to authenticate with voter wallet
+- **Resolution**:
+  - Changed authentication method from `eth_sendTransaction` to `personal_sign` in the `signMessage` function
+  - Updated backend to verify signatures using `ethers.utils.verifyMessage`
+  - This avoids MetaMask's restriction on sending data to your own address in transactions
+  - Improved error handling and logging for authentication process
+
 ## Detailed Changes by Component
 
 ### Backend Changes
@@ -58,7 +81,20 @@ This document summarizes the key changes made to the VoteSure election managemen
   - Archive candidates while preserving election references
   - Calculate total votes for historical reporting
 
-#### 3. Blockchain Integration
+#### 3. Admin Routes
+- Fixed route parameter mismatch:
+  - Updated all voter-related routes to use `:voterId` instead of `:id`
+  - Added missing GET route for retrieving voter details
+  - Ensured consistent route naming across the admin API
+
+#### 4. Auth Controller
+- Enhanced login authentication:
+  - Updated to verify signatures using `ethers.utils.verifyMessage`
+  - Added proper error handling for signature verification
+  - Improved logging for authentication process
+  - Replaced transaction verification with cryptographic signature verification
+
+#### 5. Blockchain Integration
 - Updated `startElectionOnBlockchain` to:
   - Support both MetaMask and server-side transactions
   - Use `eth_sendTransaction` when MetaMask is detected
@@ -100,6 +136,25 @@ This document summarizes the key changes made to the VoteSure election managemen
   - Proper loading states and error handling
   - Better user feedback
 
+#### 3. ApproveVoters.jsx
+- Fixed image preview functionality:
+  - Replaced static text with proper interactive button
+  - Added comprehensive console logging for debugging
+  - Improved image URL path construction
+  - Enhanced error handling for image loading failures
+
+- Improved voter details modal:
+  - Added better conditional rendering for missing images
+  - Enhanced UI for voter information display
+  - Added proper fallback for image loading errors
+
+#### 4. AuthContext.jsx
+- Improved authentication mechanism:
+  - Changed from `eth_sendTransaction` to `personal_sign` for authentication
+  - Enhanced error handling for MetaMask interactions
+  - Added better logging throughout the authentication process
+  - Fixed compatibility with MetaMask's security restrictions
+
 ## Database Schema Updates
 - Ensured consistent use of:
   - `election` field (ObjectId reference) in candidate document
@@ -109,7 +164,8 @@ This document summarizes the key changes made to the VoteSure election managemen
 
 ## API Endpoints
 - Added dedicated endpoint for retrieving candidates by election ID
+- Fixed missing endpoint for retrieving voter details by ID
 - Ensured consistent response format with additional metadata
 - Enhanced error handling across all endpoints
 
-This change log captures the main enhancements to the VoteSure system, focusing particularly on election management, candidate association, and blockchain integration. 
+This change log captures the main enhancements to the VoteSure system, focusing particularly on election management, candidate association, blockchain integration, and voter management. 
