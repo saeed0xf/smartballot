@@ -1,0 +1,107 @@
+/* Additional styling for the VoteSure Face Verification UI */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.card {
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.card-header {
+    background: linear-gradient(to right, #3f51b5, #5677fc);
+    color: white;
+    border-bottom: none;
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    padding: 0.75rem 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: white;
+    color: #3f51b5;
+    border-radius: 6px 6px 0 0;
+}
+
+.nav-tabs .nav-link:hover:not(.active) {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.btn-primary {
+    background-color: #3f51b5;
+    border-color: #3f51b5;
+}
+
+.btn-primary:hover, .btn-primary:focus {
+    background-color: #303f9f;
+    border-color: #303f9f;
+}
+
+.camera-box {
+    transition: all 0.3s ease;
+    border-radius: 8px;
+}
+
+.upload-box {
+    transition: all 0.3s ease;
+    border-radius: 8px;
+}
+
+.verification-result {
+    transition: all 0.3s ease;
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.progress {
+    border-radius: 15px;
+    height: 20px;
+    background-color: #e9ecef;
+}
+
+.progress-bar {
+    border-radius: 15px;
+    transition: width 0.6s ease;
+}
+
+.display-4 {
+    font-weight: 600;
+    color: #303f9f;
+}
+
+.list-group-item {
+    border-left: none;
+    border-right: none;
+}
+
+.list-group-item:first-child {
+    border-top: none;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.alert {
+    border-radius: 8px;
+}
+
+@media (max-width: 768px) {
+    .camera-box, .upload-box {
+        width: 100%;
+        max-width: 320px;
+    }
+} 

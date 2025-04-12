@@ -49,6 +49,15 @@ This document summarizes the key changes made to the VoteSure election managemen
   - This avoids MetaMask's restriction on sending data to your own address in transactions
   - Improved error handling and logging for authentication process
 
+### 7. Face Verification for Voter Identity
+- **Issue**: Need for reliable voter identity verification beyond traditional methods
+- **Resolution**:
+  - Created a dedicated AI module with face verification capabilities
+  - Implemented a FastAPI backend with deepface for face recognition
+  - Built a user-friendly web interface for comparing face images
+  - Added support for both webcam capture and image upload
+  - Implemented comprehensive error handling and detailed verification results
+
 ## Detailed Changes by Component
 
 ### Backend Changes
@@ -105,6 +114,14 @@ This document summarizes the key changes made to the VoteSure election managemen
   - Improved error handling and logging
   - Better response information
 
+#### 6. AI Face Verification Module
+- Created dedicated AI module with:
+  - FastAPI backend for face verification services
+  - Deepface integration for accurate face recognition
+  - Endpoints for both file uploads and base64 image data
+  - Temporary storage management for security
+  - Comprehensive logging and error handling
+
 ### Frontend Changes
 
 #### 1. ArchivedElections.jsx
@@ -155,6 +172,14 @@ This document summarizes the key changes made to the VoteSure election managemen
   - Added better logging throughout the authentication process
   - Fixed compatibility with MetaMask's security restrictions
 
+#### 5. Face Verification Web UI
+- Created responsive web interface for face verification:
+  - Webcam integration for capturing face images
+  - Image upload functionality with drag and drop support
+  - Real-time face verification with visual feedback
+  - Detailed results display with similarity scores and technical details
+  - Comprehensive error handling and user guidance
+
 ## Database Schema Updates
 - Ensured consistent use of:
   - `election` field (ObjectId reference) in candidate document
@@ -167,5 +192,17 @@ This document summarizes the key changes made to the VoteSure election managemen
 - Fixed missing endpoint for retrieving voter details by ID
 - Ensured consistent response format with additional metadata
 - Enhanced error handling across all endpoints
+- Added face verification endpoints:
+  - `/api/verify-face` for file uploads
+  - `/api/verify-face-base64` for base64 encoded images
 
-This change log captures the main enhancements to the VoteSure system, focusing particularly on election management, candidate association, blockchain integration, and voter management. 
+## New Components
+- **AI Module**: Created a new face verification module:
+  - `main.py`: FastAPI application with face verification endpoints
+  - `templates/index.html`: Web interface for face verification
+  - `static/style.css`: Enhanced styling for the web UI
+  - `run.py`: Helper script for starting the API server
+  - `requirements.txt`: Dependencies for the AI module
+  - Detailed documentation in `README.md`
+
+This change log captures the main enhancements to the VoteSure system, focusing particularly on election management, candidate association, blockchain integration, voter management, and identity verification. 
