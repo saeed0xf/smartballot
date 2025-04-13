@@ -144,7 +144,12 @@ def main():
                 host="0.0.0.0",
                 port=port,
                 reload=False,
-                log_level="info"
+                log_level="info",
+                limit_concurrency=10,  # Limit concurrent connections
+                timeout_keep_alive=120,  # Longer keep-alive timeout
+                # Configure higher request size limits
+                http="h11",
+                ws="none"  # Disable WebSockets to save resources
             )
             # If we get here, the server started successfully
             break

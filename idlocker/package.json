@@ -1,0 +1,20 @@
+{
+  "name": "idlocker",
+  "version": "1.0.0",
+  "description": "ID Locker - Voter Management System",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd backend && npm run dev",
+    "client": "cd frontend && npm run dev",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "seed": "cd backend && npm run seed",
+    "build": "cd backend && npm run build && cd ../frontend && npm run build"
+  },
+  "keywords": ["mern", "voter", "management", "idlocker"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

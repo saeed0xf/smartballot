@@ -6,5 +6,8 @@
   "scripts": {
     "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
     "start": "node backend/src/index.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

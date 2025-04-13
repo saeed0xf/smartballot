@@ -454,13 +454,12 @@
                 }
             }
             
-            // Handle file selection (reference)
+            // Handle file selection with resize option for large images
             referenceFile.addEventListener('change', function(e) {
                 handleFileSelect(e, 'reference');
                 updateVerifyButtonState();
             });
             
-            // Handle file selection (verification)
             verificationFile.addEventListener('change', function(e) {
                 handleFileSelect(e, 'verification');
                 updateVerifyButtonState();
@@ -527,7 +526,7 @@
                 });
             });
             
-            // Process selected file
+            // Process selected file with resize option for large images
             function handleFileSelect(event, type) {
                 const file = event.target.files[0];
                 if (file && file.type.match('image.*')) {
@@ -536,20 +535,72 @@
                     reader.onload = function(e) {
                         const imageUrl = e.target.result;
                         
-                        if (type === 'reference') {
-                            referenceUploadImg.src = imageUrl;
-                            referenceUploadBox.style.display = 'none';
-                            referenceUploadPreview.style.display = 'flex';
-                            referenceUploadImage = imageUrl;
-                        } else {
-                            verificationUploadImg.src = imageUrl;
-                            verificationUploadBox.style.display = 'none';
-                            verificationUploadPreview.style.display = 'flex';
-                            verificationUploadImage = imageUrl;
-                        }
+                        // Create an image element to get dimensions
+                        const img = new Image();
+                        img.onload = function() {
+                            // Log original image dimensions
+                            console.log(`Original image dimensions: ${img.width}x${img.height}, size: ${Math.round(file.size / 1024)} KB`);
+                            
+                            // Check if image is very large
+                            const MAX_WIDTH = 1200;
+                            const MAX_HEIGHT = 1200;
+                            
+                            let finalImageUrl = imageUrl;
+                            
+                            // Resize large images to improve performance
+                            if (img.width > MAX_WIDTH || img.height > MAX_HEIGHT || file.size > 5 * 1024 * 1024) {
+                                console.log('Image is large, resizing before upload...');
+                                
+                                // Create canvas for resizing
+                                const canvas = document.createElement('canvas');
+                                let width = img.width;
+                                let height = img.height;
+                                
+                                // Calculate new dimensions
+                                if (width > height) {
+                                    if (width > MAX_WIDTH) {
+                                        height *= MAX_WIDTH / width;
+                                        width = MAX_WIDTH;
+                                    }
+                                } else {
+                                    if (height > MAX_HEIGHT) {
+                                        width *= MAX_HEIGHT / height;
+                                        height = MAX_HEIGHT;
+                                    }
+                                }
+                                
+                                // Set canvas size
+                                canvas.width = width;
+                                canvas.height = height;
+                                
+                                // Draw resized image on canvas
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, width, height);
+                                
+                                // Get resized image as data URL (JPEG with 90% quality)
+                                finalImageUrl = canvas.toDataURL('image/jpeg', 0.9);
+                                console.log(`Resized image dimensions: ${width}x${height}`);
+                            }
+                            
+                            // Set image preview and store for submission
+                            if (type === 'reference') {
+                                referenceUploadImg.src = finalImageUrl;
+                                referenceUploadBox.style.display = 'none';
+                                referenceUploadPreview.style.display = 'flex';
+                                referenceUploadImage = finalImageUrl;
+                            } else {
+                                verificationUploadImg.src = finalImageUrl;
+                                verificationUploadBox.style.display = 'none';
+                                verificationUploadPreview.style.display = 'flex';
+                                verificationUploadImage = finalImageUrl;
+                            }
+                            
+                            // Immediately update button state
+                            updateVerifyButtonState();
+                        };
                         
-                        // Immediately update button state
-                        updateVerifyButtonState();
+                        // Load the image to get dimensions
+                        img.src = imageUrl;
                     };
                     
                     reader.readAsDataURL(file);
