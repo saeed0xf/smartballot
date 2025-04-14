@@ -1,18 +1,18 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from deepface import DeepFace
 import numpy as np
 import cv2
-import tempfile
 import os
-import shutil
-from pathlib import Path
 import logging
 import base64
-from fastapi.middleware.cors import CORSMiddleware
+import aiohttp
+import asyncio
+from pathlib import Path
+import aiofiles
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,9 +22,7 @@ logger = logging.getLogger(__name__)
 ROOT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 logger.info(f"Application root directory: {ROOT_DIR}")
 
-# Define static, templates, and temp directories
-STATIC_DIR = ROOT_DIR / "static"
-TEMPLATES_DIR = ROOT_DIR / "templates"
+# Define temp directory
 TEMP_DIR = ROOT_DIR / "temp"
 
 # Create temp directory if it doesn't exist
@@ -44,18 +42,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-try:
-    # Mount static files
-    logger.info(f"Mounting static files from: {STATIC_DIR}")
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    
-    # Configure Jinja2 templates
-    logger.info(f"Loading templates from: {TEMPLATES_DIR}")
-    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-except Exception as e:
-    logger.error(f"Error setting up app directories: {e}")
-    raise
 
 def cleanup_temp_files():
     """Clean up temporary files periodically"""
@@ -86,11 +72,6 @@ async def shutdown_event():
     logger.info("Shutting down Face Verification API")
     cleanup_temp_files()
 
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    """Return the home page"""
-    return templates.TemplateResponse("index.html", {"request": request})
-
 @app.get("/healthcheck")
 async def healthcheck():
     """Simple healthcheck endpoint to verify the API is working"""
@@ -100,321 +81,504 @@ async def healthcheck():
             "name": "VoteSure Face Verification API",
             "directories": {
                 "root": str(ROOT_DIR),
-                "static": str(STATIC_DIR),
-                "templates": str(TEMPLATES_DIR),
                 "temp": str(TEMP_DIR)
             }
         }
     }
 
-@app.post("/api/verify-face")
-async def verify_face(
-    reference_image: UploadFile = File(...), 
-    verification_image: UploadFile = File(...),
+async def download_image(url, file_path):
+    """Download an image from a URL and save it to a file path"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(url, timeout=5) as response:
+                    if response.status != 200:
+                        logger.error(f"Error downloading image. Status: {response.status}, URL: {url}")
+                        return False
+                    
+                    content = await response.read()
+                    
+                    async with aiofiles.open(file_path, 'wb') as f:
+                        await f.write(content)
+                    
+                    return True
+            except aiohttp.ClientConnectorError:
+                logger.error(f"Failed to connect to image server at {url}. The service may be down.")
+                return False
+            except aiohttp.ClientError as e:
+                logger.error(f"HTTP client error when downloading image: {str(e)}")
+                return False
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout when downloading image from {url}")
+                return False
+    except Exception as e:
+        logger.error(f"Error downloading image from {url}: {str(e)}")
+        return False
+
+async def get_voter_image_url(voter_id):
+    """Get the image URL for a voter from the voter database API"""
+    try:
+        # Fetch voter data from the API
+        voter_api_url = f"http://localhost:9001/api/voters/id/{voter_id}"
+        logger.info(f"Fetching voter data from: {voter_api_url}")
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(voter_api_url, timeout=5) as response:
+                    if response.status != 200:
+                        logger.error(f"Error fetching voter data. Status: {response.status}, URL: {voter_api_url}")
+                        return None
+                    
+                    voter_data = await response.json()
+                    
+                    # Extract the photo URL from the response
+                    if "photoUrl" not in voter_data:
+                        logger.error(f"No photoUrl found in voter data: {voter_data}")
+                        return None
+                    
+                    photo_url = voter_data["photoUrl"]
+                    
+                    # Construct the full URL for the image
+                    if photo_url.startswith("http"):
+                        # If it's already a full URL, use it as is
+                        return photo_url
+                    else:
+                        # Otherwise, construct the full URL
+                        return f"http://localhost:9001{photo_url}"
+            except aiohttp.ClientConnectorError:
+                logger.error(f"Failed to connect to voter API at {voter_api_url}. The service may be down.")
+                return None
+            except aiohttp.ClientError as e:
+                logger.error(f"HTTP client error when accessing voter API: {str(e)}")
+                return None
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout when connecting to voter API at {voter_api_url}")
+                return None
+    
+    except Exception as e:
+        logger.error(f"Error getting voter image URL: {str(e)}")
+        return None
+
+@app.post("/api/verify")
+async def verify_face_with_voter_id(
+    uploaded_image: UploadFile = File(...),
+    voter_id: str = Form(...)
 ):
     """
-    Verify if two faces match
+    Verify if a face matches the reference image from the voter database
     
     Args:
-        reference_image: The reference/source face image
-        verification_image: The face image to verify against the reference
-    
+        uploaded_image: The face image uploaded by the client
+        voter_id: The voter ID to fetch the reference image from the voter database
+        
     Returns:
         JSON with verification result
     """
-    logger.info("Face verification request received")
+    logger.info(f"Face verification request received for voter ID: {voter_id}")
+    
+    # Create temporary files for the images
+    upload_path = TEMP_DIR / f"uploaded_{uploaded_image.filename}"
+    ref_path = TEMP_DIR / f"reference_{voter_id}.jpg"
     
     try:
-        # Log the file details
-        ref_size = 0
-        ver_size = 0
-        
-        # Get file size if content_length is available
-        if hasattr(reference_image, "size"):
-            ref_size = reference_image.size
-        
-        if hasattr(verification_image, "size"):
-            ver_size = verification_image.size
-            
-        logger.info(f"Reference image: {reference_image.filename}, size: {ref_size/1024 if ref_size else 'unknown'} KB")
-        logger.info(f"Verification image: {verification_image.filename}, size: {ver_size/1024 if ver_size else 'unknown'} KB")
-        
-        # Create temporary files for the images
-        ref_path = TEMP_DIR / f"ref_{reference_image.filename}"
-        ver_path = TEMP_DIR / f"ver_{verification_image.filename}"
-        
-        # Save uploaded files to temp directory
+        # Save uploaded file
         try:
-            with open(ref_path, "wb") as buffer:
+            async with aiofiles.open(upload_path, "wb") as buffer:
                 # Read in chunks to handle large files
-                chunk_size = 1024 * 1024  # 1 MB chunks
-                content = await reference_image.read(chunk_size)
-                total_bytes = 0
+                content = await uploaded_image.read()
+                await buffer.write(content)
                 
-                while content:
-                    buffer.write(content)
-                    total_bytes += len(content)
-                    content = await reference_image.read(chunk_size)
-                    
-                logger.info(f"Saved reference image, total bytes: {total_bytes/1024:.2f} KB")
-                    
-            await reference_image.seek(0)  # Reset file position
-            
-            with open(ver_path, "wb") as buffer:
-                # Read in chunks to handle large files
-                chunk_size = 1024 * 1024  # 1 MB chunks
-                content = await verification_image.read(chunk_size)
-                total_bytes = 0
-                
-                while content:
-                    buffer.write(content)
-                    total_bytes += len(content)
-                    content = await verification_image.read(chunk_size)
-                    
-                logger.info(f"Saved verification image, total bytes: {total_bytes/1024:.2f} KB")
-                    
-            await verification_image.seek(0)  # Reset file position
+            logger.info(f"Saved uploaded image: {upload_path}")
         except Exception as e:
-            logger.error(f"Error saving uploaded files: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error processing file upload: {str(e)}")
-            
-        logger.info(f"Images saved to temp directory: {ref_path}, {ver_path}")
+            logger.error(f"Error saving uploaded file: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "error": "Error processing uploaded image",
+                    "details": str(e)
+                }
+            )
         
-        # Verify faces using DeepFace with anti-spoofing enabled
+        # Fetch reference image from voter database API
+        voter_image_url = await get_voter_image_url(voter_id)
+        if not voter_image_url:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": f"Voter not found",
+                    "details": f"Could not retrieve image for voter ID: {voter_id}"
+                }
+            )
+        
+        logger.info(f"Fetching reference image from: {voter_image_url}")
+        
+        download_success = await download_image(voter_image_url, ref_path)
+        if not download_success:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": "Reference image unavailable",
+                    "details": f"Could not download reference image for voter ID: {voter_id}"
+                }
+            )
+        
+        logger.info(f"Reference image downloaded and saved to: {ref_path}")
+        
+        # Verify faces using DeepFace
         try:
-            logger.info("Starting face verification with DeepFace (anti-spoofing enabled)")
+            logger.info("Starting face verification with DeepFace")
             result = DeepFace.verify(
-                img1_path=str(ref_path),
-                img2_path=str(ver_path),
+                img1_path=str(upload_path),
+                img2_path=str(ref_path),
                 model_name="VGG-Face",
                 distance_metric="cosine",
-                anti_spoofing=True  # Enable DeepFace's built-in anti-spoofing
+                detector_backend="opencv",
+                anti_spoofing=True
             )
             
             logger.info(f"Verification result: {result}")
             
-            # Return the verification result
-            return {
+            # Calculate similarity score
+            similarity_score = (1 - result["distance"]) * 100
+            
+            # Return the verification result with appropriate message
+            response_data = {
+                "success": True,
                 "verified": result["verified"],
                 "distance": result["distance"],
                 "threshold": result["threshold"],
                 "model": result["model"],
                 "detector_backend": result.get("detector_backend", "opencv"),
-                "similarity_score": (1 - result["distance"]) * 100,  # Convert distance to similarity percentage
-                "anti_spoofing": {
-                    "real": True  # If we got here, anti-spoofing check passed
-                }
+                "similarity_score": similarity_score,
+                "voter_id": voter_id
             }
+            
+            # Add appropriate message based on verification result
+            if result["verified"]:
+                response_data["message"] = "Face verification successful. Identity confirmed."
+            else:
+                response_data["message"] = "Face verification failed. This does not match the registered voter."
+            
+            return response_data
             
         except Exception as e:
             error_message = str(e)
             logger.error(f"DeepFace verification error: {error_message}")
             
-            # Check for spoofing detection - expanded error patterns
+            # Check for spoofing detection
             if ("spoofed image" in error_message.lower() or 
                 "fake face" in error_message.lower()):
-                
-                # Clear spoofing detection messages
                 logger.warning(f"Explicit spoofing detected: {error_message}")
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Spoofing detected. Please use a real face image, not a photo of a display or printed image."
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Spoofing detected",
+                        "message": "Please use a real face image, not a photo of a display or printed image.",
+                        "details": error_message
+                    }
                 )
             
-            # Generic "Exception while processing" - likely spoofing but could be other issues
-            elif "exception while processing img" in error_message.lower():
-                # Determine which image had the issue
-                if "img1_path" in error_message:
-                    problem_image = "reference"
-                elif "img2_path" in error_message:
-                    problem_image = "verification"
-                else:
-                    problem_image = "one or both"
-                
-                logger.warning(f"Possible spoofing or image processing error in {problem_image} image: {error_message}")
-                
-                # Return a more general error that covers both possibilities
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Unable to process the {problem_image} image. This may be due to spoofing detection or image quality issues. Please provide a clear, non-manipulated face image."
+            # Handle exceptions related to processing in the uploaded image (likely spoofing)
+            elif "exception while processing img1_path" in error_message.lower():
+                logger.warning(f"Potential spoofing detected in uploaded image: {error_message}")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Potential spoofing detected",
+                        "message": "The system detected potential spoofing in the uploaded image.",
+                        "details": error_message
+                    }
                 )
             
-            # Check for common errors and provide more user-friendly messages
-            if "face could not be detected" in error_message.lower():
-                raise HTTPException(status_code=400, detail="No face detected in one or both images. Please provide clear images with a visible face.")
+            # Handle exceptions related to processing in the reference image
+            elif "exception while processing img2_path" in error_message.lower():
+                logger.warning(f"Issue with reference image: {error_message}")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Reference image issue",
+                        "message": "There is an issue with the stored reference image.",
+                        "details": error_message
+                    }
+                )
+            
+            # Common face detection errors
+            elif "face could not be detected" in error_message.lower():
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "No face detected",
+                        "message": "No face detected in one or both images. Please provide a clear image with a visible face.",
+                        "details": error_message
+                    }
+                )
             elif "more than one face" in error_message.lower():
-                raise HTTPException(status_code=400, detail="Multiple faces detected in the image. Please provide an image with only one face.")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Multiple faces detected",
+                        "message": "Multiple faces detected in the image. Please provide an image with only one face.",
+                        "details": error_message
+                    }
+                )
             else:
-                raise HTTPException(status_code=400, detail=f"Face verification failed: {error_message}")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Verification failed",
+                        "message": "Face verification process failed.",
+                        "details": error_message
+                    }
+                )
         
     except Exception as e:
         if isinstance(e, HTTPException):
             # Re-raise HTTP exceptions with their status codes
             raise
         logger.error(f"Error processing images: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error processing images: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "Server error",
+                "message": "An unexpected error occurred during verification.",
+                "details": str(e)
+            }
+        )
     
     finally:
         # Clean up temporary files
         try:
+            if os.path.exists(upload_path):
+                os.remove(upload_path)
             if os.path.exists(ref_path):
                 os.remove(ref_path)
-            if os.path.exists(ver_path):
-                os.remove(ver_path)
         except Exception as e:
             logger.error(f"Error cleaning up temp files: {str(e)}")
 
-@app.post("/api/verify-face-base64")
-async def verify_face_base64(
-    reference_image: str = Form(...),
-    verification_image: str = Form(...)
+@app.post("/api/verify-base64")
+async def verify_face_base64_with_voter_id(
+    uploaded_image: str = Form(...),
+    voter_id: str = Form(...)
 ):
     """
-    Verify if two faces match using base64 encoded images
+    Verify if a face matches the reference image using base64 encoded image
     
     Args:
-        reference_image: Base64 encoded reference image
-        verification_image: Base64 encoded verification image
-    
+        uploaded_image: Base64 encoded image uploaded by the client
+        voter_id: The voter ID to fetch the reference image from the voter database
+        
     Returns:
         JSON with verification result
     """
-    logger.info("Face verification request received (base64)")
+    logger.info(f"Base64 face verification request received for voter ID: {voter_id}")
+    
+    # Create temporary files for the images
+    upload_path = TEMP_DIR / f"uploaded_base64_{voter_id}.jpg"
+    ref_path = TEMP_DIR / f"reference_{voter_id}.jpg"
     
     try:
-        # Decode base64 images
+        # Decode base64 image
         try:
             # Handle data URL format (e.g., "data:image/jpeg;base64,/9j/4AAQ...")
-            if reference_image.startswith('data:'):
-                reference_image = reference_image.split(',')[1]
-            
-            if verification_image.startswith('data:'):
-                verification_image = verification_image.split(',')[1]
+            if uploaded_image.startswith('data:'):
+                uploaded_image = uploaded_image.split(',')[1]
                 
-            logger.info(f"Reference image size: {len(reference_image) / 1024:.2f} KB")
-            logger.info(f"Verification image size: {len(verification_image) / 1024:.2f} KB")
+            upload_bytes = base64.b64decode(uploaded_image)
             
-            ref_bytes = base64.b64decode(reference_image)
-            ver_bytes = base64.b64decode(verification_image)
-            
-            logger.info(f"Decoded reference image size: {len(ref_bytes) / 1024:.2f} KB")
-            logger.info(f"Decoded verification image size: {len(ver_bytes) / 1024:.2f} KB")
+            async with aiofiles.open(upload_path, "wb") as f:
+                await f.write(upload_bytes)
+                
+            logger.info(f"Decoded base64 image saved to: {upload_path}")
             
         except Exception as e:
-            logger.error(f"Error decoding base64 images: {str(e)}")
-            raise HTTPException(status_code=400, detail=f"Invalid base64 image data: {str(e)}")
+            logger.error(f"Error decoding base64 image: {str(e)}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "error": "Invalid image data",
+                    "message": "The provided base64 image data is invalid or corrupted.",
+                    "details": str(e)
+                }
+            )
         
-        # Create temporary files
-        ref_path = TEMP_DIR / "ref_image.jpg"
-        ver_path = TEMP_DIR / "ver_image.jpg"
+        # Fetch reference image from voter database API
+        voter_image_url = await get_voter_image_url(voter_id)
+        if not voter_image_url:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": "Voter not found",
+                    "details": f"Could not retrieve image for voter ID: {voter_id}"
+                }
+            )
         
-        # Save decoded images
-        with open(ref_path, "wb") as f:
-            f.write(ref_bytes)
+        logger.info(f"Fetching reference image from: {voter_image_url}")
         
-        with open(ver_path, "wb") as f:
-            f.write(ver_bytes)
-            
-        logger.info(f"Base64 images saved to temp directory")
+        download_success = await download_image(voter_image_url, ref_path)
+        if not download_success:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": "Reference image unavailable",
+                    "details": f"Could not download reference image for voter ID: {voter_id}"
+                }
+            )
         
-        # Verify faces using DeepFace with anti-spoofing enabled
+        logger.info(f"Reference image downloaded and saved to: {ref_path}")
+        
+        # Verify faces using DeepFace
         try:
-            logger.info("Starting face verification with DeepFace (anti-spoofing enabled)")
+            logger.info("Starting face verification with DeepFace")
             result = DeepFace.verify(
-                img1_path=str(ref_path),
-                img2_path=str(ver_path),
+                img1_path=str(upload_path),
+                img2_path=str(ref_path),
                 model_name="VGG-Face",
                 distance_metric="cosine",
-                anti_spoofing=True  # Enable DeepFace's built-in anti-spoofing
+                detector_backend="opencv",
+                anti_spoofing=True
             )
             
             logger.info(f"Verification result: {result}")
             
-            # Return the verification result
-            return {
+            # Calculate similarity score
+            similarity_score = (1 - result["distance"]) * 100
+            
+            # Return the verification result with appropriate message
+            response_data = {
+                "success": True,
                 "verified": result["verified"],
                 "distance": result["distance"],
                 "threshold": result["threshold"],
                 "model": result["model"],
                 "detector_backend": result.get("detector_backend", "opencv"),
-                "similarity_score": (1 - result["distance"]) * 100,  # Convert distance to similarity percentage
-                "anti_spoofing": {
-                    "real": True  # If we got here, anti-spoofing check passed
-                }
+                "similarity_score": similarity_score,
+                "voter_id": voter_id
             }
+            
+            # Add appropriate message based on verification result
+            if result["verified"]:
+                response_data["message"] = "Face verification successful. Identity confirmed."
+            else:
+                response_data["message"] = "Face verification failed. This does not match the registered voter."
+            
+            return response_data
             
         except Exception as e:
             error_message = str(e)
             logger.error(f"DeepFace verification error: {error_message}")
             
-            # Check for spoofing detection - expanded error patterns
+            # Check for spoofing detection
             if ("spoofed image" in error_message.lower() or 
                 "fake face" in error_message.lower()):
-                
-                # Clear spoofing detection messages
                 logger.warning(f"Explicit spoofing detected: {error_message}")
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Spoofing detected. Please use a real face image, not a photo of a display or printed image."
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Spoofing detected",
+                        "message": "Please use a real face image, not a photo of a display or printed image.",
+                        "details": error_message
+                    }
                 )
             
-            # Generic "Exception while processing" - likely spoofing but could be other issues
-            elif "exception while processing img" in error_message.lower():
-                # Determine which image had the issue
-                if "img1_path" in error_message:
-                    problem_image = "reference"
-                elif "img2_path" in error_message:
-                    problem_image = "verification"
-                else:
-                    problem_image = "one or both"
-                
-                logger.warning(f"Possible spoofing or image processing error in {problem_image} image: {error_message}")
-                
-                # Return a more general error that covers both possibilities
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Unable to process the {problem_image} image. This may be due to spoofing detection or image quality issues. Please provide a clear, non-manipulated face image."
+            # Handle exceptions related to processing in the uploaded image (likely spoofing)
+            elif "exception while processing img1_path" in error_message.lower():
+                logger.warning(f"Potential spoofing detected in uploaded image: {error_message}")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Potential spoofing detected",
+                        "message": "The system detected potential spoofing in the uploaded image.",
+                        "details": error_message
+                    }
                 )
             
-            # Check for common errors and provide more user-friendly messages
-            if "face could not be detected" in error_message.lower():
-                raise HTTPException(status_code=400, detail="No face detected in one or both images. Please provide clear images with a visible face.")
+            # Handle exceptions related to processing in the reference image
+            elif "exception while processing img2_path" in error_message.lower():
+                logger.warning(f"Issue with reference image: {error_message}")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Reference image issue",
+                        "message": "There is an issue with the stored reference image.",
+                        "details": error_message
+                    }
+                )
+            
+            # Common face detection errors
+            elif "face could not be detected" in error_message.lower():
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "No face detected",
+                        "message": "No face detected in one or both images. Please provide a clear image with a visible face.",
+                        "details": error_message
+                    }
+                )
             elif "more than one face" in error_message.lower():
-                raise HTTPException(status_code=400, detail="Multiple faces detected in the image. Please provide an image with only one face.")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Multiple faces detected",
+                        "message": "Multiple faces detected in the image. Please provide an image with only one face.",
+                        "details": error_message
+                    }
+                )
             else:
-                raise HTTPException(status_code=400, detail=f"Face verification failed: {error_message}")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "Verification failed",
+                        "message": "Face verification process failed.",
+                        "details": error_message
+                    }
+                )
         
     except Exception as e:
         if isinstance(e, HTTPException):
             # Re-raise HTTP exceptions with their status codes
             raise
         logger.error(f"Error processing images: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error processing images: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "Server error",
+                "message": "An unexpected error occurred during verification.",
+                "details": str(e)
+            }
+        )
     
     finally:
         # Clean up temporary files
         try:
+            if os.path.exists(upload_path):
+                os.remove(upload_path)
             if os.path.exists(ref_path):
                 os.remove(ref_path)
-            if os.path.exists(ver_path):
-                os.remove(ver_path)
         except Exception as e:
             logger.error(f"Error cleaning up temp files: {str(e)}")
 
 if __name__ == "__main__":
     # Run the FastAPI app using Uvicorn
-    # If this script is run directly, ensure we use the correct paths
-    import sys
-    from pathlib import Path
-    
-    # Add the parent directory to sys.path if necessary
-    current_file = Path(__file__).resolve()
-    parent_dir = current_file.parent
-    
-    if parent_dir not in [Path(p) for p in sys.path]:
-        sys.path.append(str(parent_dir))
-    
-    # Try different ports if the default is busy
     ports_to_try = [8000, 8080, 8888, 9000, 3000]
     
     for port in ports_to_try:
@@ -426,13 +590,12 @@ if __name__ == "__main__":
                 port=port, 
                 reload=False,
                 log_level="info",
-                limit_concurrency=10,  # Limit concurrent connections
-                timeout_keep_alive=120,  # Longer keep-alive timeout
-                # Configure higher request size limits
+                limit_concurrency=10,
+                timeout_keep_alive=120,
                 http="h11",
-                ws="none"  # Disable WebSockets to save resources
+                ws="none"
             )
-            break  # If successful, exit the loop
+            break
         except OSError as e:
             if "address already in use" in str(e).lower() or "winerror 10048" in str(e).lower():
                 print(f"Port {port} is already in use, trying next port")
