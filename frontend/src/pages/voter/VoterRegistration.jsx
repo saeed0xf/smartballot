@@ -1,5 +1,5 @@
-import React, { useState, useContext, useEffect } from 'react';
-import { Container, Row, Col, Card, Form, Button, Alert } from 'react-bootstrap';
+import React, { useState, useContext, useEffect, useRef } from 'react';
+import { Container, Row, Col, Card, Form, Button, Alert, Image } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
@@ -14,6 +14,50 @@ const VoterRegistration = () => {
   const [loading, setLoading] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
   const navigate = useNavigate();
+  
+  // Webcam states
+  const [showWebcam, setShowWebcam] = useState(false);
+  const [faceCaptured, setFaceCaptured] = useState(false);
+  const [faceImageData, setFaceImageData] = useState(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
+  // Add this effect to configure non-passive event listeners for touch events
+  useEffect(() => {
+    // Fix for passive event listeners to allow preventDefault() to work
+    // This addresses the "Unable to preventDefault inside passive event listener" warning
+    const options = { passive: false };
+    
+    // For React's synthetic events, we need to apply this to the document
+    const preventDefaultForTouchStart = (e) => {
+      if (e.target.closest('button')) {
+        // If the touch event is on a button, make it non-passive
+        // This allows preventDefault to work
+        e.stopPropagation();
+      }
+    };
+    
+    document.addEventListener('touchstart', preventDefaultForTouchStart, options);
+    
+    return () => {
+      document.removeEventListener('touchstart', preventDefaultForTouchStart);
+    };
+  }, []);
+
+  // Add this useEffect hook to ensure the video element is available
+  useEffect(() => {
+    console.log('Video ref status on render:', videoRef.current ? 'available' : 'not available');
+    
+    return () => {
+      // Cleanup function
+      if (streamRef.current) {
+        console.log('Cleaning up camera stream on component unmount');
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
 
   // Connect wallet on component mount
   useEffect(() => {
@@ -56,7 +100,8 @@ const VoterRegistration = () => {
       .email('Invalid email address')
       .required('Email is required'),
     voterId: Yup.string().required('Voter ID is required'),
-    voterIdImage: Yup.mixed().required('Voter ID image is required')
+    voterIdImage: Yup.mixed().required('Voter ID image is required'),
+    faceImage: Yup.mixed().required('Face image is required')
   });
 
   // Initial form values
@@ -69,7 +114,153 @@ const VoterRegistration = () => {
     dateOfBirth: '',
     email: '',
     voterId: '',
-    voterIdImage: null
+    voterIdImage: null,
+    faceImage: null
+  };
+
+  // Start webcam function
+  const startWebcam = async () => {
+    try {
+      console.log('Starting webcam...');
+      
+      // Verify video ref is available
+      if (!videoRef.current) {
+        console.error('Video element is not available in the DOM');
+        throw new Error('Camera component not ready. Please refresh the page.');
+      }
+      
+      // Clean up any existing stream
+      if (streamRef.current) {
+        console.log('Stopping existing stream before starting new one');
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      
+      // Request camera access with specific constraints for better quality
+      console.log('Requesting camera access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user',
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      });
+      
+      streamRef.current = stream;
+      
+      // Since we've already checked videoRef is available
+      console.log('Stream obtained, setting as video source');
+      videoRef.current.srcObject = stream;
+      
+      // Make sure any play() promise is properly handled
+      try {
+        await videoRef.current.play();
+        console.log('Webcam started successfully');
+        setError(null);
+      } catch (playError) {
+        console.error('Error starting video playback:', playError);
+        // Sometimes the play() method needs user interaction first
+        toast.info('Click the video to start the camera preview');
+      }
+      
+    } catch (err) {
+      console.error('Error accessing webcam:', err);
+      
+      // Provide more specific error messages
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('Camera access denied. Please allow camera access in your browser permissions to continue.');
+        toast.error('Camera permission denied. Please check your browser settings.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setError('No camera found. Please connect a camera and try again.');
+        toast.error('No camera detected');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setError('Could not access your camera. It may be in use by another application.');
+        toast.error('Camera is in use by another application');
+      } else {
+        setError('Failed to access webcam. Please make sure your camera is connected and you have given permission to use it.');
+        toast.error(err.message || 'Camera access failed');
+      }
+      
+      // Rethrow to propagate to the caller
+      throw err;
+    }
+  };
+
+  // Stop webcam
+  const stopWebcam = () => {
+    console.log('Stopping webcam...');
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      
+      setShowWebcam(false);
+      console.log('Webcam stopped successfully');
+    }
+  };
+
+  // Capture photo
+  const capturePhoto = (setFieldValue, voterId) => {
+    if (!videoRef.current || !canvasRef.current) {
+      console.error('Video or canvas ref not available');
+      toast.error('Cannot capture photo. Please try again.');
+      return;
+    }
+    
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // Set canvas dimensions to match video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      // Draw the video frame to the canvas
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert canvas to data URL
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      
+      // Convert data URL to Blob for form submission
+      fetch(dataUrl)
+        .then(res => res.blob())
+        .then(blob => {
+          // Create a File object from the Blob
+          const file = new File([blob], `face_${voterId}_${Date.now()}.jpg`, { type: 'image/jpeg' });
+          
+          // Set form field value
+          setFieldValue('faceImage', file);
+          
+          // Update state to show captured image
+          setFaceImageData(dataUrl);
+          setFaceCaptured(true);
+          
+          // Stop webcam after capturing
+          stopWebcam();
+          
+          toast.success('Photo captured successfully!');
+        })
+        .catch(err => {
+          console.error('Error converting canvas to file:', err);
+          toast.error('Failed to process captured photo. Please try again.');
+        });
+    } catch (err) {
+      console.error('Error capturing photo:', err);
+      toast.error('Failed to capture photo. Please try again.');
+    }
+  };
+
+  // Retry capture
+  const retryCapture = (setFieldValue) => {
+    setFaceCaptured(false);
+    setFaceImageData(null);
+    setFieldValue('faceImage', null);
   };
 
   // Handle form submission
@@ -87,13 +278,18 @@ const VoterRegistration = () => {
         throw new Error('Voter ID image is required.');
       }
 
+      // Check if the face image is set
+      if (!values.faceImage) {
+        throw new Error('Face image is required. Please capture your photo using the webcam.');
+      }
+
       // Create a simplified form data object
       const formData = new FormData();
       
       // Add all text fields
       Object.keys(values).forEach(key => {
-        // Skip the file field, we'll handle it separately
-        if (key !== 'voterIdImage') {
+        // Skip the file fields, we'll handle them separately
+        if (key !== 'voterIdImage' && key !== 'faceImage') {
           formData.append(key, values[key] === undefined ? '' : values[key]);
         }
       });
@@ -111,30 +307,20 @@ const VoterRegistration = () => {
       }
       formData.append('age', age);
 
-      // Add the file last to ensure it's properly attached
+      // Add the voter ID image
       if (values.voterIdImage instanceof File) {
         console.log('Adding voter ID image:', values.voterIdImage.name, 'Size:', values.voterIdImage.size, 'Type:', values.voterIdImage.type);
-        
-        // Explicitly set the file name as the third parameter to help some browsers
-        // This ensures the file name is preserved properly during upload
         formData.append('voterIdImage', values.voterIdImage, values.voterIdImage.name);
-        
-        // Verify the file was actually added to the FormData
-        let fileAttached = false;
-        for (let [key, value] of formData.entries()) {
-          if (key === 'voterIdImage' && value instanceof File) {
-            fileAttached = true;
-            console.log('Confirmed file is attached to FormData');
-            break;
-          }
-        }
-        
-        if (!fileAttached) {
-          console.error('File appears to not be properly attached to FormData');
-          throw new Error('Error attaching file to form. Please try again with a different image.');
-        }
       } else {
         throw new Error('Invalid voter ID image. Please select a valid image file.');
+      }
+
+      // Add the face image
+      if (values.faceImage instanceof File) {
+        console.log('Adding face image:', values.faceImage.name, 'Size:', values.faceImage.size, 'Type:', values.faceImage.type);
+        formData.append('faceImage', values.faceImage, values.faceImage.name);
+      } else {
+        throw new Error('Invalid face image. Please capture your photo using the webcam.');
       }
 
       // Debug: Log all form data entries
@@ -457,11 +643,161 @@ const VoterRegistration = () => {
                     </Form.Text>
                   </Form.Group>
 
+                  {/* Face Image Capture with Webcam */}
+                  <Form.Group className="mb-4">
+                    <Form.Label>Face Image</Form.Label>
+                    
+                    {/* Webcam/Face Capture Section */}
+                    <div className="border rounded p-3 bg-light">
+                      {!faceCaptured && (
+                        <div className="text-center mb-3">
+                          {!showWebcam ? (
+                            <>
+                              <p>We need to take a photo of your face for identity verification.</p>
+                              <Button
+                                variant="primary"
+                                onClick={() => {
+                                  console.log('Start Camera button clicked');
+                                  // Set showWebcam first, then start the webcam
+                                  setShowWebcam(true);
+                                  // Short delay to ensure DOM updates before accessing video element
+                                  setTimeout(() => {
+                                    if (videoRef.current) {
+                                      console.log('Video ref is available, starting webcam');
+                                      startWebcam().catch(err => {
+                                        console.error('Error in startWebcam from button click:', err);
+                                        toast.error('Failed to start camera. Please try again or use a different browser.');
+                                        setShowWebcam(false);
+                                      });
+                                    } else {
+                                      console.error('Video ref still not available after delay');
+                                      toast.error('Camera initialization failed. Please refresh the page and try again.');
+                                      setShowWebcam(false);
+                                    }
+                                  }, 100);
+                                }}
+                              >
+                                Start Camera
+                              </Button>
+                            </>
+                          ) : (
+                            <div className="mb-3 d-flex justify-content-center position-relative">
+                              {/* Video element - always in DOM but hidden when not in use */}
+                              <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                muted
+                                style={{ 
+                                  maxWidth: '100%', 
+                                  maxHeight: '300px', 
+                                  border: '1px solid #ddd',
+                                  borderRadius: '8px',
+                                  transform: 'scaleX(-1)', // Mirror the video horizontally
+                                  backgroundColor: '#000', // Add black background
+                                  cursor: 'pointer', // Indicate it's clickable for mobile
+                                  display: showWebcam ? 'block' : 'none' // Hide when not showing webcam
+                                }}
+                                onClick={() => {
+                                  // Add click-to-play functionality for mobile browsers
+                                  if (videoRef.current) {
+                                    videoRef.current.play().catch(e => {
+                                      console.log('Play on click failed, may require additional user interaction', e);
+                                    });
+                                  }
+                                }}
+                                onCanPlay={() => {
+                                  console.log('Video can play event triggered');
+                                  if (videoRef.current) {
+                                    videoRef.current.play().catch(e => {
+                                      console.error('Error playing video on canplay event:', e);
+                                    });
+                                  }
+                                }}
+                              />
+                              
+                              {/* Visual guide for face positioning - improved styling */}
+                              <div 
+                                style={{
+                                  position: 'absolute',
+                                  top: '50%',
+                                  left: '50%',
+                                  transform: 'translate(-50%, -50%)',
+                                  width: '180px',
+                                  height: '180px',
+                                  borderRadius: '50%',
+                                  border: '3px dashed rgba(255, 255, 255, 0.8)',
+                                  boxShadow: '0 0 0 2000px rgba(0, 0, 0, 0.15)', // Darken outside the circle
+                                  pointerEvents: 'none',
+                                  zIndex: 10,
+                                  display: showWebcam ? 'block' : 'none' // Only show when webcam is active
+                                }}
+                              />
+                              
+                              <p className="text-muted mb-2 position-absolute" style={{ bottom: '-25px', width: '100%', textAlign: 'center' }}>
+                                <small>Position your face within the circle and ensure good lighting</small>
+                              </p>
+                            </div>
+                          )}
+                          
+                          {showWebcam && (
+                            <div className="d-flex justify-content-center gap-2 mt-4">
+                              <Button
+                                variant="primary"
+                                onClick={() => capturePhoto(setFieldValue, values.voterId)}
+                              >
+                                Capture Photo
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                onClick={() => stopWebcam()}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Captured image display */}
+                      {faceCaptured && faceImageData && (
+                        <div className="text-center">
+                          <div className="mb-3 d-flex justify-content-center">
+                            <Image
+                              src={faceImageData}
+                              alt="Captured face"
+                              thumbnail
+                              style={{ maxHeight: '200px' }}
+                            />
+                          </div>
+                          <div className="d-flex justify-content-center gap-2">
+                            <Button
+                              variant="outline-primary"
+                              onClick={() => retryCapture(setFieldValue)}
+                            >
+                              Retake Photo
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Hidden canvas for capture */}
+                      <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+                      {/* Error display */}
+                      {touched.faceImage && errors.faceImage && (
+                        <div className="text-danger mt-2">
+                          {errors.faceImage}
+                        </div>
+                      )}
+                    </div>
+                  </Form.Group>
+
                   <div className="d-grid mt-4">
                     <Button
                       variant="primary"
                       type="submit"
-                      disabled={isSubmitting || loading || !walletAddress}
+                      disabled={isSubmitting || loading || !walletAddress || !faceCaptured}
                     >
                       {isSubmitting || loading ? 'Submitting...' : 'Submit Registration'}
                     </Button>
