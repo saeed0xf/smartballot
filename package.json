@@ -4,7 +4,7 @@
     "express-form-data": "^2.0.23"
   },
   "scripts": {
-    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\" \"cd idlocker && npm start\"",
     "start": "node backend/src/index.js"
   },
   "devDependencies": {
