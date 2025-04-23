@@ -25,6 +25,7 @@ const ApproveVoters = () => {
   // Image preview modal state
   const [showImageModal, setShowImageModal] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState('');
+  const [previewImageType, setPreviewImageType] = useState('');
   
   // Action loading states
   const [approvingVoter, setApprovingVoter] = useState(false);
@@ -519,6 +520,7 @@ const ApproveVoters = () => {
                           onClick={() => {
                             const imageUrl = getImageUrl(selectedVoter.voterIdImage);
                             setPreviewImageUrl(imageUrl);
+                            setPreviewImageType('voterId');
                             setShowImageModal(true);
                             console.log('Opening image preview:', imageUrl);
                           }}
@@ -528,19 +530,21 @@ const ApproveVoters = () => {
                             e.target.src = '/placeholder-id.png'; // Fallback image
                           }}
                         />
-                        <div className="mt-1 small text-muted">Click to enlarge</div>
+                        {/* <div className="mt-1 small text-muted">Click to enlarge</div> */}
                       </div>
                       <div className="d-flex justify-content-center mb-3">
                         <Button
-                          variant="outline-primary"
+                          variant="primary"
                           size="sm"
+                          className="px-3 py-2"
                           onClick={() => {
                             const imageUrl = getImageUrl(selectedVoter.voterIdImage);
-                            // Open image in new tab as fallback method
-                            window.open(imageUrl, '_blank');
+                            setPreviewImageUrl(imageUrl);
+                            setPreviewImageType('voterId');
+                            setShowImageModal(true);
                           }}
                         >
-                          <i className="fas fa-external-link-alt me-1"></i> Open in New Tab
+                          <i className="fas fa-search-plus me-2"></i> View Full Image
                         </Button>
                       </div>
                     </>
@@ -560,6 +564,7 @@ const ApproveVoters = () => {
                           onClick={() => {
                             const imageUrl = getImageUrl(selectedVoter.faceImage);
                             setPreviewImageUrl(imageUrl);
+                            setPreviewImageType('face');
                             setShowImageModal(true);
                             console.log('Opening face image preview:', imageUrl);
                           }}
@@ -569,19 +574,21 @@ const ApproveVoters = () => {
                             e.target.src = '/placeholder-face.png'; // Fallback image
                           }}
                         />
-                        <div className="mt-1 small text-muted">Click to enlarge</div>
+                        {/* <div className="mt-1 small text-muted">Click to enlarge</div> */}
                       </div>
                       <div className="d-flex justify-content-center mb-3">
                         <Button
-                          variant="outline-primary"
+                          variant="primary"
                           size="sm"
+                          className="px-3 py-2"
                           onClick={() => {
                             const imageUrl = getImageUrl(selectedVoter.faceImage);
-                            // Open image in new tab as fallback method
-                            window.open(imageUrl, '_blank');
+                            setPreviewImageUrl(imageUrl);
+                            setPreviewImageType('face');
+                            setShowImageModal(true);
                           }}
                         >
-                          <i className="fas fa-external-link-alt me-1"></i> Open in New Tab
+                          <i className="fas fa-search-plus me-2"></i> View Full Image
                         </Button>
                       </div>
                     </>
@@ -659,26 +666,37 @@ const ApproveVoters = () => {
         onHide={() => setShowImageModal(false)}
         size="lg"
         centered
+        className="image-preview-modal"
+        dialogClassName="modal-90w"
       >
         <Modal.Header closeButton>
-          <Modal.Title>Voter ID Image</Modal.Title>
+          <Modal.Title>{previewImageType === 'voterId' ? 'Voter ID Image' : 'Face Verification Image'}</Modal.Title>
         </Modal.Header>
-        <Modal.Body className="text-center p-0">
+        <Modal.Body className="text-center py-3 px-0 bg-dark">
           {previewImageUrl ? (
-            <img 
-              src={previewImageUrl}
-              alt="Voter ID Full Size" 
-              className="img-fluid"
-              style={{ maxHeight: '80vh' }}
-              onLoad={() => console.log('Image loaded successfully in modal')}
-              onError={(e) => {
-                console.error('Failed to load image in modal:', previewImageUrl);
-                e.target.onerror = null; // Prevent infinite loop
-                e.target.src = 'https://via.placeholder.com/800x600?text=Image+Failed+to+Load';
-              }}
-            />
+            <div className="image-preview-container position-relative">
+              <img 
+                src={previewImageUrl}
+                alt={previewImageType === 'voterId' ? 'Voter ID Full Size' : 'Face Verification Full Size'} 
+                className="img-fluid"
+                style={{
+                  maxHeight: '70vh',
+                  objectFit: 'contain',
+                  transition: 'transform 0.3s ease',
+                }}
+                onLoad={() => console.log('Image loaded successfully in modal')}
+                onError={(e) => {
+                  console.error('Failed to load image in modal:', previewImageUrl);
+                  e.target.onerror = null; // Prevent infinite loop
+                  e.target.src = 'https://via.placeholder.com/800x600?text=Image+Failed+to+Load';
+                }}
+              />
+              <div className="text-center text-light mt-2">
+                <small>Press ESC key or click the X button to close</small>
+              </div>
+            </div>
           ) : (
-            <div className="p-5 text-center">
+            <div className="p-5 text-center text-light">
               <p>No image available to preview</p>
             </div>
           )}
