@@ -296,7 +296,7 @@ const VoterRegistration = () => {
       
       // Add wallet address
       formData.append('walletAddress', walletAddress);
-      
+
       // Calculate and add age
       const birthDate = new Date(values.dateOfBirth);
       const today = new Date();
@@ -351,9 +351,9 @@ const VoterRegistration = () => {
         
         const data = await response.json();
         console.log('Registration response:', data);
-        toast.success('Registration submitted successfully! Please wait for admin approval.');
-        resetForm();
-        navigate('/');
+      toast.success('Registration submitted successfully! Please wait for admin approval.');
+      resetForm();
+      navigate('/');
       } catch (fetchError) {
         console.error('Fetch error:', fetchError);
         

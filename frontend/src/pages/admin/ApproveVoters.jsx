@@ -521,7 +521,6 @@ const ApproveVoters = () => {
         
       case 'voterId':
       case 'age':
-      case 'email':
         // Direct comparison for simple fields
         return localValue === verificationValue;
         
@@ -579,10 +578,6 @@ const ApproveVoters = () => {
           localValue = voter.age || null;
           verificationValue = verificationData.age || null;
           break;
-        case 'email':
-          localValue = voter.email || '';
-          verificationValue = verificationData.email || '';
-          break;
         default:
           return null;
       }
@@ -610,8 +605,8 @@ const ApproveVoters = () => {
       { key: 'gender', label: 'Gender' },
       { key: 'dateOfBirth', label: 'Date of Birth' },
       { key: 'voterId', label: 'Voter ID' },
-      { key: 'age', label: 'Age' },
-      { key: 'email', label: 'Email' }
+      { key: 'age', label: 'Age' }
+      // Email is intentionally excluded as it's not required for verification
     ];
     
     const mismatches = [];
@@ -888,7 +883,7 @@ const ApproveVoters = () => {
                   <dt className="col-sm-4">Email</dt>
                   <dd className="col-sm-8">
                     {selectedVoter.email || 'No email provided'}
-                    <VerificationStatus field="email" voter={selectedVoter} />
+                    {/* Email verification is intentionally omitted as it's not required */}
                   </dd>
                   
                   <dt className="col-sm-4">Voter ID</dt>
@@ -968,10 +963,10 @@ const ApproveVoters = () => {
                   {selectedVoter.voterIdImage ? (
                     <>
                       <div className="p-2 bg-light border rounded mb-2" style={{ textAlign: 'center' }}>
-                        <img
-                          src={getImageUrl(selectedVoter.voterIdImage)}
-                          alt="Voter ID"
-                          className="img-fluid border rounded shadow-sm cursor-pointer"
+                        <img 
+                          src={getImageUrl(selectedVoter.voterIdImage)} 
+                          alt="Voter ID" 
+                          className="img-fluid border rounded shadow-sm cursor-pointer" 
                           style={{ maxHeight: '150px', cursor: 'pointer' }}
                           onClick={() => {
                             const imageUrl = getImageUrl(selectedVoter.voterIdImage);
@@ -989,9 +984,9 @@ const ApproveVoters = () => {
                         {/* <div className="mt-1 small text-muted">Click to enlarge</div> */}
                       </div>
                       <div className="d-flex justify-content-center mb-3">
-                        <Button
+                          <Button 
                           variant="primary"
-                          size="sm"
+                            size="sm"
                           className="px-3 py-2"
                           onClick={() => {
                             const imageUrl = getImageUrl(selectedVoter.voterIdImage);
@@ -1001,8 +996,8 @@ const ApproveVoters = () => {
                           }}
                         >
                           <i className="fas fa-search-plus me-2"></i> View Full Image
-                        </Button>
-                      </div>
+                          </Button>
+                        </div>
                     </>
                   ) : (
                     <div className="text-muted">No voter ID image available</div>
@@ -1180,10 +1175,10 @@ const ApproveVoters = () => {
         <Modal.Body className="text-center py-3 px-0 bg-dark">
           {previewImageUrl ? (
             <div className="image-preview-container position-relative">
-              <img 
-                src={previewImageUrl}
+            <img 
+              src={previewImageUrl}
                 alt={previewImageType === 'voterId' ? 'Voter ID Full Size' : 'Face Verification Full Size'} 
-                className="img-fluid"
+              className="img-fluid"
                 style={{
                   maxHeight: '70vh',
                   objectFit: 'contain',
@@ -1211,16 +1206,16 @@ const ApproveVoters = () => {
             Close
           </Button>
           {previewImageUrl && (
-            <Button 
-              variant="primary" 
-              as="a"
-              href={previewImageUrl}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Download
-            </Button>
+          <Button 
+            variant="primary" 
+            as="a"
+            href={previewImageUrl}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Download
+          </Button>
           )}
         </Modal.Footer>
       </Modal>
