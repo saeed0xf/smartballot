@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Button, Badge, Modal, Form, Alert, Spinner } from 'react-bootstrap';
-import { FaCheck, FaTimes, FaEye, FaEnvelope, FaEthereum } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaEye, FaEnvelope, FaEthereum, FaSync } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 import Layout from '../../components/Layout';
@@ -21,6 +21,11 @@ const ApproveVoters = () => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedVoter, setSelectedVoter] = useState(null);
   const [voterDetailsLoading, setVoterDetailsLoading] = useState(false);
+  
+  // Voter verification states
+  const [verificationData, setVerificationData] = useState(null);
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [verificationError, setVerificationError] = useState(null);
   
   // Image preview modal state
   const [showImageModal, setShowImageModal] = useState(false);
@@ -59,6 +64,8 @@ const ApproveVoters = () => {
   const fetchVoterDetails = async (voterId) => {
     try {
       setVoterDetailsLoading(true);
+      setVerificationData(null);
+      setVerificationError(null);
       
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       const response = await axios.get(`${apiUrl}/admin/voters/${voterId}`);
@@ -66,11 +73,80 @@ const ApproveVoters = () => {
       console.log('Fetched voter details:', response.data.voter);
       setSelectedVoter(response.data.voter);
       setShowDetailsModal(true);
+      
+      // Verify the voter details against the external API
+      await verifyVoterDetails(response.data.voter);
     } catch (err) {
       console.error('Error fetching voter details:', err);
       toast.error('Failed to fetch voter details.');
     } finally {
       setVoterDetailsLoading(false);
+    }
+  };
+  
+  // Verify voter details against the external database
+  const verifyVoterDetails = async (voter) => {
+    if (!voter || !voter.voterId) {
+      console.error('No voter ID available for verification');
+      setVerificationError('No voter ID available for verification');
+      return;
+    }
+    
+    try {
+      setVerificationLoading(true);
+      setVerificationError(null);
+      setVerificationData(null);
+      
+      console.log(`Verifying voter with ID: ${voter.voterId}`);
+      
+      // Add a timeout to the axios request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
+      
+      try {
+        const response = await axios.get(`http://localhost:9001/api/voters/id/${voter.voterId}`, {
+          signal: controller.signal,
+          timeout: 10000 // Also set axios timeout
+        });
+        
+        clearTimeout(timeoutId);
+        
+        console.log('Voter verification data:', response.data);
+        
+        if (response.data && (response.data._id || response.data.voterId)) {
+          setVerificationData(response.data);
+        } else if (response.data && response.data.message === 'Voter not found') {
+          setVerificationError('Voter not found in the verification database');
+        } else {
+          setVerificationError('Invalid response from verification service');
+        }
+      } catch (requestErr) {
+        clearTimeout(timeoutId);
+        
+        if (requestErr.name === 'AbortError' || requestErr.code === 'ECONNABORTED') {
+          setVerificationError('Verification request timed out. The service might be unavailable.');
+        } else if (requestErr.response) {
+          // The request was made and the server responded with a status code
+          if (requestErr.response.status === 404) {
+            setVerificationError('Voter not found in the verification database');
+          } else {
+            setVerificationError(`Verification service error: ${requestErr.response.data?.message || requestErr.response.statusText}`);
+          }
+        } else if (requestErr.request) {
+          // The request was made but no response was received
+          setVerificationError('No response from verification service. The service might be down.');
+        } else {
+          // Something happened in setting up the request
+          setVerificationError(`Error setting up verification request: ${requestErr.message}`);
+        }
+        
+        throw requestErr; // Re-throw for outer catch
+      }
+    } catch (err) {
+      console.error('Error verifying voter details:', err);
+      // Error is now handled in the inner catch block
+    } finally {
+      setVerificationLoading(false);
     }
   };
 
@@ -292,6 +368,108 @@ const ApproveVoters = () => {
     console.log('Constructed image URL:', finalUrl);
     return finalUrl;
   };
+  
+  // Check if field values match between local data and verification data
+  const checkFieldMatch = (field, localValue, verificationValue) => {
+    if (!verificationValue) return false;
+    
+    switch (field) {
+      case 'fullName':
+        // Compare full names - our format is first + middle + last
+        const localFullName = `${localValue.firstName || ''} ${localValue.middleName || ''} ${localValue.lastName || ''}`.trim().replace(/\s+/g, ' ').toLowerCase();
+        // External API has firstName that might contain the full name
+        const externalFullName = verificationValue.firstName.toLowerCase();
+        return localFullName === externalFullName;
+        
+      case 'fatherName':
+        return (localValue || '').toLowerCase() === (verificationValue || '').toLowerCase();
+        
+      case 'gender':
+        // Handle potential different formats (e.g., 'male' vs 'Male')
+        return (localValue || '').toLowerCase() === (verificationValue || '').toLowerCase();
+        
+      case 'dateOfBirth':
+        // Compare dates regardless of time
+        if (!localValue || !verificationValue) return false;
+        const localDate = new Date(localValue);
+        const verificationDate = new Date(verificationValue);
+        return (
+          localDate.getFullYear() === verificationDate.getFullYear() &&
+          localDate.getMonth() === verificationDate.getMonth() &&
+          localDate.getDate() === verificationDate.getDate()
+        );
+        
+      case 'voterId':
+      case 'age':
+      case 'email':
+        // Direct comparison for simple fields
+        return localValue === verificationValue;
+        
+      default:
+        return false;
+    }
+  };
+  
+  // Render verification status icon
+  const VerificationStatus = ({ field, voter }) => {
+    if (!verificationData || verificationLoading) {
+      return verificationLoading ? (
+        <FaSync className="text-primary ms-2 fa-spin" title="Verifying..." />
+      ) : null;
+    }
+    
+    // If verification errored out, show nothing
+    if (verificationError) {
+      return null;
+    }
+    
+    let localValue, verificationValue;
+    
+    switch (field) {
+      case 'fullName':
+        localValue = { 
+          firstName: voter.firstName, 
+          middleName: voter.middleName, 
+          lastName: voter.lastName 
+        };
+        verificationValue = verificationData;
+        break;
+      case 'fatherName':
+        localValue = voter.fatherName;
+        verificationValue = verificationData.fatherName;
+        break;
+      case 'gender':
+        localValue = voter.gender;
+        verificationValue = verificationData.gender;
+        break;
+      case 'dateOfBirth':
+        localValue = voter.dateOfBirth;
+        verificationValue = verificationData.dateOfBirth;
+        break;
+      case 'voterId':
+        localValue = voter.voterId;
+        verificationValue = verificationData.voterId;
+        break;
+      case 'age':
+        localValue = voter.age;
+        verificationValue = verificationData.age;
+        break;
+      case 'email':
+        localValue = voter.email;
+        verificationValue = verificationData.email;
+        break;
+      default:
+        return null;
+    }
+    
+    const matches = checkFieldMatch(field, localValue, verificationValue);
+    
+    return matches ? (
+      <FaCheck className="text-success ms-2" title="Verified" />
+    ) : (
+      <FaTimes className="text-danger ms-2" title="Not verified" />
+    );
+  };
 
   return (
     <Layout>
@@ -465,7 +643,29 @@ const ApproveVoters = () => {
         size="lg"
       >
         <Modal.Header closeButton>
-          <Modal.Title>Voter Details</Modal.Title>
+          <Modal.Title>
+            Voter Details
+            {verificationData && (
+              <Badge 
+                bg={
+                  checkFieldMatch('fullName', 
+                    { firstName: selectedVoter.firstName, middleName: selectedVoter.middleName, lastName: selectedVoter.lastName }, 
+                    verificationData) && 
+                  checkFieldMatch('voterId', selectedVoter.voterId, verificationData.voterId) &&
+                  checkFieldMatch('dateOfBirth', selectedVoter.dateOfBirth, verificationData.dateOfBirth) ? 
+                    'success' : 'danger'
+                }
+                className="ms-2"
+              >
+                {checkFieldMatch('fullName', 
+                  { firstName: selectedVoter.firstName, middleName: selectedVoter.middleName, lastName: selectedVoter.lastName }, 
+                  verificationData) && 
+                checkFieldMatch('voterId', selectedVoter.voterId, verificationData.voterId) &&
+                checkFieldMatch('dateOfBirth', selectedVoter.dateOfBirth, verificationData.dateOfBirth) ? 
+                  'Verified' : 'Not Verified'}
+              </Badge>
+            )}
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {voterDetailsLoading ? (
@@ -480,31 +680,104 @@ const ApproveVoters = () => {
                   <dt className="col-sm-4">Full Name</dt>
                   <dd className="col-sm-8">
                     {selectedVoter.firstName} {selectedVoter.middleName || ''} {selectedVoter.lastName}
+                    <VerificationStatus field="fullName" voter={selectedVoter} />
                   </dd>
                   
                   <dt className="col-sm-4">Father's Name</dt>
-                  <dd className="col-sm-8">{selectedVoter.fatherName || 'Not provided'}</dd>
+                  <dd className="col-sm-8">
+                    {selectedVoter.fatherName || 'Not provided'}
+                    <VerificationStatus field="fatherName" voter={selectedVoter} />
+                  </dd>
                   
                   <dt className="col-sm-4">Gender</dt>
-                  <dd className="col-sm-8">{selectedVoter.gender || 'Not provided'}</dd>
+                  <dd className="col-sm-8">
+                    {selectedVoter.gender || 'Not provided'}
+                    <VerificationStatus field="gender" voter={selectedVoter} />
+                  </dd>
                   
                   <dt className="col-sm-4">Age</dt>
-                  <dd className="col-sm-8">{selectedVoter.age || 'Not provided'}</dd>
+                  <dd className="col-sm-8">
+                    {selectedVoter.age || 'Not provided'}
+                    <VerificationStatus field="age" voter={selectedVoter} />
+                  </dd>
                   
                   <dt className="col-sm-4">Date of Birth</dt>
-                  <dd className="col-sm-8">{selectedVoter.dateOfBirth ? formatDate(selectedVoter.dateOfBirth) : 'Not provided'}</dd>
+                  <dd className="col-sm-8">
+                    {selectedVoter.dateOfBirth ? formatDate(selectedVoter.dateOfBirth) : 'Not provided'}
+                    <VerificationStatus field="dateOfBirth" voter={selectedVoter} />
+                  </dd>
                   
                   <dt className="col-sm-4">Email</dt>
-                  <dd className="col-sm-8">{selectedVoter.email || 'No email provided'}</dd>
+                  <dd className="col-sm-8">
+                    {selectedVoter.email || 'No email provided'}
+                    <VerificationStatus field="email" voter={selectedVoter} />
+                  </dd>
                   
                   <dt className="col-sm-4">Voter ID</dt>
-                  <dd className="col-sm-8">{selectedVoter.voterId || 'Not provided'}</dd>
+                  <dd className="col-sm-8">
+                    {selectedVoter.voterId || 'Not provided'}
+                    <VerificationStatus field="voterId" voter={selectedVoter} />
+                  </dd>
                   
                   <dt className="col-sm-4">Wallet Address</dt>
                   <dd className="col-sm-8" style={{ wordBreak: 'break-all' }}>
                     {selectedVoter.walletAddress || 'Not provided'}
                   </dd>
                 </dl>
+                
+                {/* Add Verification Status Section */}
+                <div className="mt-3 mb-4">
+                  <h6 className="border-bottom pb-2 d-flex justify-content-between align-items-center">
+                    Verification Status
+                    <Button 
+                      variant="outline-primary"
+                      size="sm"
+                      disabled={verificationLoading || !selectedVoter?.voterId}
+                      onClick={() => verifyVoterDetails(selectedVoter)}
+                      className="ms-2"
+                    >
+                      <FaSync className={verificationLoading ? 'fa-spin me-1' : 'me-1'} /> 
+                      {verificationLoading ? 'Verifying...' : 'Verify'}
+                    </Button>
+                  </h6>
+                  
+                  {verificationLoading ? (
+                    <div className="d-flex align-items-center">
+                      <Spinner animation="border" size="sm" className="me-2" />
+                      <span>Verifying voter details...</span>
+                    </div>
+                  ) : verificationError ? (
+                    <Alert variant="warning" className="py-2">
+                      <small>{verificationError}</small>
+                    </Alert>
+                  ) : verificationData ? (
+                    <Alert 
+                      variant={
+                        checkFieldMatch('fullName', 
+                          { firstName: selectedVoter.firstName, middleName: selectedVoter.middleName, lastName: selectedVoter.lastName }, 
+                          verificationData) && 
+                        checkFieldMatch('voterId', selectedVoter.voterId, verificationData.voterId) &&
+                        checkFieldMatch('dateOfBirth', selectedVoter.dateOfBirth, verificationData.dateOfBirth) ? 
+                          'success' : 'danger'
+                      }
+                      className="py-2 mb-0"
+                    >
+                      <small>
+                        {checkFieldMatch('fullName', 
+                          { firstName: selectedVoter.firstName, middleName: selectedVoter.middleName, lastName: selectedVoter.lastName }, 
+                          verificationData) && 
+                        checkFieldMatch('voterId', selectedVoter.voterId, verificationData.voterId) &&
+                        checkFieldMatch('dateOfBirth', selectedVoter.dateOfBirth, verificationData.dateOfBirth) ? 
+                          'Voter verified successfully against external database.' : 
+                          'Voter details do not match with external database. Please verify carefully.'}
+                      </small>
+                    </Alert>
+                  ) : (
+                    <div className="text-muted">
+                      <small>Verification data not available</small>
+                    </div>
+                  )}
+                </div>
               </Col>
               <Col md={6}>
                 <h6>Voter ID Image</h6>
