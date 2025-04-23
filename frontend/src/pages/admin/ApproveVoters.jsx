@@ -375,10 +375,33 @@ const ApproveVoters = () => {
     
     switch (field) {
       case 'fullName':
-        // Compare full names - our format is first + middle + last
+        // Local data: Our format is first + middle + last combined
         const localFullName = `${localValue.firstName || ''} ${localValue.middleName || ''} ${localValue.lastName || ''}`.trim().replace(/\s+/g, ' ').toLowerCase();
-        // External API has firstName that might contain the full name
-        const externalFullName = verificationValue.firstName.toLowerCase();
+        
+        // External data: External API has separate firstName, middleName, lastName fields
+        // Combine them for comparison
+        const externalFirstName = verificationValue.firstName || '';
+        const externalMiddleName = verificationValue.middleName || '';
+        const externalLastName = verificationValue.lastName || '';
+        const externalFullName = `${externalFirstName} ${externalMiddleName} ${externalLastName}`.trim().replace(/\s+/g, ' ').toLowerCase();
+        
+        // Debug logging
+        console.log('Name comparison:', {
+          local: {
+            firstName: localValue.firstName,
+            middleName: localValue.middleName,
+            lastName: localValue.lastName,
+            combined: localFullName
+          },
+          external: {
+            firstName: externalFirstName,
+            middleName: externalMiddleName,
+            lastName: externalLastName,
+            combined: externalFullName
+          },
+          match: localFullName === externalFullName
+        });
+        
         return localFullName === externalFullName;
         
       case 'fatherName':
@@ -425,50 +448,111 @@ const ApproveVoters = () => {
     
     let localValue, verificationValue;
     
-    switch (field) {
-      case 'fullName':
-        localValue = { 
-          firstName: voter.firstName, 
-          middleName: voter.middleName, 
-          lastName: voter.lastName 
-        };
-        verificationValue = verificationData;
-        break;
-      case 'fatherName':
-        localValue = voter.fatherName;
-        verificationValue = verificationData.fatherName;
-        break;
-      case 'gender':
-        localValue = voter.gender;
-        verificationValue = verificationData.gender;
-        break;
-      case 'dateOfBirth':
-        localValue = voter.dateOfBirth;
-        verificationValue = verificationData.dateOfBirth;
-        break;
-      case 'voterId':
-        localValue = voter.voterId;
-        verificationValue = verificationData.voterId;
-        break;
-      case 'age':
-        localValue = voter.age;
-        verificationValue = verificationData.age;
-        break;
-      case 'email':
-        localValue = voter.email;
-        verificationValue = verificationData.email;
-        break;
-      default:
-        return null;
+    try {
+      switch (field) {
+        case 'fullName':
+          localValue = { 
+            firstName: voter.firstName || '', 
+            middleName: voter.middleName || '', 
+            lastName: voter.lastName || '' 
+          };
+          verificationValue = {
+            firstName: verificationData.firstName || '',
+            middleName: verificationData.middleName || '',
+            lastName: verificationData.lastName || ''
+          };
+          break;
+        case 'fatherName':
+          localValue = voter.fatherName || '';
+          verificationValue = verificationData.fatherName || '';
+          break;
+        case 'gender':
+          localValue = voter.gender || '';
+          verificationValue = verificationData.gender || '';
+          break;
+        case 'dateOfBirth':
+          localValue = voter.dateOfBirth || null;
+          verificationValue = verificationData.dateOfBirth || null;
+          break;
+        case 'voterId':
+          localValue = voter.voterId || '';
+          verificationValue = verificationData.voterId || '';
+          break;
+        case 'age':
+          localValue = voter.age || null;
+          verificationValue = verificationData.age || null;
+          break;
+        case 'email':
+          localValue = voter.email || '';
+          verificationValue = verificationData.email || '';
+          break;
+        default:
+          return null;
+      }
+      
+      const matches = checkFieldMatch(field, localValue, verificationValue);
+      
+      return matches ? (
+        <FaCheck className="text-success ms-2" title="Verified" />
+      ) : (
+        <FaTimes className="text-danger ms-2" title="Not verified" />
+      );
+    } catch (err) {
+      console.error(`Error comparing field ${field}:`, err);
+      return <FaTimes className="text-danger ms-2" title="Error in verification" />;
     }
+  };
+
+  // Get mismatched fields for better error messages
+  const getMismatchedFields = (voter, verificationData) => {
+    if (!voter || !verificationData) return [];
     
-    const matches = checkFieldMatch(field, localValue, verificationValue);
+    const fieldsToCheck = [
+      { key: 'fullName', label: 'Full Name' },
+      { key: 'fatherName', label: 'Father\'s Name' },
+      { key: 'gender', label: 'Gender' },
+      { key: 'dateOfBirth', label: 'Date of Birth' },
+      { key: 'voterId', label: 'Voter ID' },
+      { key: 'age', label: 'Age' },
+      { key: 'email', label: 'Email' }
+    ];
     
-    return matches ? (
-      <FaCheck className="text-success ms-2" title="Verified" />
-    ) : (
-      <FaTimes className="text-danger ms-2" title="Not verified" />
-    );
+    const mismatches = [];
+    
+    fieldsToCheck.forEach(field => {
+      try {
+        let localValue;
+        let verificationValue;
+        
+        // Prepare values for comparison
+        if (field.key === 'fullName') {
+          localValue = { 
+            firstName: voter.firstName || '', 
+            middleName: voter.middleName || '', 
+            lastName: voter.lastName || '' 
+          };
+          verificationValue = {
+            firstName: verificationData.firstName || '',
+            middleName: verificationData.middleName || '',
+            lastName: verificationData.lastName || ''
+          };
+        } else {
+          localValue = voter[field.key] || null;
+          verificationValue = verificationData[field.key] || null;
+        }
+        
+        // Check if fields match
+        if (!checkFieldMatch(field.key, localValue, verificationValue)) {
+          mismatches.push(field.label);
+        }
+      } catch (err) {
+        console.error(`Error checking field ${field.key}:`, err);
+        // If we can't compare the field due to an error, consider it mismatched
+        mismatches.push(field.label);
+      }
+    });
+    
+    return mismatches;
   };
 
   return (
@@ -647,21 +731,10 @@ const ApproveVoters = () => {
             Voter Details
             {verificationData && (
               <Badge 
-                bg={
-                  checkFieldMatch('fullName', 
-                    { firstName: selectedVoter.firstName, middleName: selectedVoter.middleName, lastName: selectedVoter.lastName }, 
-                    verificationData) && 
-                  checkFieldMatch('voterId', selectedVoter.voterId, verificationData.voterId) &&
-                  checkFieldMatch('dateOfBirth', selectedVoter.dateOfBirth, verificationData.dateOfBirth) ? 
-                    'success' : 'danger'
-                }
+                bg={getMismatchedFields(selectedVoter, verificationData).length === 0 ? 'success' : 'danger'}
                 className="ms-2"
               >
-                {checkFieldMatch('fullName', 
-                  { firstName: selectedVoter.firstName, middleName: selectedVoter.middleName, lastName: selectedVoter.lastName }, 
-                  verificationData) && 
-                checkFieldMatch('voterId', selectedVoter.voterId, verificationData.voterId) &&
-                checkFieldMatch('dateOfBirth', selectedVoter.dateOfBirth, verificationData.dateOfBirth) ? 
+                {getMismatchedFields(selectedVoter, verificationData).length === 0 ? 
                   'Verified' : 'Not Verified'}
               </Badge>
             )}
@@ -753,23 +826,28 @@ const ApproveVoters = () => {
                   ) : verificationData ? (
                     <Alert 
                       variant={
-                        checkFieldMatch('fullName', 
-                          { firstName: selectedVoter.firstName, middleName: selectedVoter.middleName, lastName: selectedVoter.lastName }, 
-                          verificationData) && 
-                        checkFieldMatch('voterId', selectedVoter.voterId, verificationData.voterId) &&
-                        checkFieldMatch('dateOfBirth', selectedVoter.dateOfBirth, verificationData.dateOfBirth) ? 
+                        getMismatchedFields(selectedVoter, verificationData).length === 0 ? 
                           'success' : 'danger'
                       }
                       className="py-2 mb-0"
                     >
                       <small>
-                        {checkFieldMatch('fullName', 
-                          { firstName: selectedVoter.firstName, middleName: selectedVoter.middleName, lastName: selectedVoter.lastName }, 
-                          verificationData) && 
-                        checkFieldMatch('voterId', selectedVoter.voterId, verificationData.voterId) &&
-                        checkFieldMatch('dateOfBirth', selectedVoter.dateOfBirth, verificationData.dateOfBirth) ? 
+                        {getMismatchedFields(selectedVoter, verificationData).length === 0 ? 
                           'Voter verified successfully against external database.' : 
-                          'Voter details do not match with external database. Please verify carefully.'}
+                          (() => {
+                            const mismatches = getMismatchedFields(selectedVoter, verificationData);
+                            return (
+                              <>
+                                <strong>Verification failed!</strong> The following fields don't match with the external database:
+                                <ul className="mb-0 mt-1 ps-3">
+                                  {mismatches.map((field, index) => (
+                                    <li key={index}>{field}</li>
+                                  ))}
+                                </ul>
+                              </>
+                            );
+                          })()
+                        }
                       </small>
                     </Alert>
                   ) : (
