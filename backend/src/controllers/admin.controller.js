@@ -996,22 +996,22 @@ exports.getElectionStatus = async (req, res) => {
 // Complete voter approval after MetaMask transaction
 exports.approveVoterComplete = async (req, res) => {
   try {
-    const { voterId } = req.params;
+    const { voterId } = req.params; // Changed back to voterId to match the route parameter
     const { txHash, voterAddress } = req.body;
     
     console.log(`Completing voter approval for ID: ${voterId}, txHash: ${txHash}`);
-    
+
     if (!txHash) {
       return res.status(400).json({ message: 'Transaction hash is required' });
     }
-    
+
     // Find voter
     const voter = await Voter.findById(voterId);
     if (!voter) {
       console.log(`Voter not found with ID: ${voterId}`);
       return res.status(404).json({ message: 'Voter not found' });
     }
-    
+
     console.log(`Found voter: ${voter._id}, status: ${voter.status}`);
     
     // Update voter status
@@ -1021,7 +1021,7 @@ exports.approveVoterComplete = async (req, res) => {
     voter.blockchainTxHash = txHash;
     
     await voter.save();
-    
+
     console.log(`Voter ${voterId} status updated to approved with txHash: ${txHash}`);
     
     // Get user for email notification
@@ -1040,6 +1040,20 @@ exports.approveVoterComplete = async (req, res) => {
     } catch (emailError) {
       console.error(`Error sending approval email to ${userEmail}:`, emailError);
       // Continue despite email error
+    }
+
+    // Log the activity
+    try {
+      await Activity.create({
+        user: req.user?._id,
+        action: 'approve-complete',
+        entity: 'voter',
+        entityId: voter._id,
+        details: `Voter blockchain registration completed with transaction: ${txHash}`
+      });
+    } catch (activityError) {
+      console.error('Error logging activity:', activityError);
+      // Continue despite activity logging error
     }
     
     res.json({

@@ -353,10 +353,114 @@ const ApproveVoters = () => {
     }
   };
 
+  // Get mismatched fields for better error messages
+  const getMismatchedFields = (voter, verificationData) => {
+    if (!voter || !verificationData) return [];
+    
+    const fieldsToCheck = [
+      { key: 'fullName', label: 'Full Name' },
+      { key: 'fatherName', label: 'Father\'s Name' },
+      { key: 'gender', label: 'Gender' },
+      { key: 'dateOfBirth', label: 'Date of Birth' },
+      { key: 'voterId', label: 'Voter ID' },
+      { key: 'age', label: 'Age' }
+      // Email is intentionally excluded as it's not required for verification
+    ];
+    
+    const mismatches = [];
+    
+    fieldsToCheck.forEach(field => {
+      try {
+        let localValue;
+        let verificationValue;
+        
+        // Prepare values for comparison
+        if (field.key === 'fullName') {
+          localValue = { 
+            firstName: voter.firstName || '', 
+            middleName: voter.middleName || '', 
+            lastName: voter.lastName || '' 
+          };
+          verificationValue = {
+            firstName: verificationData.firstName || '',
+            middleName: verificationData.middleName || '',
+            lastName: verificationData.lastName || ''
+          };
+        } else {
+          localValue = voter[field.key] || null;
+          verificationValue = verificationData[field.key] || null;
+        }
+        
+        // Check if fields match
+        if (!checkFieldMatch(field.key, localValue, verificationValue)) {
+          mismatches.push(field.label);
+        }
+      } catch (err) {
+        console.error(`Error checking field ${field.key}:`, err);
+        // If we can't compare the field due to an error, consider it mismatched
+        mismatches.push(field.label);
+      }
+    });
+    
+    return mismatches;
+  };
+
+  // Generate rejection reason text based on verification results
+  const generateRejectionReason = (voter) => {
+    let reason = "";
+    const issues = [];
+    
+    // Check for data verification issues
+    if (verificationData) {
+      const mismatches = getMismatchedFields(voter, verificationData);
+      if (mismatches.length > 0) {
+        const fieldsText = mismatches.join(", ");
+        issues.push(`The Information doesn't match our voter records: ${fieldsText}`);
+      }
+    } else if (verificationError) {
+      issues.push(`Unable to verify your voter information: ${verificationError}`);
+    }
+    
+    // Check for face verification issues
+    if (faceVerificationData && !faceVerificationData.verified) {
+      issues.push("Face verification failed - the provided photo doesn't match our records");
+    } else if (faceVerificationError) {
+      issues.push(`Face verification error: ${faceVerificationError}`);
+    }
+    
+    // If no specific issues found but still rejecting
+    if (issues.length === 0) {
+      issues.push("The provided information could not be verified against our records");
+    }
+    
+    // Add all issues as bullet points
+    issues.forEach((issue, index) => {
+      reason += `${index + 1}. ${issue}\n`;
+    });
+    
+    // reason += "\nPlease ensure all information is correct and try registering again. For assistance, contact our support team.";
+    
+    return reason;
+  };
+
   // Reject voter
   const handleRejectClick = (voterId) => {
     setSelectedVoterId(voterId);
-    setRejectReason('');
+    
+    // Generate rejection reason based on verification results if this is from details modal
+    if (showDetailsModal && selectedVoter && selectedVoter.id === voterId) {
+      const generatedReason = generateRejectionReason(selectedVoter);
+      setRejectReason(generatedReason);
+    } else {
+      setRejectReason('');
+      
+      // If we have the voter in our list, set a basic reason
+      const voter = voters.find(v => v.id === voterId);
+      if (voter) {
+        setRejectReason("");
+      }
+    }
+    
     setShowRejectModal(true);
   };
 
@@ -595,58 +699,6 @@ const ApproveVoters = () => {
     }
   };
 
-  // Get mismatched fields for better error messages
-  const getMismatchedFields = (voter, verificationData) => {
-    if (!voter || !verificationData) return [];
-    
-    const fieldsToCheck = [
-      { key: 'fullName', label: 'Full Name' },
-      { key: 'fatherName', label: 'Father\'s Name' },
-      { key: 'gender', label: 'Gender' },
-      { key: 'dateOfBirth', label: 'Date of Birth' },
-      { key: 'voterId', label: 'Voter ID' },
-      { key: 'age', label: 'Age' }
-      // Email is intentionally excluded as it's not required for verification
-    ];
-    
-    const mismatches = [];
-    
-    fieldsToCheck.forEach(field => {
-      try {
-        let localValue;
-        let verificationValue;
-        
-        // Prepare values for comparison
-        if (field.key === 'fullName') {
-          localValue = { 
-            firstName: voter.firstName || '', 
-            middleName: voter.middleName || '', 
-            lastName: voter.lastName || '' 
-          };
-          verificationValue = {
-            firstName: verificationData.firstName || '',
-            middleName: verificationData.middleName || '',
-            lastName: verificationData.lastName || ''
-          };
-        } else {
-          localValue = voter[field.key] || null;
-          verificationValue = verificationData[field.key] || null;
-        }
-        
-        // Check if fields match
-        if (!checkFieldMatch(field.key, localValue, verificationValue)) {
-          mismatches.push(field.label);
-        }
-      } catch (err) {
-        console.error(`Error checking field ${field.key}:`, err);
-        // If we can't compare the field due to an error, consider it mismatched
-        mismatches.push(field.label);
-      }
-    });
-    
-    return mismatches;
-  };
-
   return (
     <Layout>
       <Container className="py-4">
@@ -787,12 +839,14 @@ const ApproveVoters = () => {
               <Form.Label>Reason for Rejection</Form.Label>
               <Form.Control
                 as="textarea"
-                rows={3}
+                rows={5}
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="Please provide a reason for rejecting this voter registration..."
+                style={{ whiteSpace: 'pre-line' }} /* This helps preserve line breaks */
               />
               <Form.Text className="text-muted">
+                A pre-populated reason has been generated based on verification results. You can edit it if needed.
                 This reason will be sent to the voter via email.
               </Form.Text>
             </Form.Group>
