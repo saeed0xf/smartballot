@@ -27,6 +27,11 @@ const ApproveVoters = () => {
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [verificationError, setVerificationError] = useState(null);
   
+  // Face verification states
+  const [faceVerificationData, setFaceVerificationData] = useState(null);
+  const [faceVerificationLoading, setFaceVerificationLoading] = useState(false);
+  const [faceVerificationError, setFaceVerificationError] = useState(null);
+  
   // Image preview modal state
   const [showImageModal, setShowImageModal] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState('');
@@ -66,6 +71,8 @@ const ApproveVoters = () => {
       setVoterDetailsLoading(true);
       setVerificationData(null);
       setVerificationError(null);
+      setFaceVerificationData(null);
+      setFaceVerificationError(null);
       
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       const response = await axios.get(`${apiUrl}/admin/voters/${voterId}`);
@@ -147,6 +154,96 @@ const ApproveVoters = () => {
       // Error is now handled in the inner catch block
     } finally {
       setVerificationLoading(false);
+    }
+  };
+  
+  // Verify voter face against the AI verification service
+  const verifyVoterFace = async (voter) => {
+    if (!voter || !voter.voterId || !voter.faceImage) {
+      console.error('No voter ID or face image available for verification');
+      setFaceVerificationError('Voter ID or face image missing');
+      return;
+    }
+    
+    try {
+      setFaceVerificationLoading(true);
+      setFaceVerificationError(null);
+      setFaceVerificationData(null);
+      
+      console.log(`Verifying face for voter with ID: ${voter.voterId}`);
+      
+      // Get the face image URL
+      const faceImageUrl = getImageUrl(voter.faceImage);
+      if (!faceImageUrl) {
+        throw new Error('Could not generate face image URL');
+      }
+      
+      // Fetch the image as a blob
+      try {
+        const imageResponse = await fetch(faceImageUrl);
+        if (!imageResponse.ok) {
+          throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
+        }
+        
+        const imageBlob = await imageResponse.blob();
+        
+        // Create a FormData object to send to the API
+        const formData = new FormData();
+        formData.append('uploaded_image', imageBlob, 'voter_face.jpg');
+        formData.append('voter_id', voter.voterId);
+        
+        try {
+          // Create an AbortController to manage timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
+          
+          // Send the verification request to the AI service
+          const verificationResponse = await axios.post('http://localhost:8000/api/verify', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+            signal: controller.signal,
+            timeout: 15000 // 15-second timeout
+          });
+          
+          // Clear the timeout
+          clearTimeout(timeoutId);
+          
+          console.log('Face verification response:', verificationResponse.data);
+          
+          if (verificationResponse.data && verificationResponse.data.success) {
+            setFaceVerificationData(verificationResponse.data);
+          } else {
+            setFaceVerificationError(verificationResponse.data?.message || 'Face verification failed');
+          }
+        } catch (apiError) {
+          // Handle API specific errors
+          console.error('Face verification API error:', apiError);
+          
+          if (apiError.name === 'AbortError' || apiError.code === 'ECONNABORTED') {
+            setFaceVerificationError('Face verification request timed out. The AI service might be unavailable.');
+          } else if (apiError.response) {
+            // The request was made and the server responded with a status code
+            const errorMessage = apiError.response.data?.message || apiError.response.data?.error || apiError.response.statusText;
+            setFaceVerificationError(`Face verification error: ${errorMessage}`);
+          } else if (apiError.request) {
+            // The request was made but no response was received
+            setFaceVerificationError('No response from face verification service. The AI service might be down.');
+          } else {
+            // Something happened in setting up the request
+            setFaceVerificationError(`Error in face verification: ${apiError.message}`);
+          }
+        }
+      } catch (imageError) {
+        console.error('Image fetching error:', imageError);
+        setFaceVerificationError(`Failed to process face image: ${imageError.message}`);
+      }
+    } catch (error) {
+      console.error('Error verifying voter face:', error);
+      const errorMessage = error.message || 'Error verifying face';
+      setFaceVerificationError(errorMessage);
+    } finally {
+      setFaceVerificationLoading(false);
     }
   };
 
@@ -738,6 +835,14 @@ const ApproveVoters = () => {
                   'Verified' : 'Not Verified'}
               </Badge>
             )}
+            {faceVerificationData && (
+              <Badge 
+                bg={faceVerificationData.verified ? 'success' : 'danger'}
+                className="ms-2"
+              >
+                Face {faceVerificationData.verified ? 'Match' : 'No Match'}
+              </Badge>
+            )}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -903,7 +1008,19 @@ const ApproveVoters = () => {
                     <div className="text-muted">No voter ID image available</div>
                   )}
                   
-                  <h6 className="mt-4 border-bottom pb-2">Face Verification Image</h6>
+                  <h6 className="mt-4 border-bottom pb-2 d-flex justify-content-between align-items-center">
+                    Face Verification Image
+                    <Button 
+                      variant="outline-primary"
+                      size="sm"
+                      disabled={faceVerificationLoading || !selectedVoter?.faceImage}
+                      onClick={() => verifyVoterFace(selectedVoter)}
+                      className="ms-2"
+                    >
+                      <FaSync className={faceVerificationLoading ? 'fa-spin me-1' : 'me-1'} /> 
+                      {faceVerificationLoading ? 'Verifying...' : 'Verify Face'}
+                    </Button>
+                  </h6>
                   {selectedVoter.faceImage ? (
                     <>
                       <div className="p-2 bg-light border rounded mb-2" style={{ textAlign: 'center' }}>
@@ -941,6 +1058,43 @@ const ApproveVoters = () => {
                         >
                           <i className="fas fa-search-plus me-2"></i> View Full Image
                         </Button>
+                      </div>
+                      
+                      {/* Face Verification Status Section */}
+                      <div className="mt-3 mb-3">
+                        {faceVerificationLoading ? (
+                          <div className="d-flex align-items-center">
+                            <Spinner animation="border" size="sm" className="me-2" />
+                            <span>Verifying face biometrics...</span>
+                          </div>
+                        ) : faceVerificationError ? (
+                          <Alert variant="warning" className="py-2">
+                            <small>{faceVerificationError}</small>
+                          </Alert>
+                        ) : faceVerificationData ? (
+                          <Alert 
+                            variant={faceVerificationData.verified ? 'success' : 'danger'}
+                            className="py-2 mb-0"
+                          >
+                            <div className="d-flex justify-content-between align-items-center">
+                              <small>{faceVerificationData.message}</small>
+                              <Badge bg={faceVerificationData.verified ? 'success' : 'danger'}>
+                                {faceVerificationData.verified ? 'Match' : 'No Match'}
+                              </Badge>
+                            </div>
+                            {faceVerificationData.similarity_score && (
+                              <div className="mt-1">
+                                <small>
+                                  Similarity Score: <strong>{Math.round(faceVerificationData.similarity_score)}%</strong>
+                                </small>
+                              </div>
+                            )}
+                          </Alert>
+                        ) : (
+                          <div className="text-muted">
+                            <small>Face verification not performed. Click "Verify Face" to check identity.</small>
+                          </div>
+                        )}
                       </div>
                     </>
                   ) : (
