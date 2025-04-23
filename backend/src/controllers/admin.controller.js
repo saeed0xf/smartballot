@@ -40,6 +40,7 @@ exports.getAllVoters = async (req, res) => {
         dateOfBirth: voter.dateOfBirth,
         voterId: voter.voterId,
         voterIdImage: voter.voterIdImage,
+        faceImage: voter.faceImage,
         status: voter.status,
         rejectionReason: voter.rejectionReason,
         email: voter.user ? voter.user.email : null,
@@ -99,6 +100,22 @@ exports.getVoterDetails = async (req, res) => {
       console.log(`Formatted voter ID image path: ${voterIdImage}`);
     }
     
+    // Format face image path
+    let faceImage = voter.faceImage;
+    if (faceImage) {
+      // Remove any leading slash
+      if (faceImage.startsWith('/')) {
+        faceImage = faceImage.substring(1);
+      }
+      
+      // Add /uploads prefix if not present and not an absolute URL
+      if (!faceImage.startsWith('uploads/') && !faceImage.startsWith('http')) {
+        faceImage = `uploads/${faceImage}`;
+      }
+      
+      console.log(`Formatted face image path: ${faceImage}`);
+    }
+    
     const voterDetails = {
       id: voter._id,
       firstName: voter.firstName,
@@ -110,6 +127,7 @@ exports.getVoterDetails = async (req, res) => {
       dateOfBirth: voter.dateOfBirth,
       voterId: voter.voterId,
       voterIdImage: voterIdImage,
+      faceImage: faceImage,
       status: voter.status,
       rejectionReason: voter.rejectionReason,
       email: user.email || voter.email || null, // Try to get email from user first, then from voter

@@ -22,6 +22,15 @@ exports.registerVoter = async (req, res) => {
           md5: file.md5
         });
       }
+      if (req.files.faceImage) {
+        const file = req.files.faceImage;
+        console.log('Face image details:', {
+          name: file.name,
+          size: file.size,
+          mimetype: file.mimetype,
+          md5: file.md5
+        });
+      }
     } else {
       console.log('No req.files object found');
     }
@@ -150,6 +159,40 @@ exports.registerVoter = async (req, res) => {
       return res.status(400).json({ message: 'Voter ID image is required' });
     }
     
+    // Process face image
+    let faceImagePath = null;
+    
+    // Check if face image is coming via express-fileupload
+    if (req.files && req.files.faceImage) {
+      const faceImage = req.files.faceImage;
+      console.log('Face image details:', {
+        name: faceImage.name,
+        size: faceImage.size,
+        mimetype: faceImage.mimetype,
+        md5: faceImage.md5
+      });
+      
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const filename = `faceImage-${uniqueSuffix}${path.extname(faceImage.name)}`;
+      const uploadPath = path.join(__dirname, '../../uploads', filename);
+      
+      try {
+        // Move the file to the uploads directory
+        await faceImage.mv(uploadPath);
+        faceImagePath = `/uploads/${filename}`;
+        console.log('Face image uploaded successfully to:', uploadPath);
+      } catch (fileError) {
+        console.error('Error moving uploaded face image:', fileError);
+        return res.status(500).json({ 
+          message: 'Error uploading face image', 
+          details: fileError.message 
+        });
+      }
+    } else {
+      console.error('No face image found in request');
+      return res.status(400).json({ message: 'Face image is required' });
+    }
+    
     // Create new voter profile
     const voter = new Voter({
       user: userId,
@@ -163,10 +206,12 @@ exports.registerVoter = async (req, res) => {
       email,
       voterId,
       voterIdImage: voterIdImagePath,
+      faceImage: faceImagePath,
       status: 'pending'
     });
     
-    console.log('Saving voter profile with image path:', voterIdImagePath);
+    console.log('Saving voter profile with voter ID image path:', voterIdImagePath);
+    console.log('Saving voter profile with face image path:', faceImagePath);
     await voter.save();
     console.log('Voter profile saved successfully');
     

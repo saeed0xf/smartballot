@@ -511,61 +511,82 @@ const ApproveVoters = () => {
                   {selectedVoter.voterIdImage ? (
                     <>
                       <div className="p-2 bg-light border rounded mb-2" style={{ textAlign: 'center' }}>
-                        <img 
-                          src={getImageUrl(selectedVoter.voterIdImage)} 
-                          alt="Voter ID" 
-                          className="img-fluid border rounded shadow-sm cursor-pointer" 
-                          style={{ 
-                            maxHeight: '220px', 
-                            maxWidth: '100%',
-                            objectFit: 'contain',
-                            display: 'block',
-                            margin: '0 auto',
-                            cursor: 'pointer'
-                          }}
+                        <img
+                          src={getImageUrl(selectedVoter.voterIdImage)}
+                          alt="Voter ID"
+                          className="img-fluid border rounded shadow-sm cursor-pointer"
+                          style={{ maxHeight: '150px', cursor: 'pointer' }}
                           onClick={() => {
                             const imageUrl = getImageUrl(selectedVoter.voterIdImage);
-                            console.log('Opening image in modal:', imageUrl);
                             setPreviewImageUrl(imageUrl);
                             setShowImageModal(true);
+                            console.log('Opening image preview:', imageUrl);
                           }}
                           onError={(e) => {
-                            console.error('Image failed to load:', selectedVoter.voterIdImage);
+                            console.error('Error loading voter ID image');
                             console.log('Full URL attempted:', getImageUrl(selectedVoter.voterIdImage));
-                            e.target.onerror = null; // Prevent infinite loop
-                            e.target.src = 'https://via.placeholder.com/300x200?text=Image+Not+Found';
-                            e.target.alt = 'Image not found';
+                            e.target.src = '/placeholder-id.png'; // Fallback image
                           }}
                         />
-                        <div className="d-flex justify-content-between align-items-center mt-2">
-                          <Button 
-                            variant="outline-primary" 
-                            size="sm"
-                            onClick={() => {
-                              const imageUrl = getImageUrl(selectedVoter.voterIdImage);
-                              console.log('Opening image in modal via button:', imageUrl);
-                              setPreviewImageUrl(imageUrl);
-                              setShowImageModal(true);
-                            }}
-                          >
-                            Click to enlarge
-                          </Button>
-                          <Button 
-                            variant="outline-secondary" 
-                            size="sm"
-                            as="a"
-                            href={getImageUrl(selectedVoter.voterIdImage)}
-                            download
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Download
-                          </Button>
-                        </div>
+                        <div className="mt-1 small text-muted">Click to enlarge</div>
+                      </div>
+                      <div className="d-flex justify-content-center mb-3">
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          onClick={() => {
+                            const imageUrl = getImageUrl(selectedVoter.voterIdImage);
+                            // Open image in new tab as fallback method
+                            window.open(imageUrl, '_blank');
+                          }}
+                        >
+                          <i className="fas fa-external-link-alt me-1"></i> Open in New Tab
+                        </Button>
                       </div>
                     </>
                   ) : (
-                    <Alert variant="warning">No ID image uploaded</Alert>
+                    <div className="text-muted">No voter ID image available</div>
+                  )}
+                  
+                  <h6 className="mt-4 border-bottom pb-2">Face Verification Image</h6>
+                  {selectedVoter.faceImage ? (
+                    <>
+                      <div className="p-2 bg-light border rounded mb-2" style={{ textAlign: 'center' }}>
+                        <img
+                          src={getImageUrl(selectedVoter.faceImage)}
+                          alt="Voter Face"
+                          className="img-fluid border rounded shadow-sm cursor-pointer"
+                          style={{ maxHeight: '150px', cursor: 'pointer' }}
+                          onClick={() => {
+                            const imageUrl = getImageUrl(selectedVoter.faceImage);
+                            setPreviewImageUrl(imageUrl);
+                            setShowImageModal(true);
+                            console.log('Opening face image preview:', imageUrl);
+                          }}
+                          onError={(e) => {
+                            console.error('Error loading face image');
+                            console.log('Full URL attempted:', getImageUrl(selectedVoter.faceImage));
+                            e.target.src = '/placeholder-face.png'; // Fallback image
+                          }}
+                        />
+                        <div className="mt-1 small text-muted">Click to enlarge</div>
+                      </div>
+                      <div className="d-flex justify-content-center mb-3">
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          onClick={() => {
+                            const imageUrl = getImageUrl(selectedVoter.faceImage);
+                            // Open image in new tab as fallback method
+                            window.open(imageUrl, '_blank');
+                          }}
+                        >
+                          <i className="fas fa-external-link-alt me-1"></i> Open in New Tab
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-muted">No face verification image available</div>
                   )}
                 </div>
                 
