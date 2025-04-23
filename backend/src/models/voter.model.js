@@ -54,6 +54,10 @@ const voterSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  faceImage: {
+    type: String,
+    required: true
+  },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],
