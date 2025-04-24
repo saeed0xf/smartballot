@@ -9,6 +9,27 @@ import { AuthContext } from '../../context/AuthContext';
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// Helper function to properly format image URLs
+const getImageUrl = (imagePath) => {
+  if (!imagePath) {
+    return null;
+  }
+  
+  // If the path already includes http(s), it's a complete URL
+  if (imagePath.startsWith('http')) {
+    return imagePath;
+  }
+  
+  // Extract the base URL without the /api path
+  const baseUrl = API_URL.replace('/api', '');
+  
+  // Remove any leading slash if present
+  const cleanPath = imagePath.startsWith('/') ? imagePath.substring(1) : imagePath;
+  
+  // Make sure the path is correctly formatted
+  return `${baseUrl}/${cleanPath}`;
+};
+
 // Display candidates for an active election
 const ElectionCandidatesList = ({ candidates }) => {
   if (!candidates || candidates.length === 0) {
@@ -28,10 +49,7 @@ const ElectionCandidatesList = ({ candidates }) => {
                 {candidate.photoUrl ? (
                   <div className="candidate-img-container mx-auto">
                     <img 
-                      src={candidate.photoUrl.startsWith('http') 
-                        ? candidate.photoUrl 
-                        : `${API_URL}${candidate.photoUrl}`
-                      } 
+                      src={getImageUrl(candidate.photoUrl)} 
                       alt={candidate.name || `${candidate.firstName} ${candidate.lastName}`} 
                       className="rounded-circle candidate-img"
                       style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '50%' }}
@@ -51,10 +69,7 @@ const ElectionCandidatesList = ({ candidates }) => {
                 <div className="d-flex align-items-center justify-content-center mb-2">
                   {candidate.partySymbol && (
                     <img 
-                      src={candidate.partySymbol.startsWith('http') 
-                        ? candidate.partySymbol 
-                        : `${API_URL}${candidate.partySymbol}`
-                      } 
+                      src={getImageUrl(candidate.partySymbol)} 
                       alt={candidate.partyName} 
                       className="me-2" 
                       style={{ width: '24px', height: '24px' }}
@@ -247,14 +262,11 @@ const VoterDashboard = () => {
             </Card.Header>
             <Card.Body>
               <Row>
-                <Col md={3} className="text-center mb-3 mb-md-0">
-                  {voterProfile.profileImage ? (
+                {/* <Col md={3} className="text-center mb-3 mb-md-0">
+                  {voterProfile.faceImage ? (
                     <img 
-                      src={voterProfile.profileImage.startsWith('http') 
-                        ? voterProfile.profileImage 
-                        : `${API_URL}${voterProfile.profileImage}`
-                      } 
-                      alt="Profile" 
+                      src={getImageUrl(voterProfile.faceImage)}
+                      alt="Voter Photo" 
                       className="img-fluid rounded-circle" 
                       style={{ width: '150px', height: '150px', objectFit: 'cover' }}
                     />
@@ -266,7 +278,7 @@ const VoterDashboard = () => {
                       <span className="h1">{voterProfile.firstName?.charAt(0)}{voterProfile.lastName?.charAt(0)}</span>
                     </div>
                   )}
-                </Col>
+                </Col> */}
                 <Col md={9}>
                   <h3>{voterProfile.firstName} {voterProfile.middleName ? voterProfile.middleName + ' ' : ''}{voterProfile.lastName}</h3>
                   <p className="text-muted mb-2">Voter ID: {voterProfile.voterId}</p>

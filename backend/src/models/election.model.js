@@ -56,6 +56,9 @@ const electionSchema = new mongoose.Schema({
   blockchainEndTxHash: {
     type: String
   },
+  blockchainError: {
+    type: String
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

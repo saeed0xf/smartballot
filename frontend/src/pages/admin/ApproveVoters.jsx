@@ -452,7 +452,7 @@ const ApproveVoters = () => {
       const generatedReason = generateRejectionReason(selectedVoter);
       setRejectReason(generatedReason);
     } else {
-      setRejectReason('');
+    setRejectReason('');
       
       // If we have the voter in our list, set a basic reason
       const voter = voters.find(v => v.id === voterId);
