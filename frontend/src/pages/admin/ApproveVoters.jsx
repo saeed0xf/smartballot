@@ -138,6 +138,20 @@ const ApproveVoters = () => {
         console.log('Voter verification data:', response.data);
         
         if (response.data && (response.data._id || response.data.voterId)) {
+          // Log comparison of key fields for debugging
+          console.log('Verification comparison:', {
+            voterId: {
+              local: voter.voterId,
+              verification: response.data.voterId,
+              match: voter.voterId === response.data.voterId
+            },
+            pincode: {
+              local: voter.pincode,
+              verification: response.data.pincode,
+              match: (voter.pincode || '').trim().toLowerCase() === (response.data.pincode || '').trim().toLowerCase()
+            }
+          });
+          
           setVerificationData(response.data);
         } else if (response.data && response.data.message === 'Voter not found') {
           setVerificationError('Voter not found in the verification database');
@@ -380,7 +394,8 @@ const ApproveVoters = () => {
       { key: 'gender', label: 'Gender' },
       { key: 'dateOfBirth', label: 'Date of Birth' },
       { key: 'voterId', label: 'Voter ID' },
-      { key: 'age', label: 'Age' }
+      { key: 'age', label: 'Age' },
+      { key: 'pincode', label: 'Pincode' }
       // Email is intentionally excluded as it's not required for verification
     ];
     
@@ -650,6 +665,10 @@ const ApproveVoters = () => {
         // Direct comparison for simple fields
         return localValue === verificationValue;
         
+      case 'pincode':
+        // Case-insensitive comparison and trimming for pincode
+        return (localValue || '').trim().toLowerCase() === (verificationValue || '').trim().toLowerCase();
+        
       default:
         return false;
     }
@@ -703,6 +722,10 @@ const ApproveVoters = () => {
         case 'age':
           localValue = voter.age || null;
           verificationValue = verificationData.age || null;
+          break;
+        case 'pincode':
+          localValue = voter.pincode || '';
+          verificationValue = verificationData.pincode || '';
           break;
         default:
           return null;
@@ -962,21 +985,14 @@ const ApproveVoters = () => {
                   <dt className="col-sm-4">Email</dt>
                   <dd className="col-sm-8">
                     {console.log('Rendering email value:', selectedVoter.email)}
-                    {/* Display email or fallback text */}
-                    {selectedVoter.email ? (
-                      <a href={`mailto:${selectedVoter.email}`} className="text-decoration-none">
-                        <FaEnvelope className="me-1" /> {selectedVoter.email}
-                      </a>
-                    ) : (
-                      <span className="text-muted">No email provided</span>
-                    )}
+                    {selectedVoter.email || 'No email provided'}
                   </dd>
                   
                   <dt className="col-sm-4">Pincode</dt>
                   <dd className="col-sm-8">
                     {console.log('Rendering pincode value:', selectedVoter.pincode)}
-                    {/* Display pincode or fallback text */}
                     {selectedVoter.pincode || 'Not provided'}
+                    <VerificationStatus field="pincode" voter={selectedVoter} />
                   </dd>
                   
                   <dt className="col-sm-4">Voter ID</dt>
