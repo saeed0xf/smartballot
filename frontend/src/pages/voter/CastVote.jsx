@@ -7,6 +7,7 @@ import Layout from '../../components/Layout';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const FACE_API_URL = 'http://localhost:8000/api';
 
 const CastVote = () => {
   const [candidates, setCandidates] = useState([]);
@@ -26,6 +27,7 @@ const CastVote = () => {
   const [faceImageData, setFaceImageData] = useState(null);
   const [faceVerified, setFaceVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState('');
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -243,30 +245,93 @@ const CastVote = () => {
     }
   };
 
-  // Verify face (this would be replaced with an actual API call)
+  // Verify face using the external API
   const verifyFace = async () => {
-    if (!faceImageData) {
-      toast.error('No photo to verify');
+    if (!faceImageData || !voterProfile) {
+      toast.error('Missing image data or voter profile');
+      return;
+    }
+
+    // Check if voter has the voterId property
+    if (!voterProfile.voterId) {
+      toast.error('Voter ID not found in your profile');
+      console.error('Voter profile missing voterId:', voterProfile);
       return;
     }
 
     setVerifying(true);
+    setVerificationMessage('');
     
     try {
-      // Simulate API call for face verification
-      console.log('Face verification would be called with the image data');
+      // Convert base64 data URL to blob for form data
+      const fetchResponse = await fetch(faceImageData);
+      const blob = await fetchResponse.blob();
       
-      // Simulate a delay for the verification process
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Create form data with the official voterId (not MongoDB _id)
+      const formData = new FormData();
+      formData.append('uploaded_image', blob, 'face.jpg');
+      formData.append('voter_id', voterProfile.voterId); // Using voterId instead of MongoDB _id
       
-      // For now, we'll just simulate success (in reality this would call the external API)
-      console.log('Simulating successful verification');
-      setFaceVerified(true);
-      toast.success('Identity verified successfully!');
+      console.log('Making face verification API call...');
+      console.log('Using Voter ID:', voterProfile.voterId); // Log the actual voterId being used
+      
+      // Call the face verification API
+      const response = await axios.post(`${FACE_API_URL}/verify`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      console.log('Face verification response:', response.data);
+      
+      if (response.data.success) {
+        if (response.data.verified) {
+          // Verification successful
+          setFaceVerified(true);
+          setVerificationMessage(response.data.message || 'Identity verified successfully!');
+          toast.success('Identity verified successfully!');
+        } else {
+          // Verification failed but API call succeeded
+          setFaceVerified(false);
+          setVerificationMessage(response.data.message || 'Verification failed. Face does not match registered voter.');
+          toast.error('Face verification failed. Please try again with better lighting.');
+        }
+      } else {
+        // API returned an error
+        setFaceVerified(false);
+        setVerificationMessage(response.data.message || 'Verification service error');
+        toast.error(response.data.message || 'Verification failed. Please try again.');
+      }
       
     } catch (err) {
       console.error('Error in face verification:', err);
-      toast.error('Verification failed. Please try again.');
+      
+      // Handle different types of errors
+      if (err.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error('Error response data:', err.response.data);
+        console.error('Error response status:', err.response.status);
+        
+        const errorMessage = err.response.data?.message || 
+                            err.response.data?.error || 
+                            'Verification failed. Server returned an error.';
+        
+        setVerificationMessage(errorMessage);
+        toast.error(errorMessage);
+      } else if (err.request) {
+        // The request was made but no response was received
+        console.error('No response received:', err.request);
+        setVerificationMessage('Verification service unavailable. Please try again later.');
+        toast.error('Verification service unavailable. Please try again later.');
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error('Error setting up request:', err.message);
+        setVerificationMessage('An error occurred during verification. Please try again.');
+        toast.error('An error occurred during verification. Please try again.');
+      }
+      
+      setFaceVerified(false);
     } finally {
       setVerifying(false);
     }
@@ -422,7 +487,7 @@ const CastVote = () => {
                 <li>Click the "Start Camera" button to activate your webcam</li>
                 <li>Position your face within the circular guide and ensure good lighting</li>
                 <li>Click "Capture Photo" when ready</li>
-                <li>Review your photo and click "Verify Identity" to proceed</li>
+                <li>Click "Verify Identity" to check if your face matches your registration</li>
                 <li>After successful verification, click "Continue" to select your candidate</li>
               </ol>
             </Alert>
@@ -548,6 +613,12 @@ const CastVote = () => {
                         )}
                       </Button>
                       
+                      {verificationMessage && (
+                        <div className="text-danger mb-2">
+                          <small>{verificationMessage}</small>
+                        </div>
+                      )}
+                      
                       <small className="text-muted mb-2">
                         Click "Verify Identity" to authenticate your photo
                       </small>
@@ -564,7 +635,7 @@ const CastVote = () => {
                     <>
                       <div className="text-success mb-3">
                         <i className="bi bi-check-circle-fill me-2"></i>
-                        Identity verified successfully!
+                        {verificationMessage || 'Identity verified successfully!'}
                       </div>
                       
                       <div className="d-flex gap-2">
