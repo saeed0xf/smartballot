@@ -428,6 +428,11 @@ const ApproveVoters = () => {
       issues.push(`Face verification error: ${faceVerificationError}`);
     }
     
+    // If face verification wasn't performed at all, add it as an issue
+    if (!faceVerificationData && !faceVerificationError && voter.faceImage) {
+      issues.push("Face verification was not performed - your identity couldn't be confirmed");
+    }
+    
     // If no specific issues found but still rejecting
     if (issues.length === 0) {
       issues.push("The provided information could not be verified against our records");
@@ -940,6 +945,11 @@ const ApproveVoters = () => {
                     {/* Email verification is intentionally omitted as it's not required */}
                   </dd>
                   
+                  <dt className="col-sm-4">Pincode</dt>
+                  <dd className="col-sm-8">
+                    {selectedVoter.pincode || 'Not provided'}
+                  </dd>
+                  
                   <dt className="col-sm-4">Voter ID</dt>
                   <dd className="col-sm-8">
                     {selectedVoter.voterId || 'Not provided'}
@@ -1083,7 +1093,6 @@ const ApproveVoters = () => {
                             setPreviewImageUrl(imageUrl);
                             setPreviewImageType('face');
                             setShowImageModal(true);
-                            console.log('Opening face image preview:', imageUrl);
                           }}
                           onError={(e) => {
                             console.error('Error loading face image');
