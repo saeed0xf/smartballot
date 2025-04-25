@@ -36,7 +36,8 @@ const ManageCandidates = () => {
     education: '',
     experience: '',
     criminalRecord: 'None',
-    email: ''
+    email: '',
+    pincode: ''
   });
   
   const [candidateImage, setCandidateImage] = useState(null);
@@ -554,7 +555,8 @@ const ManageCandidates = () => {
       education: '',
       experience: '',
       criminalRecord: 'None',
-      email: ''
+      email: '',
+      pincode: ''
     });
     setCandidateImage(null);
     setPartySymbolImage(null);
@@ -1029,6 +1031,21 @@ const ManageCandidates = () => {
                         </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Pincode</Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="pincode"
+                          value={newCandidate.pincode}
+                          onChange={handleInputChange}
+                          placeholder="Enter postal code"
+                        />
+                        <Form.Text className="text-muted">
+                          Postal code of the constituency area
+                        </Form.Text>
+                      </Form.Group>
+                    </Col>
                   </Row>
                   
                   <hr className="my-4" />
@@ -1217,6 +1234,10 @@ const ManageCandidates = () => {
                   <Row className="mb-3">
                     <Col sm={4} className="text-muted">Constituency:</Col>
                     <Col sm={8}>{selectedCandidate.constituency}</Col>
+                  </Row>
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Pincode:</Col>
+                    <Col sm={8}>{selectedCandidate.pincode || 'Not provided'}</Col>
                   </Row>
                   
                   <h5 className="border-bottom pb-2 mt-4">Additional Information</h5>

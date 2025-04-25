@@ -38,7 +38,9 @@ const ManageElection = () => {
     description: '',
     startDate: '',
     endDate: '',
-    isActive: false
+    isActive: false,
+    region: '',
+    pincode: ''
   });
   
   const [formErrors, setFormErrors] = useState({});
@@ -944,7 +946,9 @@ const ManageElection = () => {
       description: '',
       startDate: '',
       endDate: '',
-      isActive: false
+      isActive: false,
+      region: '',
+      pincode: ''
     });
     setIsEditing(false);
     setEditingElection(null);
@@ -1178,6 +1182,13 @@ const ManageElection = () => {
                                 <small className="text-muted text-truncate d-inline-block" style={{ maxWidth: '250px' }}>
                                   {election.description}
                                 </small>
+                                <div className="mb-2"><strong>Description:</strong> {election.description}</div>
+                                {election.region && (
+                                  <div className="mb-2"><strong>Region:</strong> {election.region}</div>
+                                )}
+                                {election.pincode && (
+                                  <div className="mb-2"><strong>Pincode:</strong> {election.pincode}</div>
+                                )}
                           </td>
                               <td className="py-3">
                                 <Badge bg={
@@ -1362,6 +1373,34 @@ const ManageElection = () => {
                       </Form.Group>
                     </Col>
                   </Row>
+                  
+                  <Form.Group className="mb-3">
+                    <Form.Label>Region/Constituency</Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="region"
+                      value={newElection.region}
+                      onChange={handleInputChange}
+                      placeholder="Geographic area of the election"
+                    />
+                    <Form.Text className="text-muted">
+                      Specify the geographical area for this election
+                    </Form.Text>
+                  </Form.Group>
+                  
+                  <Form.Group className="mb-3">
+                    <Form.Label>Pincode</Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="pincode"
+                      value={newElection.pincode}
+                      onChange={handleInputChange}
+                      placeholder="Postal code for the region"
+                    />
+                    <Form.Text className="text-muted">
+                      Enter the postal code for this election's region
+                    </Form.Text>
+                  </Form.Group>
                   
                   <div className="d-flex justify-content-end mt-4">
                     <Button 

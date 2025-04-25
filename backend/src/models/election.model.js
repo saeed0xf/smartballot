@@ -29,6 +29,10 @@ const electionSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  pincode: {
+    type: String,
+    trim: true
+  },
   startDate: {
     type: Date
   },

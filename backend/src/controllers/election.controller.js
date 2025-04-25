@@ -75,7 +75,7 @@ exports.getElectionById = async (req, res) => {
 exports.createElection = async (req, res) => {
   try {
     console.log('Create election request received:', req.body);
-    const { name, title, type, description, startDate, endDate } = req.body;
+    const { name, title, type, description, region, pincode, startDate, endDate } = req.body;
     
     // Use name or title (frontend sends name, but schema expects title)
     const electionTitle = title || name;
@@ -103,6 +103,8 @@ exports.createElection = async (req, res) => {
       title: electionTitle, // Use the electionTitle variable
       type: electionType,   // Use the electionType variable
       description,
+      region,
+      pincode,
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       isActive: false,
@@ -163,7 +165,7 @@ exports.updateElection = async (req, res) => {
       });
     }
     
-    const { name, title, type, description, startDate, endDate } = req.body;
+    const { name, title, type, description, region, pincode, startDate, endDate } = req.body;
     
     // Use title or name, and ensure type is preserved
     const electionTitle = title || name || '';
@@ -181,7 +183,9 @@ exports.updateElection = async (req, res) => {
         title: electionTitle, 
         name: electionName,  // Explicitly save the name field
         type: electionType,
-        description, 
+        description,
+        region,
+        pincode,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
         updatedAt: Date.now()
