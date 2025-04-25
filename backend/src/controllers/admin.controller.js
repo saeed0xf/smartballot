@@ -28,8 +28,24 @@ exports.getAllVoters = async (req, res) => {
     // Find voters
     const voters = await Voter.find(query).populate('user', 'email walletAddress').sort({ createdAt: -1 });
     
+    // Log the first voter object to debug email field
+    if (voters.length > 0) {
+      console.log('First voter from database:', {
+        _id: voters[0]._id,
+        email: voters[0].email,
+        userEmail: voters[0].user ? voters[0].user.email : 'No user object',
+        emailSources: {
+          directEmail: voters[0].email,
+          userEmail: voters[0].user ? voters[0].user.email : null
+        }
+      });
+    }
+    
     // Map users to voters
     const votersWithDetails = voters.map(voter => {
+      // Ensure email is always present by checking both voter.email and voter.user.email
+      const email = voter.email || (voter.user ? voter.user.email : null);
+      
       return {
         id: voter._id,
         firstName: voter.firstName,
@@ -44,7 +60,8 @@ exports.getAllVoters = async (req, res) => {
         faceImage: voter.faceImage,
         status: voter.status,
         rejectionReason: voter.rejectionReason,
-        email: voter.user ? voter.user.email : null,
+        email: email, // Use the resolved email value
+        pincode: voter.pincode, // Ensure pincode is included
         walletAddress: voter.user ? voter.user.walletAddress : null,
         createdAt: voter.createdAt,
         blockchainRegistered: voter.blockchainRegistered,

@@ -56,7 +56,39 @@ const ApproveVoters = () => {
       const response = await axios.get(`${apiUrl}/admin/voters?status=${filterStatus}`);
       
       console.log('Fetched voters:', response.data.voters);
-      setVoters(response.data.voters);
+      
+      // Add detailed logging for each voter to check email field
+      if (response.data.voters && response.data.voters.length > 0) {
+        console.log('Examining first voter data:', response.data.voters[0]);
+        response.data.voters.forEach((voter, index) => {
+          console.log(`Voter ${index + 1} - Email:`, voter.email || 'No email found');
+          
+          // Log all possible email sources for debugging
+          console.log(`Voter ${index + 1} - Email sources:`, {
+            directEmail: voter.email,
+            userEmail: voter.user?.email,
+            nestedUserEmail: voter.user ? voter.user.email : null
+          });
+        });
+      }
+      
+      // Ensure each voter has the email property
+      const processedVoters = response.data.voters.map(voter => {
+        // Check for email in different possible locations
+        const email = voter.email || (voter.user && voter.user.email) || null;
+        
+        console.log(`Processing voter ${voter.id}: Found email:`, email);
+        
+        // Create a new voter object with explicitly set email field
+        return {
+          ...voter,
+          email: email, // Explicitly set the email
+          user: voter.user // Preserve the original user object if needed
+        };
+      });
+      
+      console.log('Processed voters with normalized email fields:', processedVoters.map(v => ({id: v.id, email: v.email})));
+      setVoters(processedVoters);
     } catch (err) {
       console.error('Error fetching voters:', err);
       setError('Failed to fetch voters. Please try again.');
@@ -805,14 +837,25 @@ const ApproveVoters = () => {
                   <tbody>
                     {voters.map((voter) => (
                       <tr key={voter.id}>
+                        {/* Log full voter object for debugging */}
+                        {console.log(`Full voter object for ${voter.id}:`, voter)}
                         <td>
                           {voter.firstName} {voter.middleName ? voter.middleName + ' ' : ''}{voter.lastName}
                         </td>
                         <td>{voter.voterId}</td>
                         <td>
+                          {/* Log email value for debugging */}
+                          {console.log(`Rendering email for voter ${voter.id}:`, voter.email)}
+                          {console.log('Checking for nested email:', voter.user?.email)}
+                          
+                          {/* Display email with improved fallback handling */}
                           {voter.email ? (
                             <a href={`mailto:${voter.email}`} className="d-flex align-items-center text-decoration-none">
                               <FaEnvelope className="me-1" /> {voter.email}
+                            </a>
+                          ) : voter.user?.email ? (
+                            <a href={`mailto:${voter.user.email}`} className="d-flex align-items-center text-decoration-none">
+                              <FaEnvelope className="me-1" /> {voter.user.email}
                             </a>
                           ) : (
                             <span className="text-muted">Not provided</span>
