@@ -28,6 +28,7 @@ const CastVote = () => {
   const [faceVerified, setFaceVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
+  const [showVerificationSection, setShowVerificationSection] = useState(true);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -351,6 +352,8 @@ const CastVote = () => {
       return;
     }
     
+    // Hide the verification section and show the candidates section
+    setShowVerificationSection(false);
     toast.success('Verification complete. You can now select a candidate.');
     
     // Scroll to candidate section
@@ -466,185 +469,163 @@ const CastVote = () => {
           </p>
         </Alert>
         
-        {/* Face Capture Section */}
-        <Card className="mb-4 shadow-sm">
-          <Card.Header className="bg-light d-flex justify-content-between align-items-center">
-            <h5 className="mb-0">Identity Verification</h5>
-            <div>
-              {faceVerified ? (
-                <span className="badge bg-success">Verified</span>
-              ) : faceCaptured ? (
-                <span className="badge bg-warning">Verification Required</span>
-              ) : (
-                <span className="badge bg-warning">Photo Required</span>
-              )}
-            </div>
-          </Card.Header>
-          <Card.Body>
-            <Alert variant="secondary" className="mb-3">
-              <h6 className="mb-2">Instructions:</h6>
-              <ol className="mb-0">
-                <li>Click the "Start Camera" button to activate your webcam</li>
-                <li>Position your face within the circular guide and ensure good lighting</li>
-                <li>Click "Capture Photo" when ready</li>
-                <li>Click "Verify Identity" to check if your face matches your registration</li>
-                <li>After successful verification, click "Continue" to select your candidate</li>
-              </ol>
-            </Alert>
-            
-            {!faceCaptured ? (
-              <div className="text-center mb-3">
-                {!showWebcam ? (
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      setShowWebcam(true);
-                      setTimeout(() => {
-                        if (videoRef.current) {
-                          startWebcam().catch(err => {
-                            console.error('Error starting webcam:', err);
-                            setShowWebcam(false);
-                          });
-                        }
-                      }, 100);
-                    }}
-                  >
-                    Start Camera
-                  </Button>
+        {/* Face Capture Section - show only if verification is not complete or explicitly shown */}
+        {showVerificationSection && (
+          <Card className="mb-4 shadow-sm">
+            <Card.Header className="bg-light d-flex justify-content-between align-items-center">
+              <h5 className="mb-0">Identity Verification</h5>
+              <div>
+                {faceVerified ? (
+                  <span className="badge bg-success">Verified</span>
+                ) : faceCaptured ? (
+                  <span className="badge bg-warning">Verification Required</span>
                 ) : (
-                  <div className="mb-3">
-                    <div className="position-relative d-inline-block">
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        style={{ 
-                          maxWidth: '100%', 
-                          maxHeight: '300px', 
-                          border: '1px solid #ddd',
-                          borderRadius: '8px',
-                          transform: 'scaleX(-1)', // Mirror effect
-                          backgroundColor: '#000'
-                        }}
-                        onClick={() => {
-                          if (videoRef.current) {
-                            videoRef.current.play().catch(e => {
-                              console.log('Play on click failed', e);
-                            });
-                          }
-                        }}
-                      />
-                      
-                      {/* Visual guide for face positioning */}
-                      <div 
-                        style={{
-                          position: 'absolute',
-                          top: '50%',
-                          left: '50%',
-                          transform: 'translate(-50%, -50%)',
-                          width: '180px',
-                          height: '180px',
-                          borderRadius: '50%',
-                          border: '3px dashed rgba(255, 255, 255, 0.8)',
-                          boxShadow: '0 0 0 2000px rgba(0, 0, 0, 0.15)', // Darken outside the circle
-                          pointerEvents: 'none',
-                          zIndex: 10
-                        }}
-                      />
-                      
-                      <p className="text-muted mb-2 mt-2">
-                        Position your face within the circle and ensure good lighting
-                      </p>
-                    </div>
-                    
-                    <div className="d-flex justify-content-center gap-2 mt-3">
-                      <Button
-                        variant="success"
-                        onClick={capturePhoto}
-                      >
-                        Capture Photo
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={stopWebcam}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
+                  <span className="badge bg-warning">Photo Required</span>
                 )}
               </div>
-            ) : (
-              <div className="text-center">
-                <div className="mb-3">
-                  <img
-                    src={faceImageData}
-                    alt="Captured face"
-                    className="img-thumbnail"
-                    style={{ maxHeight: '200px' }}
-                  />
-                </div>
-                
-                {/* Verification actions */}
-                <div className="d-flex flex-column align-items-center gap-2 mb-3">
-                  {!faceVerified ? (
-                    <>
-                      <Button
-                        variant="primary"
-                        onClick={verifyFace}
-                        disabled={verifying}
-                        className="mb-2"
-                      >
-                        {verifying ? (
-                          <>
-                            <Spinner
-                              as="span"
-                              animation="border"
-                              size="sm"
-                              role="status"
-                              aria-hidden="true"
-                              className="me-2"
-                            />
-                            Verifying...
-                          </>
-                        ) : (
-                          'Verify Identity'
-                        )}
-                      </Button>
-                      
-                      {verificationMessage && (
-                        <div className="text-danger mb-2">
-                          <small>{verificationMessage}</small>
-                        </div>
-                      )}
-                      
-                      <small className="text-muted mb-2">
-                        Click "Verify Identity" to authenticate your photo
-                      </small>
-                      
-                      <Button
-                        variant="outline-secondary"
-                        onClick={retryCapture}
-                        size="sm"
-                      >
-                        Retake Photo
-                      </Button>
-                    </>
+            </Card.Header>
+            <Card.Body>
+              <Alert variant="secondary" className="mb-3">
+                <h6 className="mb-2">Instructions:</h6>
+                <ol className="mb-0">
+                  <li>Click the "Start Camera" button to activate your webcam</li>
+                  <li>Position your face within the circular guide and ensure good lighting</li>
+                  <li>Click "Capture Photo" when ready</li>
+                  <li>Click "Verify Identity" to check if your face matches your registration</li>
+                  <li>After successful verification, click "Continue" to select your candidate</li>
+                </ol>
+              </Alert>
+              
+              {!faceCaptured ? (
+                <div className="text-center mb-3">
+                  {!showWebcam ? (
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        setShowWebcam(true);
+                        setTimeout(() => {
+                          if (videoRef.current) {
+                            startWebcam().catch(err => {
+                              console.error('Error starting webcam:', err);
+                              setShowWebcam(false);
+                            });
+                          }
+                        }, 100);
+                      }}
+                    >
+                      Start Camera
+                    </Button>
                   ) : (
-                    <>
-                      <div className="text-success mb-3">
-                        <i className="bi bi-check-circle-fill me-2"></i>
-                        {verificationMessage || 'Identity verified successfully!'}
+                    <div className="mb-3">
+                      <div className="position-relative d-inline-block">
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          style={{ 
+                            maxWidth: '100%', 
+                            maxHeight: '300px', 
+                            border: '1px solid #ddd',
+                            borderRadius: '8px',
+                            transform: 'scaleX(-1)', // Mirror effect
+                            backgroundColor: '#000'
+                          }}
+                          onClick={() => {
+                            if (videoRef.current) {
+                              videoRef.current.play().catch(e => {
+                                console.log('Play on click failed', e);
+                              });
+                            }
+                          }}
+                        />
+                        
+                        {/* Visual guide for face positioning */}
+                        <div 
+                          style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '180px',
+                            height: '180px',
+                            borderRadius: '50%',
+                            border: '3px dashed rgba(255, 255, 255, 0.8)',
+                            boxShadow: '0 0 0 2000px rgba(0, 0, 0, 0.15)', // Darken outside the circle
+                            pointerEvents: 'none',
+                            zIndex: 10
+                          }}
+                        />
+                        
+                        <p className="text-muted mb-2 mt-2">
+                          Position your face within the circle and ensure good lighting
+                        </p>
                       </div>
                       
-                      <div className="d-flex gap-2">
+                      <div className="d-flex justify-content-center gap-2 mt-3">
+                        <Button
+                          variant="success"
+                          onClick={capturePhoto}
+                        >
+                          Capture Photo
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={stopWebcam}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center">
+                  <div className="mb-3">
+                    <img
+                      src={faceImageData}
+                      alt="Captured face"
+                      className="img-thumbnail"
+                      style={{ maxHeight: '200px' }}
+                    />
+                  </div>
+                  
+                  {/* Verification actions */}
+                  <div className="d-flex flex-column align-items-center gap-2 mb-3">
+                    {!faceVerified ? (
+                      <>
                         <Button
                           variant="primary"
-                          onClick={continueToVoting}
+                          onClick={verifyFace}
+                          disabled={verifying}
+                          className="mb-2"
                         >
-                          Continue to Voting
+                          {verifying ? (
+                            <>
+                              <Spinner
+                                as="span"
+                                animation="border"
+                                size="sm"
+                                role="status"
+                                aria-hidden="true"
+                                className="me-2"
+                              />
+                              Verifying...
+                            </>
+                          ) : (
+                            'Verify Identity'
+                          )}
                         </Button>
+                        
+                        {verificationMessage && (
+                          <div className="text-danger mb-2">
+                            <small>{verificationMessage}</small>
+                          </div>
+                        )}
+                        
+                        <small className="text-muted mb-2">
+                          Click "Verify Identity" to authenticate your photo
+                        </small>
                         
                         <Button
                           variant="outline-secondary"
@@ -653,20 +634,51 @@ const CastVote = () => {
                         >
                           Retake Photo
                         </Button>
-                      </div>
-                    </>
-                  )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-success mb-3">
+                          <i className="bi bi-check-circle-fill me-2"></i>
+                          {verificationMessage || 'Identity verified successfully!'}
+                        </div>
+                        
+                        <div className="d-flex gap-2">
+                          <Button
+                            variant="primary"
+                            onClick={continueToVoting}
+                          >
+                            Continue to Voting
+                          </Button>
+                          
+                          <Button
+                            variant="outline-secondary"
+                            onClick={retryCapture}
+                            size="sm"
+                          >
+                            Retake Photo
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-            
-            {/* Hidden canvas for capture */}
-            <canvas ref={canvasRef} style={{ display: 'none' }} />
-          </Card.Body>
-        </Card>
+              )}
+              
+              {/* Hidden canvas for capture */}
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
+            </Card.Body>
+          </Card>
+        )}
         
         {/* Candidates Section */}
         <div id="candidate-section">
+          {faceVerified && (
+            <Alert variant="success" className="mb-4">
+              <Alert.Heading><i className="bi bi-check-circle-fill me-2"></i>Identity Verified</Alert.Heading>
+              <p>Your identity has been verified successfully. Please select a candidate to cast your vote.</p>
+            </Alert>
+          )}
+          
           {candidates.length === 0 ? (
             <Alert variant="warning">
               No candidates have been added to the election yet.
