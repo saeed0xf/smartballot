@@ -117,6 +117,9 @@ exports.getVoterDetails = async (req, res) => {
       console.log(`Formatted face image path: ${faceImage}`);
     }
     
+    // Check if pincode exists and log it
+    console.log(`Voter pincode: ${voter.pincode || 'none'}`);
+    
     const voterDetails = {
       id: voter._id,
       firstName: voter.firstName,
@@ -132,6 +135,7 @@ exports.getVoterDetails = async (req, res) => {
       status: voter.status,
       rejectionReason: voter.rejectionReason,
       email: user.email || voter.email || null, // Try to get email from user first, then from voter
+      pincode: voter.pincode, // Include pincode in the response
       walletAddress: user.walletAddress,
       blockchainRegistered: voter.blockchainRegistered,
       blockchainTxHash: voter.blockchainTxHash,
@@ -139,7 +143,7 @@ exports.getVoterDetails = async (req, res) => {
       updatedAt: voter.updatedAt
     };
     
-    console.log(`Sending voter details with email: ${voterDetails.email || 'none'}`);
+    console.log(`Sending voter details with email: ${voterDetails.email || 'none'} and pincode: ${voterDetails.pincode || 'none'}`);
     
     res.json({
       voter: voterDetails
@@ -1322,5 +1326,55 @@ exports.getCandidatesByElectionId = async (req, res) => {
       message: 'Server error while getting candidates', 
       error: error.message 
     });
+  }
+};
+
+// Update the getVoterById function to explicitly include pincode
+exports.getVoterById = async (req, res) => {
+  try {
+    const { voterId } = req.params;
+    
+    // Find voter by ID
+    const voter = await Voter.findById(voterId).populate('user');
+    
+    if (!voter) {
+      return res.status(404).json({ message: 'Voter not found' });
+    }
+    
+    // Log the voter object for debugging
+    console.log('Admin controller - Voter data being sent to frontend:', {
+      id: voter._id,
+      firstName: voter.firstName,
+      lastName: voter.lastName,
+      pincode: voter.pincode // Log the pincode specifically to check if it exists
+    });
+    
+    res.json({
+      voter: {
+        id: voter._id,
+        firstName: voter.firstName,
+        middleName: voter.middleName,
+        lastName: voter.lastName,
+        fatherName: voter.fatherName,
+        gender: voter.gender,
+        age: voter.age,
+        dateOfBirth: voter.dateOfBirth,
+        email: voter.email,
+        pincode: voter.pincode, // Ensure pincode is included
+        voterId: voter.voterId,
+        voterIdImage: voter.voterIdImage,
+        faceImage: voter.faceImage,
+        status: voter.status,
+        rejectionReason: voter.rejectionReason,
+        walletAddress: voter.user.walletAddress,
+        createdAt: voter.createdAt,
+        updatedAt: voter.updatedAt,
+        blockchainRegistered: voter.blockchainRegistered,
+        blockchainTxHash: voter.blockchainTxHash
+      }
+    });
+  } catch (error) {
+    console.error('Get voter by ID error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 }; 

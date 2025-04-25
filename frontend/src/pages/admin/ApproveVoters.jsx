@@ -77,12 +77,29 @@ const ApproveVoters = () => {
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       const response = await axios.get(`${apiUrl}/admin/voters/${voterId}`);
       
-      console.log('Fetched voter details:', response.data.voter);
-      setSelectedVoter(response.data.voter);
+      // More detailed logging to debug the entire voter object structure
+      console.log('Fetched voter details (full response):', response.data);
+      console.log('Voter object keys:', Object.keys(response.data.voter));
+      console.log('Email value:', response.data.voter.email);
+      console.log('Pincode value:', response.data.voter.pincode);
+      
+      // Ensure we set the full voter object including all properties
+      const voterData = response.data.voter;
+      
+      // Ensure email and pincode are available for display
+      if (!voterData.pincode && response.data.voter.pincode) {
+        voterData.pincode = response.data.voter.pincode;
+      }
+      if (!voterData.email && response.data.voter.email) {
+        voterData.email = response.data.voter.email;
+      }
+      
+      console.log('Voter data being set to state:', voterData);
+      setSelectedVoter(voterData);
       setShowDetailsModal(true);
       
       // Verify the voter details against the external API
-      await verifyVoterDetails(response.data.voter);
+      await verifyVoterDetails(voterData);
     } catch (err) {
       console.error('Error fetching voter details:', err);
       toast.error('Failed to fetch voter details.');
@@ -775,7 +792,7 @@ const ApproveVoters = () => {
                               <FaEnvelope className="me-1" /> {voter.email}
                             </a>
                           ) : (
-                            <span className="text-muted">No email</span>
+                            <span className="text-muted">Not provided</span>
                           )}
                         </td>
                         <td>
@@ -907,6 +924,9 @@ const ApproveVoters = () => {
             </div>
           ) : selectedVoter ? (
             <Row>
+              {console.log('Rendering voter in modal with data:', selectedVoter)}
+              {console.log('Email in modal:', selectedVoter.email)}
+              {console.log('Pincode in modal:', selectedVoter.pincode)}
               <Col md={6}>
                 <dl className="row">
                   <dt className="col-sm-4">Full Name</dt>
@@ -941,12 +961,21 @@ const ApproveVoters = () => {
                   
                   <dt className="col-sm-4">Email</dt>
                   <dd className="col-sm-8">
-                    {selectedVoter.email || 'No email provided'}
-                    {/* Email verification is intentionally omitted as it's not required */}
+                    {console.log('Rendering email value:', selectedVoter.email)}
+                    {/* Display email or fallback text */}
+                    {selectedVoter.email ? (
+                      <a href={`mailto:${selectedVoter.email}`} className="text-decoration-none">
+                        <FaEnvelope className="me-1" /> {selectedVoter.email}
+                      </a>
+                    ) : (
+                      <span className="text-muted">No email provided</span>
+                    )}
                   </dd>
                   
                   <dt className="col-sm-4">Pincode</dt>
                   <dd className="col-sm-8">
+                    {console.log('Rendering pincode value:', selectedVoter.pincode)}
+                    {/* Display pincode or fallback text */}
                     {selectedVoter.pincode || 'Not provided'}
                   </dd>
                   

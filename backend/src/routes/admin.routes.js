@@ -57,7 +57,7 @@ router.post('/elections/check-status', async (req, res) => {
 });
 
 // Voter management
-router.get('/voters/:voterId', adminController.getVoterDetails);
+router.get('/voters/:voterId', adminController.getVoterById);
 router.get('/voters', adminController.getAllVoters || ((req, res) => {
   res.status(200).json({ message: 'Get voters placeholder', data: [] });
 }));
