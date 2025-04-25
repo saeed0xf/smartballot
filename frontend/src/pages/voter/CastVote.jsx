@@ -24,6 +24,8 @@ const CastVote = () => {
   const [showWebcam, setShowWebcam] = useState(false);
   const [faceCaptured, setFaceCaptured] = useState(false);
   const [faceImageData, setFaceImageData] = useState(null);
+  const [faceVerified, setFaceVerified] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -232,9 +234,8 @@ const CastVote = () => {
       
       toast.success('Photo captured successfully!');
       
-      // Here, we would normally call the face verification API
-      // Since we're skipping that part, we'll just simulate a successful capture
-      console.log('Face image captured - would normally be sent for verification');
+      // Reset verification status when a new photo is captured
+      setFaceVerified(false);
       
     } catch (err) {
       console.error('Error capturing photo:', err);
@@ -242,10 +243,53 @@ const CastVote = () => {
     }
   };
 
+  // Verify face (this would be replaced with an actual API call)
+  const verifyFace = async () => {
+    if (!faceImageData) {
+      toast.error('No photo to verify');
+      return;
+    }
+
+    setVerifying(true);
+    
+    try {
+      // Simulate API call for face verification
+      console.log('Face verification would be called with the image data');
+      
+      // Simulate a delay for the verification process
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // For now, we'll just simulate success (in reality this would call the external API)
+      console.log('Simulating successful verification');
+      setFaceVerified(true);
+      toast.success('Identity verified successfully!');
+      
+    } catch (err) {
+      console.error('Error in face verification:', err);
+      toast.error('Verification failed. Please try again.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   // Retry capture
   const retryCapture = () => {
     setFaceCaptured(false);
+    setFaceVerified(false);
     setFaceImageData(null);
+  };
+
+  // Continue to voting after verification
+  const continueToVoting = () => {
+    if (!faceVerified) {
+      toast.error('Please verify your identity first');
+      return;
+    }
+    
+    toast.success('Verification complete. You can now select a candidate.');
+    
+    // Scroll to candidate section
+    document.getElementById('candidate-section')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleSelectCandidate = (candidate) => {
@@ -258,9 +302,9 @@ const CastVote = () => {
       return;
     }
     
-    // Since we're not doing verification, the face capture is just for ID purposes
-    if (!faceCaptured) {
-      toast.error('Please capture your photo before voting');
+    // Face verification is now required
+    if (!faceVerified) {
+      toast.error('Please verify your identity before voting');
       return;
     }
     
@@ -361,12 +405,27 @@ const CastVote = () => {
         <Card className="mb-4 shadow-sm">
           <Card.Header className="bg-light d-flex justify-content-between align-items-center">
             <h5 className="mb-0">Identity Verification</h5>
-            <span className={`badge ${faceCaptured ? 'bg-success' : 'bg-warning'}`}>
-              {faceCaptured ? 'Photo Captured' : 'Photo Required'}
-            </span>
+            <div>
+              {faceVerified ? (
+                <span className="badge bg-success">Verified</span>
+              ) : faceCaptured ? (
+                <span className="badge bg-warning">Verification Required</span>
+              ) : (
+                <span className="badge bg-warning">Photo Required</span>
+              )}
+            </div>
           </Card.Header>
           <Card.Body>
-            <p>For security purposes, we need to take your photo before you can cast your vote.</p>
+            <Alert variant="secondary" className="mb-3">
+              <h6 className="mb-2">Instructions:</h6>
+              <ol className="mb-0">
+                <li>Click the "Start Camera" button to activate your webcam</li>
+                <li>Position your face within the circular guide and ensure good lighting</li>
+                <li>Click "Capture Photo" when ready</li>
+                <li>Review your photo and click "Verify Identity" to proceed</li>
+                <li>After successful verification, click "Continue" to select your candidate</li>
+              </ol>
+            </Alert>
             
             {!faceCaptured ? (
               <div className="text-center mb-3">
@@ -461,13 +520,71 @@ const CastVote = () => {
                     style={{ maxHeight: '200px' }}
                   />
                 </div>
-                <div className="d-flex justify-content-center gap-2">
-                  <Button
-                    variant="outline-primary"
-                    onClick={retryCapture}
-                  >
-                    Retake Photo
-                  </Button>
+                
+                {/* Verification actions */}
+                <div className="d-flex flex-column align-items-center gap-2 mb-3">
+                  {!faceVerified ? (
+                    <>
+                      <Button
+                        variant="primary"
+                        onClick={verifyFace}
+                        disabled={verifying}
+                        className="mb-2"
+                      >
+                        {verifying ? (
+                          <>
+                            <Spinner
+                              as="span"
+                              animation="border"
+                              size="sm"
+                              role="status"
+                              aria-hidden="true"
+                              className="me-2"
+                            />
+                            Verifying...
+                          </>
+                        ) : (
+                          'Verify Identity'
+                        )}
+                      </Button>
+                      
+                      <small className="text-muted mb-2">
+                        Click "Verify Identity" to authenticate your photo
+                      </small>
+                      
+                      <Button
+                        variant="outline-secondary"
+                        onClick={retryCapture}
+                        size="sm"
+                      >
+                        Retake Photo
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-success mb-3">
+                        <i className="bi bi-check-circle-fill me-2"></i>
+                        Identity verified successfully!
+                      </div>
+                      
+                      <div className="d-flex gap-2">
+                        <Button
+                          variant="primary"
+                          onClick={continueToVoting}
+                        >
+                          Continue to Voting
+                        </Button>
+                        
+                        <Button
+                          variant="outline-secondary"
+                          onClick={retryCapture}
+                          size="sm"
+                        >
+                          Retake Photo
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -477,72 +594,90 @@ const CastVote = () => {
           </Card.Body>
         </Card>
         
-        {candidates.length === 0 ? (
-          <Alert variant="warning">
-            No candidates have been added to the election yet.
-          </Alert>
-        ) : (
-          <>
-            <h4 className="mb-3">Select a Candidate</h4>
-            <Row>
-              {candidates.map(candidate => (
-                <Col key={candidate.id} md={4} className="mb-4">
-                  <Card 
-                    className={`h-100 shadow-sm candidate-card ${selectedCandidate?.id === candidate.id ? 'border-primary' : ''}`}
-                    onClick={() => handleSelectCandidate(candidate)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {candidate.image ? (
-                      <Card.Img 
-                        variant="top" 
-                        src={candidate.image.startsWith('http') 
-                          ? candidate.image 
-                          : `http://localhost:5000${candidate.image}`
-                        } 
-                        alt={candidate.name}
-                        className="candidate-image"
-                      />
-                    ) : (
-                      <div 
-                        className="bg-light d-flex align-items-center justify-content-center candidate-image"
-                      >
-                        <span className="text-muted">No image available</span>
-                      </div>
-                    )}
-                    <Card.Body>
-                      <Card.Title>{candidate.name}</Card.Title>
-                      <Card.Subtitle className="mb-2 text-muted">{candidate.party}</Card.Subtitle>
-                      {candidate.slogan && (
-                        <Card.Text className="fst-italic">"{candidate.slogan}"</Card.Text>
-                      )}
-                      {selectedCandidate?.id === candidate.id && (
-                        <div className="text-center mt-2">
-                          <span className="badge bg-primary">Selected</span>
+        {/* Candidates Section */}
+        <div id="candidate-section">
+          {candidates.length === 0 ? (
+            <Alert variant="warning">
+              No candidates have been added to the election yet.
+            </Alert>
+          ) : (
+            <>
+              <h4 className="mb-3">Select a Candidate</h4>
+              <Row>
+                {candidates.map(candidate => (
+                  <Col key={candidate.id} md={4} className="mb-4">
+                    <Card 
+                      className={`h-100 shadow-sm candidate-card ${selectedCandidate?.id === candidate.id ? 'border-primary' : ''}`}
+                      onClick={() => faceVerified && handleSelectCandidate(candidate)}
+                      style={{ 
+                        cursor: faceVerified ? 'pointer' : 'not-allowed',
+                        opacity: faceVerified ? 1 : 0.7
+                      }}
+                    >
+                      {candidate.image ? (
+                        <Card.Img 
+                          variant="top" 
+                          src={candidate.image.startsWith('http') 
+                            ? candidate.image 
+                            : `http://localhost:5000${candidate.image}`
+                          } 
+                          alt={candidate.name}
+                          className="candidate-image"
+                        />
+                      ) : (
+                        <div 
+                          className="bg-light d-flex align-items-center justify-content-center candidate-image"
+                        >
+                          <span className="text-muted">No image available</span>
                         </div>
                       )}
-                    </Card.Body>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-            
-            <div className="d-grid gap-2 col-md-6 mx-auto mt-4">
-              <Button 
-                variant="primary" 
-                size="lg" 
-                onClick={handleVoteClick}
-                disabled={!selectedCandidate || !faceCaptured}
-              >
-                Cast My Vote
-              </Button>
-              {!faceCaptured && selectedCandidate && (
-                <div className="text-center mt-2 text-danger">
-                  <small>Please capture your photo before casting your vote</small>
-                </div>
-              )}
-            </div>
-          </>
-        )}
+                      <Card.Body>
+                        <Card.Title>{candidate.name}</Card.Title>
+                        <Card.Subtitle className="mb-2 text-muted">{candidate.party}</Card.Subtitle>
+                        {candidate.slogan && (
+                          <Card.Text className="fst-italic">"{candidate.slogan}"</Card.Text>
+                        )}
+                        {selectedCandidate?.id === candidate.id && (
+                          <div className="text-center mt-2">
+                            <span className="badge bg-primary">Selected</span>
+                          </div>
+                        )}
+                      </Card.Body>
+                      {!faceVerified && (
+                        <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ backgroundColor: 'rgba(0,0,0,0.1)', zIndex: 5, borderRadius: 'inherit' }}>
+                          <div className="bg-white py-2 px-3 rounded shadow-sm">
+                            <small>Please verify your identity first</small>
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
+              
+              <div className="d-grid gap-2 col-md-6 mx-auto mt-4">
+                <Button 
+                  variant="primary" 
+                  size="lg" 
+                  onClick={handleVoteClick}
+                  disabled={!selectedCandidate || !faceVerified}
+                >
+                  Cast My Vote
+                </Button>
+                {!faceVerified && (
+                  <div className="text-center mt-2 text-danger">
+                    <small>Please verify your identity before casting your vote</small>
+                  </div>
+                )}
+                {faceVerified && !selectedCandidate && (
+                  <div className="text-center mt-2 text-danger">
+                    <small>Please select a candidate</small>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
         
         {/* Confirmation Modal */}
         <Modal show={showConfirmModal} onHide={() => setShowConfirmModal(false)}>
