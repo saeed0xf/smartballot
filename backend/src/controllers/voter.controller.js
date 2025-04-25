@@ -91,11 +91,12 @@ exports.registerVoter = async (req, res) => {
       age,
       dateOfBirth,
       email,
-      voterId
+      voterId,
+      pincode
     } = req.body;
     
     // Validate required fields
-    if (!firstName || !lastName || !fatherName || !gender || !dateOfBirth || !email || !voterId) {
+    if (!firstName || !lastName || !fatherName || !gender || !dateOfBirth || !email || !voterId || !pincode) {
       return res.status(400).json({ message: 'All required fields must be provided' });
     }
     
@@ -205,6 +206,7 @@ exports.registerVoter = async (req, res) => {
       dateOfBirth,
       email,
       voterId,
+      pincode,
       voterIdImage: voterIdImagePath,
       faceImage: faceImagePath,
       status: 'pending'
@@ -273,6 +275,7 @@ exports.getVoterProfile = async (req, res) => {
         age: voter.age,
         dateOfBirth: voter.dateOfBirth,
         email: voter.email,
+        pincode: voter.pincode,
         voterId: voter.voterId,
         voterIdImage: voter.voterIdImage,
         status: voter.status,
@@ -311,7 +314,8 @@ exports.updateVoterProfile = async (req, res) => {
       gender,
       dateOfBirth,
       email,
-      voterId
+      voterId,
+      pincode
     } = req.body;
     
     // Update voter profile
@@ -320,6 +324,7 @@ exports.updateVoterProfile = async (req, res) => {
     if (lastName) voter.lastName = lastName;
     if (fatherName) voter.fatherName = fatherName;
     if (gender) voter.gender = gender;
+    if (pincode) voter.pincode = pincode;
     
     // Update age if date of birth changes
     if (dateOfBirth) {
@@ -379,6 +384,7 @@ exports.updateVoterProfile = async (req, res) => {
         age: voter.age,
         dateOfBirth: voter.dateOfBirth,
         email: voter.email,
+        pincode: voter.pincode,
         voterId: voter.voterId,
         voterIdImage: voter.voterIdImage,
         status: voter.status

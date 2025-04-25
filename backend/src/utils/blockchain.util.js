@@ -322,7 +322,7 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
       console.log('Using standard ethers.js contract call to start election');
       
       let tx;
-      // Check if our contract has a method to set the election ID
+    // Check if our contract has a method to set the election ID
       if (typeof connectedContract.startElectionWithId === 'function') {
         tx = await connectedContract.startElectionWithId(electionId, electionName);
     } else {

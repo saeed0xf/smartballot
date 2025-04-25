@@ -277,10 +277,10 @@ const ArchivedElections = () => {
         setError(`No candidates found for ${election.title}. Cannot generate report.`);
         return;
       }
-      
-      // Create CSV content
-      let csvContent = "data:text/csv;charset=utf-8,";
-      
+    
+    // Create CSV content
+    let csvContent = "data:text/csv;charset=utf-8,";
+    
       // CSV Header with election details
       csvContent += `# Election Results: ${election.title}\n`;
       csvContent += `# Type: ${getElectionType(election)}\n`;
@@ -294,8 +294,8 @@ const ArchivedElections = () => {
       if (!totalVotes) {
         totalVotes = electionCandidates.reduce((sum, c) => sum + (c.voteCount || 0), 0);
       }
-      
-      // Add candidate rows
+    
+    // Add candidate rows
       electionCandidates.forEach(candidate => {
         const fullName = candidate.fullName || 
           `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`;
@@ -306,20 +306,20 @@ const ArchivedElections = () => {
         const constituency = candidate.constituency || 'N/A';
         
         csvContent += `"${fullName}","${candidate.partyName}","${constituency}",${candidate.voteCount || 0},${percentage}%\n`;
-      });
-      
-      // Create download link
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
+    });
+    
+    // Create download link
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
       link.setAttribute("download", `${election.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_results.csv`);
-      document.body.appendChild(link);
-      
-      // Trigger download
-      link.click();
-      
-      // Cleanup
-      document.body.removeChild(link);
+    document.body.appendChild(link);
+    
+    // Trigger download
+    link.click();
+    
+    // Cleanup
+    document.body.removeChild(link);
       
       console.log('Election results downloaded successfully');
     } catch (error) {
@@ -511,84 +511,84 @@ const ArchivedElections = () => {
                     <th style={{width: '25%'}}>Party</th>
                     <th style={{width: '15%'}}>Votes</th>
                     <th style={{width: '25%'}}>Percentage</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {electionCandidates.map((candidate) => {
-                    const totalVotes = selectedElection?.totalVotes || 
-                      electionCandidates.reduce((sum, c) => sum + (c.voteCount || 0), 0);
-                    const percentage = totalVotes > 0 
-                      ? ((candidate.voteCount || 0) / totalVotes * 100).toFixed(2) 
-                      : '0.00';
-                    
-                    return (
-                      <tr key={candidate._id}>
-                        <td>
-                          <div className="d-flex align-items-center">
-                            {candidate.photoUrl && (
-                              <div className="candidate-img-small me-2">
-                                <img 
-                                  src={candidate.photoUrl} 
-                                  alt={candidate.firstName} 
+                </tr>
+              </thead>
+              <tbody>
+                {electionCandidates.map((candidate) => {
+                  const totalVotes = selectedElection?.totalVotes || 
+                    electionCandidates.reduce((sum, c) => sum + (c.voteCount || 0), 0);
+                  const percentage = totalVotes > 0 
+                    ? ((candidate.voteCount || 0) / totalVotes * 100).toFixed(2) 
+                    : '0.00';
+                  
+                  return (
+                    <tr key={candidate._id}>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          {candidate.photoUrl && (
+                            <div className="candidate-img-small me-2">
+                              <img 
+                                src={candidate.photoUrl} 
+                                alt={candidate.firstName} 
                                   style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '50%' }}
                                   onError={(e) => {
                                     e.target.onerror = null;
                                     e.target.src = 'https://via.placeholder.com/50?text=N/A';
                                   }}
-                                />
-                              </div>
-                            )}
-                            <div>
-                              <div className="fw-bold">
-                                {candidate.firstName} {candidate.middleName} {candidate.lastName}
-                              </div>
-                              <small className="text-muted">
-                                {candidate.constituency || getElectionType(selectedElection)}
-                              </small>
+                              />
                             </div>
+                          )}
+                          <div>
+                            <div className="fw-bold">
+                              {candidate.firstName} {candidate.middleName} {candidate.lastName}
+                            </div>
+                            <small className="text-muted">
+                                {candidate.constituency || getElectionType(selectedElection)}
+                            </small>
                           </div>
-                        </td>
-                        <td>
-                          <div className="d-flex align-items-center">
-                            {candidate.partySymbol && (
-                              <div className="party-symbol-small me-2">
-                                <img 
-                                  src={candidate.partySymbol} 
-                                  alt={candidate.partyName} 
-                                  style={{ width: '30px', height: '30px', objectFit: 'contain' }}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          {candidate.partySymbol && (
+                            <div className="party-symbol-small me-2">
+                              <img 
+                                src={candidate.partySymbol} 
+                                alt={candidate.partyName} 
+                                style={{ width: '30px', height: '30px', objectFit: 'contain' }}
                                   onError={(e) => {
                                     e.target.onerror = null;
                                     e.target.src = 'https://via.placeholder.com/30?text=N/A';
                                   }}
-                                />
-                              </div>
-                            )}
-                            <div>{candidate.partyName}</div>
-                          </div>
-                        </td>
-                        <td className="fw-bold">{candidate.voteCount || 0}</td>
-                        <td>
-                          <div className="position-relative pt-1">
-                            <div 
-                              className="progress" 
-                              style={{ height: '12px', backgroundColor: '#e9ecef' }}
-                            >
-                              <div 
-                                className="progress-bar bg-success" 
-                                style={{ width: `${percentage}%` }}
-                                aria-valuenow={percentage} 
-                                aria-valuemin="0" 
-                                aria-valuemax="100"
-                              ></div>
+                              />
                             </div>
-                            <div className="mt-1">{percentage}%</div>
+                          )}
+                          <div>{candidate.partyName}</div>
+                        </div>
+                      </td>
+                      <td className="fw-bold">{candidate.voteCount || 0}</td>
+                      <td>
+                        <div className="position-relative pt-1">
+                          <div 
+                            className="progress" 
+                              style={{ height: '12px', backgroundColor: '#e9ecef' }}
+                          >
+                            <div 
+                              className="progress-bar bg-success" 
+                              style={{ width: `${percentage}%` }}
+                              aria-valuenow={percentage} 
+                              aria-valuemin="0" 
+                              aria-valuemax="100"
+                            ></div>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
+                          <div className="mt-1">{percentage}%</div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
             </>
           )}
         </Modal.Body>
@@ -604,12 +604,12 @@ const ArchivedElections = () => {
             Close
           </Button>
           {electionCandidates.length > 0 && (
-            <Button 
-              variant="success"
-              onClick={() => selectedElection && downloadElectionResults(selectedElection)}
-            >
-              <FaDownload className="me-1" /> Download Results
-            </Button>
+          <Button 
+            variant="success"
+            onClick={() => selectedElection && downloadElectionResults(selectedElection)}
+          >
+            <FaDownload className="me-1" /> Download Results
+          </Button>
           )}
         </Modal.Footer>
       </Modal>
