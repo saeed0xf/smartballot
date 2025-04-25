@@ -133,6 +133,7 @@ http://localhost:9001/api
       "voterId": "ABC123456",
       "email": "john@example.com",
       "phoneNumber": "1234567890",
+      "pincode": "123456",
       "gender": "Male",
       "photoUrl": "/uploads/1620000000000-photo.jpg",
       "address": "123 Main St",
@@ -174,6 +175,7 @@ http://localhost:9001/api
     "voterId": "ABC123456",
     "email": "john@example.com",
     "phoneNumber": "1234567890",
+    "pincode": "123456",
     "gender": "Male",
     "photoUrl": "/uploads/1620000000000-photo.jpg",
     "address": "123 Main St",
@@ -222,6 +224,7 @@ http://localhost:9001/api
   voterId: "ABC123456"
   email: "john@example.com"
   phoneNumber: "1234567890"
+  pincode: "123456"  // Required, 6-digit postal code
   gender: "Male"  // "Male", "Female", or "Other"
   photo: [File]  // Photo file, max 5MB, formats: jpg, jpeg, png, gif
   address: "123 Main St"  // Optional
@@ -243,6 +246,7 @@ http://localhost:9001/api
     "voterId": "ABC123456",
     "email": "john@example.com",
     "phoneNumber": "1234567890",
+    "pincode": "123456",
     "gender": "Male",
     "photoUrl": "/uploads/1620000000000-photo.jpg",
     "address": "123 Main St",

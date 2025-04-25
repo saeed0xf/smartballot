@@ -177,6 +177,10 @@ const VoterDetails = () => {
                     <p className="text-base text-gray-900">{voter.email || 'Not specified'}</p>
                   </div>
                   <div>
+                    <p className="text-sm font-medium text-gray-500">Pincode</p>
+                    <p className="text-base text-gray-900">{voter.pincode || 'Not specified'}</p>
+                  </div>
+                  <div>
                     <p className="text-sm font-medium text-gray-500">Address</p>
                     <p className="text-base text-gray-900">{voter.address || 'Not specified'}</p>
                   </div>
