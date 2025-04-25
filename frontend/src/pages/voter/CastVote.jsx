@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Alert, Modal, Form } from 'react-bootstrap';
+import React, { useState, useEffect, useRef } from 'react';
+import { Container, Row, Col, Card, Button, Alert, Modal, Form, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import Layout from '../../components/Layout';
+
+// Get API URL from environment variables
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const CastVote = () => {
   const [candidates, setCandidates] = useState([]);
@@ -16,6 +19,25 @@ const CastVote = () => {
   const [privateKey, setPrivateKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  
+  // Face capture states
+  const [showWebcam, setShowWebcam] = useState(false);
+  const [faceCaptured, setFaceCaptured] = useState(false);
+  const [faceImageData, setFaceImageData] = useState(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
+  // Cleanup camera stream when component unmounts
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        console.log('Cleaning up camera stream on component unmount');
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -23,17 +45,64 @@ const CastVote = () => {
         setLoading(true);
         setError(null);
         
-        // Fetch election status
-        const electionResponse = await axios.get('/api/election/status');
-        setElectionStatus(electionResponse.data);
+        // Get auth headers
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         
         // Fetch voter profile
-        const profileResponse = await axios.get('/api/voter/profile');
+        const profileResponse = await axios.get(`${API_URL}/voter/profile`, { headers });
         setVoterProfile(profileResponse.data.voter);
         
-        // Fetch candidates
-        const candidatesResponse = await axios.get('/api/election/candidates');
-        setCandidates(candidatesResponse.data.candidates);
+        // First try to fetch active elections
+        try {
+          const activeElectionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
+          console.log('Active elections response:', activeElectionsResponse.data);
+          
+          // Handle different response formats
+          let electionsData = [];
+          if (Array.isArray(activeElectionsResponse.data)) {
+            electionsData = activeElectionsResponse.data;
+          } else if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
+            electionsData = activeElectionsResponse.data.elections;
+          } else if (activeElectionsResponse.data) {
+            electionsData = [activeElectionsResponse.data]; // Assume it's a single election object
+          }
+          
+          // If we have active elections, set the election status and fetch candidates
+          if (electionsData.length > 0) {
+            setElectionStatus({
+              active: true,
+              election: electionsData[0],
+              currentTime: new Date()
+            });
+            
+            // Fetch candidates
+            const candidatesResponse = await axios.get(`${API_URL}/election/candidates`, { headers });
+            setCandidates(candidatesResponse.data.candidates);
+          } else {
+            // Fallback to election status endpoint
+            const electionResponse = await axios.get(`${API_URL}/election/status`, { headers });
+            setElectionStatus(electionResponse.data);
+            
+            if (electionResponse.data.active) {
+              // If active, fetch candidates
+              const candidatesResponse = await axios.get(`${API_URL}/election/candidates`, { headers });
+              setCandidates(candidatesResponse.data.candidates);
+            }
+          }
+        } catch (electionsError) {
+          console.error('Error fetching active elections:', electionsError);
+          
+          // Fallback to election status endpoint
+          const electionResponse = await axios.get(`${API_URL}/election/status`, { headers });
+          setElectionStatus(electionResponse.data);
+          
+          if (electionResponse.data.active) {
+            // If active, fetch candidates
+            const candidatesResponse = await axios.get(`${API_URL}/election/candidates`, { headers });
+            setCandidates(candidatesResponse.data.candidates);
+          }
+        }
       } catch (err) {
         console.error('Error fetching data:', err);
         setError('Failed to load voting data. Please try again later.');
@@ -45,6 +114,140 @@ const CastVote = () => {
     fetchData();
   }, []);
 
+  // Start webcam function
+  const startWebcam = async () => {
+    try {
+      console.log('Starting webcam...');
+      
+      // Verify video ref is available
+      if (!videoRef.current) {
+        console.error('Video element is not available in the DOM');
+        throw new Error('Camera component not ready. Please refresh the page.');
+      }
+      
+      // Clean up any existing stream
+      if (streamRef.current) {
+        console.log('Stopping existing stream before starting new one');
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      
+      // Request camera access with specific constraints for better quality
+      console.log('Requesting camera access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user',
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      });
+      
+      streamRef.current = stream;
+      
+      // Set video source
+      console.log('Stream obtained, setting as video source');
+      videoRef.current.srcObject = stream;
+      
+      // Make sure any play() promise is properly handled
+      try {
+        await videoRef.current.play();
+        console.log('Webcam started successfully');
+        setError(null);
+      } catch (playError) {
+        console.error('Error starting video playback:', playError);
+        // Sometimes the play() method needs user interaction first
+        toast.info('Click the video to start the camera preview');
+      }
+      
+    } catch (err) {
+      console.error('Error accessing webcam:', err);
+      
+      // Provide more specific error messages
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('Camera access denied. Please allow camera access in your browser permissions to continue.');
+        toast.error('Camera permission denied. Please check your browser settings.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setError('No camera found. Please connect a camera and try again.');
+        toast.error('No camera detected');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setError('Could not access your camera. It may be in use by another application.');
+        toast.error('Camera is in use by another application');
+      } else {
+        setError('Failed to access webcam. Please make sure your camera is connected and you have given permission to use it.');
+        toast.error(err.message || 'Camera access failed');
+      }
+      
+      // Rethrow to propagate to the caller
+      throw err;
+    }
+  };
+
+  // Stop webcam
+  const stopWebcam = () => {
+    console.log('Stopping webcam...');
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      
+      setShowWebcam(false);
+      console.log('Webcam stopped successfully');
+    }
+  };
+
+  // Capture photo
+  const capturePhoto = async () => {
+    if (!videoRef.current || !canvasRef.current) {
+      console.error('Video or canvas ref not available');
+      toast.error('Cannot capture photo. Please try again.');
+      return;
+    }
+    
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // Set canvas dimensions to match video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      // Draw the video frame to the canvas
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert canvas to data URL
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      
+      // Update state to show captured image
+      setFaceImageData(dataUrl);
+      setFaceCaptured(true);
+      
+      // Stop webcam after capturing
+      stopWebcam();
+      
+      toast.success('Photo captured successfully!');
+      
+      // Here, we would normally call the face verification API
+      // Since we're skipping that part, we'll just simulate a successful capture
+      console.log('Face image captured - would normally be sent for verification');
+      
+    } catch (err) {
+      console.error('Error capturing photo:', err);
+      toast.error('Failed to capture photo. Please try again.');
+    }
+  };
+
+  // Retry capture
+  const retryCapture = () => {
+    setFaceCaptured(false);
+    setFaceImageData(null);
+  };
+
   const handleSelectCandidate = (candidate) => {
     setSelectedCandidate(candidate);
   };
@@ -54,6 +257,13 @@ const CastVote = () => {
       toast.error('Please select a candidate first');
       return;
     }
+    
+    // Since we're not doing verification, the face capture is just for ID purposes
+    if (!faceCaptured) {
+      toast.error('Please capture your photo before voting');
+      return;
+    }
+    
     setShowConfirmModal(true);
   };
 
@@ -147,6 +357,126 @@ const CastVote = () => {
           </p>
         </Alert>
         
+        {/* Face Capture Section */}
+        <Card className="mb-4 shadow-sm">
+          <Card.Header className="bg-light d-flex justify-content-between align-items-center">
+            <h5 className="mb-0">Identity Verification</h5>
+            <span className={`badge ${faceCaptured ? 'bg-success' : 'bg-warning'}`}>
+              {faceCaptured ? 'Photo Captured' : 'Photo Required'}
+            </span>
+          </Card.Header>
+          <Card.Body>
+            <p>For security purposes, we need to take your photo before you can cast your vote.</p>
+            
+            {!faceCaptured ? (
+              <div className="text-center mb-3">
+                {!showWebcam ? (
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      setShowWebcam(true);
+                      setTimeout(() => {
+                        if (videoRef.current) {
+                          startWebcam().catch(err => {
+                            console.error('Error starting webcam:', err);
+                            setShowWebcam(false);
+                          });
+                        }
+                      }, 100);
+                    }}
+                  >
+                    Start Camera
+                  </Button>
+                ) : (
+                  <div className="mb-3">
+                    <div className="position-relative d-inline-block">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        style={{ 
+                          maxWidth: '100%', 
+                          maxHeight: '300px', 
+                          border: '1px solid #ddd',
+                          borderRadius: '8px',
+                          transform: 'scaleX(-1)', // Mirror effect
+                          backgroundColor: '#000'
+                        }}
+                        onClick={() => {
+                          if (videoRef.current) {
+                            videoRef.current.play().catch(e => {
+                              console.log('Play on click failed', e);
+                            });
+                          }
+                        }}
+                      />
+                      
+                      {/* Visual guide for face positioning */}
+                      <div 
+                        style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          width: '180px',
+                          height: '180px',
+                          borderRadius: '50%',
+                          border: '3px dashed rgba(255, 255, 255, 0.8)',
+                          boxShadow: '0 0 0 2000px rgba(0, 0, 0, 0.15)', // Darken outside the circle
+                          pointerEvents: 'none',
+                          zIndex: 10
+                        }}
+                      />
+                      
+                      <p className="text-muted mb-2 mt-2">
+                        Position your face within the circle and ensure good lighting
+                      </p>
+                    </div>
+                    
+                    <div className="d-flex justify-content-center gap-2 mt-3">
+                      <Button
+                        variant="success"
+                        onClick={capturePhoto}
+                      >
+                        Capture Photo
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={stopWebcam}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center">
+                <div className="mb-3">
+                  <img
+                    src={faceImageData}
+                    alt="Captured face"
+                    className="img-thumbnail"
+                    style={{ maxHeight: '200px' }}
+                  />
+                </div>
+                <div className="d-flex justify-content-center gap-2">
+                  <Button
+                    variant="outline-primary"
+                    onClick={retryCapture}
+                  >
+                    Retake Photo
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {/* Hidden canvas for capture */}
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
+          </Card.Body>
+        </Card>
+        
         {candidates.length === 0 ? (
           <Alert variant="warning">
             No candidates have been added to the election yet.
@@ -201,10 +531,15 @@ const CastVote = () => {
                 variant="primary" 
                 size="lg" 
                 onClick={handleVoteClick}
-                disabled={!selectedCandidate}
+                disabled={!selectedCandidate || !faceCaptured}
               >
                 Cast My Vote
               </Button>
+              {!faceCaptured && selectedCandidate && (
+                <div className="text-center mt-2 text-danger">
+                  <small>Please capture your photo before casting your vote</small>
+                </div>
+              )}
             </div>
           </>
         )}

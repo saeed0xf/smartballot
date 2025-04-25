@@ -985,20 +985,14 @@ exports.startElection = async (req, res) => {
 // End election
 exports.endElection = async (req, res) => {
   try {
-    const { metaMaskAddress } = req.body;
-    
     // Find active election
     const activeElection = await Election.findOne({ isActive: true });
     if (!activeElection) {
       return res.status(404).json({ message: 'No active election found' });
     }
     
-    // Create a simple address object if MetaMask address was provided
-    // This will be handled properly in the blockchain util
-    const signerInfo = metaMaskAddress ? { address: metaMaskAddress } : null;
-    
     // End election on blockchain
-    const blockchainResult = await endElectionOnBlockchain(signerInfo);
+    const blockchainResult = await endElectionOnBlockchain();
     
     if (!blockchainResult.success) {
       console.error('Blockchain transaction error when ending election:', blockchainResult.error);

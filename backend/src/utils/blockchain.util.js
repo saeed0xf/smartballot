@@ -325,16 +325,16 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
       // Check if our contract has a method to set the election ID
       if (typeof connectedContract.startElectionWithId === 'function') {
         tx = await connectedContract.startElectionWithId(electionId, electionName);
-      } else {
-        // Fallback to standard method without ID
+    } else {
+      // Fallback to standard method without ID
         tx = await connectedContract.startElection();
-      }
-      
+    }
+    
       console.log(`Standard transaction submitted, hash: ${tx.hash}`);
-      const receipt = await tx.wait();
-      console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
-      
-      return { success: true, txHash: receipt.transactionHash };
+    const receipt = await tx.wait();
+    console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+    
+    return { success: true, txHash: receipt.transactionHash };
     }
   } catch (error) {
     console.error('Error starting election on blockchain:', error);
@@ -404,10 +404,10 @@ const endElectionOnBlockchain = async (signer = null) => {
       console.log('Using standard ethers.js contract call to end election');
       
       const tx = await connectedContract.endElection();
-      const receipt = await tx.wait();
-      
-      console.log('Election ended on blockchain');
-      return { success: true, txHash: receipt.transactionHash };
+    const receipt = await tx.wait();
+    
+    console.log('Election ended on blockchain');
+    return { success: true, txHash: receipt.transactionHash };
     }
   } catch (error) {
     console.error('Error ending election on blockchain:', error.message);
