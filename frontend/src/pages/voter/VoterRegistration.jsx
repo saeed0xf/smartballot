@@ -96,6 +96,11 @@ const VoterRegistration = () => {
         }
         return age >= 18;
       }),
+    pincode: Yup.string()
+      .required('Pincode is required')
+      .matches(/^[0-9]+$/, 'Pincode must contain only numbers')
+      .min(5, 'Pincode must be at least 5 digits')
+      .max(10, 'Pincode must not exceed 10 digits'),
     email: Yup.string()
       .email('Invalid email address')
       .required('Email is required'),
@@ -112,6 +117,7 @@ const VoterRegistration = () => {
     fatherName: '',
     gender: '',
     dateOfBirth: '',
+    pincode: '',
     email: '',
     voterId: '',
     voterIdImage: null,
@@ -563,6 +569,24 @@ const VoterRegistration = () => {
                       {errors.email}
                     </Form.Control.Feedback>
                   </Form.Group>
+
+                  <Form.Group className="mb-3">
+                    <Form.Label>Pincode</Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="pincode"
+                      value={values.pincode}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      isInvalid={touched.pincode && errors.pincode}
+                      placeholder="Enter your postal code"
+                    />
+                    <Form.Control.Feedback type="invalid">
+                      {errors.pincode}
+                    </Form.Control.Feedback>
+                  </Form.Group>
+
+                  
 
                   <Form.Group className="mb-3">
                     <Form.Label>Voter ID Number</Form.Label>

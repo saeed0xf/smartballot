@@ -38,6 +38,11 @@ const voterSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  pincode: {
+    type: String, 
+    required: true,
+    trim: true
+  },
   email: {
     type: String,
     required: true,

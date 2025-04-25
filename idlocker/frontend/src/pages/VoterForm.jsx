@@ -22,6 +22,7 @@ const VoterForm = () => {
     voterId: '',
     email: '',
     phoneNumber: '',
+    pincode: '',
     gender: '',
     address: '',
     pollingStation: '',
@@ -119,6 +120,7 @@ const VoterForm = () => {
     if (!voter.voterId.trim()) newErrors.voterId = 'Voter ID is required';
     if (!voter.email.trim()) newErrors.email = 'Email is required';
     if (!voter.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
+    if (!voter.pincode.trim()) newErrors.pincode = 'Pincode is required';
     if (!voter.gender) newErrors.gender = 'Gender is required';
     
     // Validate email format
@@ -131,6 +133,12 @@ const VoterForm = () => {
     const phoneRegex = /^\d{10,15}$/;
     if (voter.phoneNumber && !phoneRegex.test(voter.phoneNumber.replace(/\D/g, ''))) {
       newErrors.phoneNumber = 'Please enter a valid phone number';
+    }
+    
+    // Validate pincode (6 digits for Indian pincode)
+    const pincodeRegex = /^\d{6}$/;
+    if (voter.pincode && !pincodeRegex.test(voter.pincode.trim())) {
+      newErrors.pincode = 'Please enter a valid 6-digit pincode';
     }
     
     setErrors(newErrors);
@@ -394,6 +402,22 @@ const VoterForm = () => {
                         className={`w-full px-3 py-2 border ${errors.phoneNumber ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200`}
                       />
                       {errors.phoneNumber && <p className="error-message mt-1 text-sm text-red-600">{errors.phoneNumber}</p>}
+                    </div>
+
+                    <div>
+                      <label htmlFor="pincode" className="block text-sm font-medium text-gray-700 mb-1">
+                        Pincode *
+                      </label>
+                      <input
+                        type="text"
+                        id="pincode"
+                        name="pincode"
+                        value={voter.pincode || ''}
+                        onChange={handleChange}
+                        placeholder="6-digit pincode"
+                        className={`w-full px-3 py-2 border ${errors.pincode ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200`}
+                      />
+                      {errors.pincode && <p className="error-message mt-1 text-sm text-red-600">{errors.pincode}</p>}
                     </div>
                   </div>
                 </div>

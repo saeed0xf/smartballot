@@ -634,8 +634,8 @@ const ManageElection = () => {
       } catch (metaMaskError) {
         console.error('MetaMask connection failed:', metaMaskError);
         setError('MetaMask connection failed. Please ensure MetaMask is installed and unlocked.');
-        setProcessingAction(false);
-        return;
+          setProcessingAction(false);
+          return;
       }
       
       const headers = getAuthHeaders();
@@ -648,9 +648,9 @@ const ManageElection = () => {
         electionId,
         metaMaskAddress  // Include the MetaMask address in the request
       }, {
-        headers: headers
-      });
-      
+            headers: headers
+          });
+          
       console.log('Start election response:', response.data);
       
       // Check if we need to handle blockchain transaction
@@ -728,10 +728,10 @@ const ManageElection = () => {
         electionId,
         metaMaskAddress // Include MetaMask address in the request
       }, {
-        headers: headers
-      });
-      
-      console.log('Election stop response:', response.data);
+            headers: headers
+          });
+          
+          console.log('Election stop response:', response.data);
       
       // Check if we need to handle blockchain transaction
       if (response.data && response.data.blockchain) {
@@ -1111,7 +1111,7 @@ const ManageElection = () => {
               <Card.Header className="bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 className="mb-0">Manage Elections</h5>
                 <div>
-                  <Button 
+                  <Button
                     variant="outline-primary" 
                     className="me-2"
                     onClick={() => {
@@ -1159,16 +1159,16 @@ const ManageElection = () => {
                 ) : (
                   <div className="table-responsive">
                     <Table responsive striped hover className="align-middle mb-0 bg-white rounded">
-                      <thead className="bg-light">
-                        <tr>
+                    <thead className="bg-light">
+                      <tr>
                           <th style={{ width: '25%' }} className="py-3 px-4">Election</th>
                           <th style={{ width: '15%' }} className="py-3">Type</th>
                           <th style={{ width: '15%' }} className="py-3">Status</th>
                           <th style={{ width: '20%' }} className="py-3">Period</th>
                           <th style={{ width: '25%' }} className="py-3 px-4">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                      </tr>
+                    </thead>
+                    <tbody>
                         {elections.map((election) => {
                           const isExpired = isElectionExpired(election);
                           return (
@@ -1178,7 +1178,7 @@ const ManageElection = () => {
                                 <small className="text-muted text-truncate d-inline-block" style={{ maxWidth: '250px' }}>
                                   {election.description}
                                 </small>
-                              </td>
+                          </td>
                               <td className="py-3">
                                 <Badge bg={
                                   election.type === 'Lok Sabha Elections (General Elections)' ? 'danger' :
@@ -1188,7 +1188,7 @@ const ManageElection = () => {
                                 } className="px-2 py-1">
                                   {election.type || 'Other'}
                                 </Badge>
-                              </td>
+                          </td>
                               <td className="py-3">
                                 {getElectionStatusBadge(election)}
                               </td>
@@ -1204,42 +1204,42 @@ const ManageElection = () => {
                               </td>
                               <td className="py-3 px-4">
                                 <div className="d-flex flex-wrap gap-2">
-                                  <Button
+                              <Button
                                     {...getActionButtonProps(election).edit}
-                                    onClick={() => handleEditClick(election)}
-                                  >
+                                onClick={() => handleEditClick(election)}
+                              >
                                     <FaEdit className="me-1" /> Edit
-                                  </Button>
-                                  
+                              </Button>
+                              
                                   {election.isActive ? (
-                                    <Button
+                                <Button
                                       {...getActionButtonProps(election).stop}
                                       onClick={() => handleStopClick(election)}
                                     >
                                       <FaStop className="me-1" /> Stop
-                                    </Button>
-                                  ) : (
-                                    <Button
+                                </Button>
+                              ) : (
+                                <Button
                                       {...getActionButtonProps(election).start}
                                       onClick={() => handleStartClick(election)}
                                     >
                                       <FaPlay className="me-1" /> Start
-                                    </Button>
-                                  )}
-                                  
-                                  <Button
+                                </Button>
+                              )}
+                              
+                              <Button
                                     {...getActionButtonProps(election).delete}
-                                    onClick={() => handleDeleteClick(election)}
-                                  >
+                                onClick={() => handleDeleteClick(election)}
+                              >
                                     <FaTrashAlt className="me-1" /> Delete
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
                           );
                         })}
-                      </tbody>
-                    </Table>
+                    </tbody>
+                  </Table>
                   </div>
                 )}
               </Card.Body>

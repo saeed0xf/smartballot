@@ -1,9 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Alert, Modal, Form } from 'react-bootstrap';
+import React, { useState, useEffect, useRef } from 'react';
+import { Container, Row, Col, Card, Button, Alert, Modal, Form, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import Layout from '../../components/Layout';
+
+// Get API URL from environment variables
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const FACE_API_URL = 'http://localhost:8000/api';
 
 const CastVote = () => {
   const [candidates, setCandidates] = useState([]);
@@ -16,6 +20,29 @@ const CastVote = () => {
   const [privateKey, setPrivateKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  
+  // Face capture states
+  const [showWebcam, setShowWebcam] = useState(false);
+  const [faceCaptured, setFaceCaptured] = useState(false);
+  const [faceImageData, setFaceImageData] = useState(null);
+  const [faceVerified, setFaceVerified] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState('');
+  const [showVerificationSection, setShowVerificationSection] = useState(true);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
+  // Cleanup camera stream when component unmounts
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        console.log('Cleaning up camera stream on component unmount');
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -23,17 +50,64 @@ const CastVote = () => {
         setLoading(true);
         setError(null);
         
-        // Fetch election status
-        const electionResponse = await axios.get('/api/election/status');
-        setElectionStatus(electionResponse.data);
+        // Get auth headers
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         
         // Fetch voter profile
-        const profileResponse = await axios.get('/api/voter/profile');
+        const profileResponse = await axios.get(`${API_URL}/voter/profile`, { headers });
         setVoterProfile(profileResponse.data.voter);
         
-        // Fetch candidates
-        const candidatesResponse = await axios.get('/api/election/candidates');
-        setCandidates(candidatesResponse.data.candidates);
+        // First try to fetch active elections
+        try {
+          const activeElectionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
+          console.log('Active elections response:', activeElectionsResponse.data);
+          
+          // Handle different response formats
+          let electionsData = [];
+          if (Array.isArray(activeElectionsResponse.data)) {
+            electionsData = activeElectionsResponse.data;
+          } else if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
+            electionsData = activeElectionsResponse.data.elections;
+          } else if (activeElectionsResponse.data) {
+            electionsData = [activeElectionsResponse.data]; // Assume it's a single election object
+          }
+          
+          // If we have active elections, set the election status and fetch candidates
+          if (electionsData.length > 0) {
+            setElectionStatus({
+              active: true,
+              election: electionsData[0],
+              currentTime: new Date()
+            });
+            
+            // Fetch candidates
+            const candidatesResponse = await axios.get(`${API_URL}/election/candidates`, { headers });
+            setCandidates(candidatesResponse.data.candidates);
+          } else {
+            // Fallback to election status endpoint
+            const electionResponse = await axios.get(`${API_URL}/election/status`, { headers });
+            setElectionStatus(electionResponse.data);
+            
+            if (electionResponse.data.active) {
+              // If active, fetch candidates
+              const candidatesResponse = await axios.get(`${API_URL}/election/candidates`, { headers });
+              setCandidates(candidatesResponse.data.candidates);
+            }
+          }
+        } catch (electionsError) {
+          console.error('Error fetching active elections:', electionsError);
+          
+          // Fallback to election status endpoint
+          const electionResponse = await axios.get(`${API_URL}/election/status`, { headers });
+          setElectionStatus(electionResponse.data);
+          
+          if (electionResponse.data.active) {
+            // If active, fetch candidates
+            const candidatesResponse = await axios.get(`${API_URL}/election/candidates`, { headers });
+            setCandidates(candidatesResponse.data.candidates);
+          }
+        }
       } catch (err) {
         console.error('Error fetching data:', err);
         setError('Failed to load voting data. Please try again later.');
@@ -45,6 +119,247 @@ const CastVote = () => {
     fetchData();
   }, []);
 
+  // Start webcam function
+  const startWebcam = async () => {
+    try {
+      console.log('Starting webcam...');
+      
+      // Verify video ref is available
+      if (!videoRef.current) {
+        console.error('Video element is not available in the DOM');
+        throw new Error('Camera component not ready. Please refresh the page.');
+      }
+      
+      // Clean up any existing stream
+      if (streamRef.current) {
+        console.log('Stopping existing stream before starting new one');
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      
+      // Request camera access with specific constraints for better quality
+      console.log('Requesting camera access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user',
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      });
+      
+      streamRef.current = stream;
+      
+      // Set video source
+      console.log('Stream obtained, setting as video source');
+      videoRef.current.srcObject = stream;
+      
+      // Make sure any play() promise is properly handled
+      try {
+        await videoRef.current.play();
+        console.log('Webcam started successfully');
+        setError(null);
+      } catch (playError) {
+        console.error('Error starting video playback:', playError);
+        // Sometimes the play() method needs user interaction first
+        toast.info('Click the video to start the camera preview');
+      }
+      
+    } catch (err) {
+      console.error('Error accessing webcam:', err);
+      
+      // Provide more specific error messages
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('Camera access denied. Please allow camera access in your browser permissions to continue.');
+        toast.error('Camera permission denied. Please check your browser settings.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setError('No camera found. Please connect a camera and try again.');
+        toast.error('No camera detected');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setError('Could not access your camera. It may be in use by another application.');
+        toast.error('Camera is in use by another application');
+      } else {
+        setError('Failed to access webcam. Please make sure your camera is connected and you have given permission to use it.');
+        toast.error(err.message || 'Camera access failed');
+      }
+      
+      // Rethrow to propagate to the caller
+      throw err;
+    }
+  };
+
+  // Stop webcam
+  const stopWebcam = () => {
+    console.log('Stopping webcam...');
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      
+      setShowWebcam(false);
+      console.log('Webcam stopped successfully');
+    }
+  };
+
+  // Capture photo
+  const capturePhoto = async () => {
+    if (!videoRef.current || !canvasRef.current) {
+      console.error('Video or canvas ref not available');
+      toast.error('Cannot capture photo. Please try again.');
+      return;
+    }
+    
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // Set canvas dimensions to match video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      // Draw the video frame to the canvas
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert canvas to data URL
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      
+      // Update state to show captured image
+      setFaceImageData(dataUrl);
+      setFaceCaptured(true);
+      
+      // Stop webcam after capturing
+      stopWebcam();
+      
+      toast.success('Photo captured successfully!');
+      
+      // Reset verification status when a new photo is captured
+      setFaceVerified(false);
+      
+    } catch (err) {
+      console.error('Error capturing photo:', err);
+      toast.error('Failed to capture photo. Please try again.');
+    }
+  };
+
+  // Verify face using the external API
+  const verifyFace = async () => {
+    if (!faceImageData || !voterProfile) {
+      toast.error('Missing image data or voter profile');
+      return;
+    }
+
+    // Check if voter has the voterId property
+    if (!voterProfile.voterId) {
+      toast.error('Voter ID not found in your profile');
+      console.error('Voter profile missing voterId:', voterProfile);
+      return;
+    }
+
+    setVerifying(true);
+    setVerificationMessage('');
+    
+    try {
+      // Convert base64 data URL to blob for form data
+      const fetchResponse = await fetch(faceImageData);
+      const blob = await fetchResponse.blob();
+      
+      // Create form data with the official voterId (not MongoDB _id)
+      const formData = new FormData();
+      formData.append('uploaded_image', blob, 'face.jpg');
+      formData.append('voter_id', voterProfile.voterId); // Using voterId instead of MongoDB _id
+      
+      console.log('Making face verification API call...');
+      console.log('Using Voter ID:', voterProfile.voterId); // Log the actual voterId being used
+      
+      // Call the face verification API
+      const response = await axios.post(`${FACE_API_URL}/verify`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      console.log('Face verification response:', response.data);
+      
+      if (response.data.success) {
+        if (response.data.verified) {
+          // Verification successful
+          setFaceVerified(true);
+          setVerificationMessage(response.data.message || 'Identity verified successfully!');
+          toast.success('Identity verified successfully!');
+        } else {
+          // Verification failed but API call succeeded
+          setFaceVerified(false);
+          setVerificationMessage(response.data.message || 'Verification failed. Face does not match registered voter.');
+          toast.error('Face verification failed. Please try again with better lighting.');
+        }
+      } else {
+        // API returned an error
+        setFaceVerified(false);
+        setVerificationMessage(response.data.message || 'Verification service error');
+        toast.error(response.data.message || 'Verification failed. Please try again.');
+      }
+      
+    } catch (err) {
+      console.error('Error in face verification:', err);
+      
+      // Handle different types of errors
+      if (err.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error('Error response data:', err.response.data);
+        console.error('Error response status:', err.response.status);
+        
+        const errorMessage = err.response.data?.message || 
+                            err.response.data?.error || 
+                            'Verification failed. Server returned an error.';
+        
+        setVerificationMessage(errorMessage);
+        toast.error(errorMessage);
+      } else if (err.request) {
+        // The request was made but no response was received
+        console.error('No response received:', err.request);
+        setVerificationMessage('Verification service unavailable. Please try again later.');
+        toast.error('Verification service unavailable. Please try again later.');
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error('Error setting up request:', err.message);
+        setVerificationMessage('An error occurred during verification. Please try again.');
+        toast.error('An error occurred during verification. Please try again.');
+      }
+      
+      setFaceVerified(false);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // Retry capture
+  const retryCapture = () => {
+    setFaceCaptured(false);
+    setFaceVerified(false);
+    setFaceImageData(null);
+  };
+
+  // Continue to voting after verification
+  const continueToVoting = () => {
+    if (!faceVerified) {
+      toast.error('Please verify your identity first');
+      return;
+    }
+    
+    // Hide the verification section and show the candidates section
+    setShowVerificationSection(false);
+    toast.success('Verification complete. You can now select a candidate.');
+    
+    // Scroll to candidate section
+    document.getElementById('candidate-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   const handleSelectCandidate = (candidate) => {
     setSelectedCandidate(candidate);
   };
@@ -54,6 +369,13 @@ const CastVote = () => {
       toast.error('Please select a candidate first');
       return;
     }
+    
+    // Face verification is now required
+    if (!faceVerified) {
+      toast.error('Please verify your identity before voting');
+      return;
+    }
+    
     setShowConfirmModal(true);
   };
 
@@ -147,67 +469,298 @@ const CastVote = () => {
           </p>
         </Alert>
         
-        {candidates.length === 0 ? (
-          <Alert variant="warning">
-            No candidates have been added to the election yet.
-          </Alert>
-        ) : (
-          <>
-            <h4 className="mb-3">Select a Candidate</h4>
-            <Row>
-              {candidates.map(candidate => (
-                <Col key={candidate.id} md={4} className="mb-4">
-                  <Card 
-                    className={`h-100 shadow-sm candidate-card ${selectedCandidate?.id === candidate.id ? 'border-primary' : ''}`}
-                    onClick={() => handleSelectCandidate(candidate)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {candidate.image ? (
-                      <Card.Img 
-                        variant="top" 
-                        src={candidate.image.startsWith('http') 
-                          ? candidate.image 
-                          : `http://localhost:5000${candidate.image}`
-                        } 
-                        alt={candidate.name}
-                        className="candidate-image"
-                      />
-                    ) : (
-                      <div 
-                        className="bg-light d-flex align-items-center justify-content-center candidate-image"
-                      >
-                        <span className="text-muted">No image available</span>
+        {/* Face Capture Section - show only if verification is not complete or explicitly shown */}
+        {showVerificationSection && (
+          <Card className="mb-4 shadow-sm">
+            <Card.Header className="bg-light d-flex justify-content-between align-items-center">
+              <h5 className="mb-0">Identity Verification</h5>
+              <div>
+                {faceVerified ? (
+                  <span className="badge bg-success">Verified</span>
+                ) : faceCaptured ? (
+                  <span className="badge bg-warning">Verification Required</span>
+                ) : (
+                  <span className="badge bg-warning">Photo Required</span>
+                )}
+              </div>
+            </Card.Header>
+            <Card.Body>
+              <Alert variant="secondary" className="mb-3">
+                <h6 className="mb-2">Instructions:</h6>
+                <ol className="mb-0">
+                  <li>Click the "Start Camera" button to activate your webcam</li>
+                  <li>Position your face within the circular guide and ensure good lighting</li>
+                  <li>Click "Capture Photo" when ready</li>
+                  <li>Click "Verify Identity" to check if your face matches your registration</li>
+                  <li>After successful verification, click "Continue" to select your candidate</li>
+                </ol>
+              </Alert>
+              
+              {!faceCaptured ? (
+                <div className="text-center mb-3">
+                  {!showWebcam ? (
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        setShowWebcam(true);
+                        setTimeout(() => {
+                          if (videoRef.current) {
+                            startWebcam().catch(err => {
+                              console.error('Error starting webcam:', err);
+                              setShowWebcam(false);
+                            });
+                          }
+                        }, 100);
+                      }}
+                    >
+                      Start Camera
+                    </Button>
+                  ) : (
+                    <div className="mb-3">
+                      <div className="position-relative d-inline-block">
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          style={{ 
+                            maxWidth: '100%', 
+                            maxHeight: '300px', 
+                            border: '1px solid #ddd',
+                            borderRadius: '8px',
+                            transform: 'scaleX(-1)', // Mirror effect
+                            backgroundColor: '#000'
+                          }}
+                          onClick={() => {
+                            if (videoRef.current) {
+                              videoRef.current.play().catch(e => {
+                                console.log('Play on click failed', e);
+                              });
+                            }
+                          }}
+                        />
+                        
+                        {/* Visual guide for face positioning */}
+                        <div 
+                          style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '180px',
+                            height: '180px',
+                            borderRadius: '50%',
+                            border: '3px dashed rgba(255, 255, 255, 0.8)',
+                            boxShadow: '0 0 0 2000px rgba(0, 0, 0, 0.15)', // Darken outside the circle
+                            pointerEvents: 'none',
+                            zIndex: 10
+                          }}
+                        />
+                        
+                        <p className="text-muted mb-2 mt-2">
+                          Position your face within the circle and ensure good lighting
+                        </p>
                       </div>
+                      
+                      <div className="d-flex justify-content-center gap-2 mt-3">
+                        <Button
+                          variant="success"
+                          onClick={capturePhoto}
+                        >
+                          Capture Photo
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={stopWebcam}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center">
+                  <div className="mb-3">
+                    <img
+                      src={faceImageData}
+                      alt="Captured face"
+                      className="img-thumbnail"
+                      style={{ maxHeight: '200px' }}
+                    />
+                  </div>
+                  
+                  {/* Verification actions */}
+                  <div className="d-flex flex-column align-items-center gap-2 mb-3">
+                    {!faceVerified ? (
+                      <>
+                        <Button
+                          variant="primary"
+                          onClick={verifyFace}
+                          disabled={verifying}
+                          className="mb-2"
+                        >
+                          {verifying ? (
+                            <>
+                              <Spinner
+                                as="span"
+                                animation="border"
+                                size="sm"
+                                role="status"
+                                aria-hidden="true"
+                                className="me-2"
+                              />
+                              Verifying...
+                            </>
+                          ) : (
+                            'Verify Identity'
+                          )}
+                        </Button>
+                        
+                        {verificationMessage && (
+                          <div className="text-danger mb-2">
+                            <small>{verificationMessage}</small>
+                          </div>
+                        )}
+                        
+                        <small className="text-muted mb-2">
+                          Click "Verify Identity" to authenticate your photo
+                        </small>
+                        
+                        <Button
+                          variant="outline-secondary"
+                          onClick={retryCapture}
+                          size="sm"
+                        >
+                          Retake Photo
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-success mb-3">
+                          <i className="bi bi-check-circle-fill me-2"></i>
+                          {verificationMessage || 'Identity verified successfully!'}
+                        </div>
+                        
+                        <div className="d-flex gap-2">
+                          <Button
+                            variant="primary"
+                            onClick={continueToVoting}
+                          >
+                            Continue to Voting
+                          </Button>
+                          
+                          <Button
+                            variant="outline-secondary"
+                            onClick={retryCapture}
+                            size="sm"
+                          >
+                            Retake Photo
+                          </Button>
+                        </div>
+                      </>
                     )}
-                    <Card.Body>
-                      <Card.Title>{candidate.name}</Card.Title>
-                      <Card.Subtitle className="mb-2 text-muted">{candidate.party}</Card.Subtitle>
-                      {candidate.slogan && (
-                        <Card.Text className="fst-italic">"{candidate.slogan}"</Card.Text>
-                      )}
-                      {selectedCandidate?.id === candidate.id && (
-                        <div className="text-center mt-2">
-                          <span className="badge bg-primary">Selected</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Hidden canvas for capture */}
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
+            </Card.Body>
+          </Card>
+        )}
+        
+        {/* Candidates Section */}
+        <div id="candidate-section">
+          {faceVerified && (
+            <Alert variant="success" className="mb-4">
+              <Alert.Heading><i className="bi bi-check-circle-fill me-2"></i>Identity Verified</Alert.Heading>
+              <p>Your identity has been verified successfully. Please select a candidate to cast your vote.</p>
+            </Alert>
+          )}
+          
+          {candidates.length === 0 ? (
+            <Alert variant="warning">
+              No candidates have been added to the election yet.
+            </Alert>
+          ) : (
+            <>
+              <h4 className="mb-3">Select a Candidate</h4>
+              <Row>
+                {candidates.map(candidate => (
+                  <Col key={candidate.id} md={4} className="mb-4">
+                    <Card 
+                      className={`h-100 shadow-sm candidate-card ${selectedCandidate?.id === candidate.id ? 'border-primary' : ''}`}
+                      onClick={() => faceVerified && handleSelectCandidate(candidate)}
+                      style={{ 
+                        cursor: faceVerified ? 'pointer' : 'not-allowed',
+                        opacity: faceVerified ? 1 : 0.7
+                      }}
+                    >
+                      {candidate.image ? (
+                        <Card.Img 
+                          variant="top" 
+                          src={candidate.image.startsWith('http') 
+                            ? candidate.image 
+                            : `http://localhost:5000${candidate.image}`
+                          } 
+                          alt={candidate.name}
+                          className="candidate-image"
+                        />
+                      ) : (
+                        <div 
+                          className="bg-light d-flex align-items-center justify-content-center candidate-image"
+                        >
+                          <span className="text-muted">No image available</span>
                         </div>
                       )}
-                    </Card.Body>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-            
-            <div className="d-grid gap-2 col-md-6 mx-auto mt-4">
-              <Button 
-                variant="primary" 
-                size="lg" 
-                onClick={handleVoteClick}
-                disabled={!selectedCandidate}
-              >
-                Cast My Vote
-              </Button>
-            </div>
-          </>
-        )}
+                      <Card.Body>
+                        <Card.Title>{candidate.name}</Card.Title>
+                        <Card.Subtitle className="mb-2 text-muted">{candidate.party}</Card.Subtitle>
+                        {candidate.slogan && (
+                          <Card.Text className="fst-italic">"{candidate.slogan}"</Card.Text>
+                        )}
+                        {selectedCandidate?.id === candidate.id && (
+                          <div className="text-center mt-2">
+                            <span className="badge bg-primary">Selected</span>
+                          </div>
+                        )}
+                      </Card.Body>
+                      {!faceVerified && (
+                        <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ backgroundColor: 'rgba(0,0,0,0.1)', zIndex: 5, borderRadius: 'inherit' }}>
+                          <div className="bg-white py-2 px-3 rounded shadow-sm">
+                            <small>Please verify your identity first</small>
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
+              
+              <div className="d-grid gap-2 col-md-6 mx-auto mt-4">
+                <Button 
+                  variant="primary" 
+                  size="lg" 
+                  onClick={handleVoteClick}
+                  disabled={!selectedCandidate || !faceVerified}
+                >
+                  Cast My Vote
+                </Button>
+                {!faceVerified && (
+                  <div className="text-center mt-2 text-danger">
+                    <small>Please verify your identity before casting your vote</small>
+                  </div>
+                )}
+                {faceVerified && !selectedCandidate && (
+                  <div className="text-center mt-2 text-danger">
+                    <small>Please select a candidate</small>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
         
         {/* Confirmation Modal */}
         <Modal show={showConfirmModal} onHide={() => setShowConfirmModal(false)}>

@@ -56,7 +56,39 @@ const ApproveVoters = () => {
       const response = await axios.get(`${apiUrl}/admin/voters?status=${filterStatus}`);
       
       console.log('Fetched voters:', response.data.voters);
-      setVoters(response.data.voters);
+      
+      // Add detailed logging for each voter to check email field
+      if (response.data.voters && response.data.voters.length > 0) {
+        console.log('Examining first voter data:', response.data.voters[0]);
+        response.data.voters.forEach((voter, index) => {
+          console.log(`Voter ${index + 1} - Email:`, voter.email || 'No email found');
+          
+          // Log all possible email sources for debugging
+          console.log(`Voter ${index + 1} - Email sources:`, {
+            directEmail: voter.email,
+            userEmail: voter.user?.email,
+            nestedUserEmail: voter.user ? voter.user.email : null
+          });
+        });
+      }
+      
+      // Ensure each voter has the email property
+      const processedVoters = response.data.voters.map(voter => {
+        // Check for email in different possible locations
+        const email = voter.email || (voter.user && voter.user.email) || null;
+        
+        console.log(`Processing voter ${voter.id}: Found email:`, email);
+        
+        // Create a new voter object with explicitly set email field
+        return {
+          ...voter,
+          email: email, // Explicitly set the email
+          user: voter.user // Preserve the original user object if needed
+        };
+      });
+      
+      console.log('Processed voters with normalized email fields:', processedVoters.map(v => ({id: v.id, email: v.email})));
+      setVoters(processedVoters);
     } catch (err) {
       console.error('Error fetching voters:', err);
       setError('Failed to fetch voters. Please try again.');
@@ -77,12 +109,29 @@ const ApproveVoters = () => {
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       const response = await axios.get(`${apiUrl}/admin/voters/${voterId}`);
       
-      console.log('Fetched voter details:', response.data.voter);
-      setSelectedVoter(response.data.voter);
+      // More detailed logging to debug the entire voter object structure
+      console.log('Fetched voter details (full response):', response.data);
+      console.log('Voter object keys:', Object.keys(response.data.voter));
+      console.log('Email value:', response.data.voter.email);
+      console.log('Pincode value:', response.data.voter.pincode);
+      
+      // Ensure we set the full voter object including all properties
+      const voterData = response.data.voter;
+      
+      // Ensure email and pincode are available for display
+      if (!voterData.pincode && response.data.voter.pincode) {
+        voterData.pincode = response.data.voter.pincode;
+      }
+      if (!voterData.email && response.data.voter.email) {
+        voterData.email = response.data.voter.email;
+      }
+      
+      console.log('Voter data being set to state:', voterData);
+      setSelectedVoter(voterData);
       setShowDetailsModal(true);
       
       // Verify the voter details against the external API
-      await verifyVoterDetails(response.data.voter);
+      await verifyVoterDetails(voterData);
     } catch (err) {
       console.error('Error fetching voter details:', err);
       toast.error('Failed to fetch voter details.');
@@ -121,6 +170,20 @@ const ApproveVoters = () => {
         console.log('Voter verification data:', response.data);
         
         if (response.data && (response.data._id || response.data.voterId)) {
+          // Log comparison of key fields for debugging
+          console.log('Verification comparison:', {
+            voterId: {
+              local: voter.voterId,
+              verification: response.data.voterId,
+              match: voter.voterId === response.data.voterId
+            },
+            pincode: {
+              local: voter.pincode,
+              verification: response.data.pincode,
+              match: (voter.pincode || '').trim().toLowerCase() === (response.data.pincode || '').trim().toLowerCase()
+            }
+          });
+          
           setVerificationData(response.data);
         } else if (response.data && response.data.message === 'Voter not found') {
           setVerificationError('Voter not found in the verification database');
@@ -363,7 +426,8 @@ const ApproveVoters = () => {
       { key: 'gender', label: 'Gender' },
       { key: 'dateOfBirth', label: 'Date of Birth' },
       { key: 'voterId', label: 'Voter ID' },
-      { key: 'age', label: 'Age' }
+      { key: 'age', label: 'Age' },
+      { key: 'pincode', label: 'Pincode' }
       // Email is intentionally excluded as it's not required for verification
     ];
     
@@ -428,6 +492,11 @@ const ApproveVoters = () => {
       issues.push(`Face verification error: ${faceVerificationError}`);
     }
     
+    // If face verification wasn't performed at all, add it as an issue
+    if (!faceVerificationData && !faceVerificationError && voter.faceImage) {
+      issues.push("Face verification was not performed - your identity couldn't be confirmed");
+    }
+    
     // If no specific issues found but still rejecting
     if (issues.length === 0) {
       issues.push("The provided information could not be verified against our records");
@@ -452,7 +521,7 @@ const ApproveVoters = () => {
       const generatedReason = generateRejectionReason(selectedVoter);
       setRejectReason(generatedReason);
     } else {
-      setRejectReason('');
+    setRejectReason('');
       
       // If we have the voter in our list, set a basic reason
       const voter = voters.find(v => v.id === voterId);
@@ -628,6 +697,10 @@ const ApproveVoters = () => {
         // Direct comparison for simple fields
         return localValue === verificationValue;
         
+      case 'pincode':
+        // Case-insensitive comparison and trimming for pincode
+        return (localValue || '').trim().toLowerCase() === (verificationValue || '').trim().toLowerCase();
+        
       default:
         return false;
     }
@@ -681,6 +754,10 @@ const ApproveVoters = () => {
         case 'age':
           localValue = voter.age || null;
           verificationValue = verificationData.age || null;
+          break;
+        case 'pincode':
+          localValue = voter.pincode || '';
+          verificationValue = verificationData.pincode || '';
           break;
         default:
           return null;
@@ -760,17 +837,28 @@ const ApproveVoters = () => {
                   <tbody>
                     {voters.map((voter) => (
                       <tr key={voter.id}>
+                        {/* Log full voter object for debugging */}
+                        {console.log(`Full voter object for ${voter.id}:`, voter)}
                         <td>
                           {voter.firstName} {voter.middleName ? voter.middleName + ' ' : ''}{voter.lastName}
                         </td>
                         <td>{voter.voterId}</td>
                         <td>
+                          {/* Log email value for debugging */}
+                          {console.log(`Rendering email for voter ${voter.id}:`, voter.email)}
+                          {console.log('Checking for nested email:', voter.user?.email)}
+                          
+                          {/* Display email with improved fallback handling */}
                           {voter.email ? (
                             <a href={`mailto:${voter.email}`} className="d-flex align-items-center text-decoration-none">
                               <FaEnvelope className="me-1" /> {voter.email}
                             </a>
+                          ) : voter.user?.email ? (
+                            <a href={`mailto:${voter.user.email}`} className="d-flex align-items-center text-decoration-none">
+                              <FaEnvelope className="me-1" /> {voter.user.email}
+                            </a>
                           ) : (
-                            <span className="text-muted">No email</span>
+                            <span className="text-muted">Not provided</span>
                           )}
                         </td>
                         <td>
@@ -902,6 +990,9 @@ const ApproveVoters = () => {
             </div>
           ) : selectedVoter ? (
             <Row>
+              {console.log('Rendering voter in modal with data:', selectedVoter)}
+              {console.log('Email in modal:', selectedVoter.email)}
+              {console.log('Pincode in modal:', selectedVoter.pincode)}
               <Col md={6}>
                 <dl className="row">
                   <dt className="col-sm-4">Full Name</dt>
@@ -936,8 +1027,15 @@ const ApproveVoters = () => {
                   
                   <dt className="col-sm-4">Email</dt>
                   <dd className="col-sm-8">
+                    {console.log('Rendering email value:', selectedVoter.email)}
                     {selectedVoter.email || 'No email provided'}
-                    {/* Email verification is intentionally omitted as it's not required */}
+                  </dd>
+                  
+                  <dt className="col-sm-4">Pincode</dt>
+                  <dd className="col-sm-8">
+                    {console.log('Rendering pincode value:', selectedVoter.pincode)}
+                    {selectedVoter.pincode || 'Not provided'}
+                    <VerificationStatus field="pincode" voter={selectedVoter} />
                   </dd>
                   
                   <dt className="col-sm-4">Voter ID</dt>
@@ -1083,7 +1181,6 @@ const ApproveVoters = () => {
                             setPreviewImageUrl(imageUrl);
                             setPreviewImageType('face');
                             setShowImageModal(true);
-                            console.log('Opening face image preview:', imageUrl);
                           }}
                           onError={(e) => {
                             console.error('Error loading face image');

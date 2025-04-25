@@ -46,6 +46,11 @@ const VoterSchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
+  pincode: {
+    type: String,
+    required: true,
+    trim: true
+  },
   gender: {
     type: String,
     required: true,

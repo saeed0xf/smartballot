@@ -550,18 +550,18 @@ exports.endElection = async (req, res) => {
     
     try {
       // End the election in the database
-      election.isActive = false;
-      election.endedAt = Date.now();
+    election.isActive = false;
+    election.endedAt = Date.now();
       
       // Also archive the election when it ends
       election.isArchived = true;
       election.archivedAt = Date.now();
       
       // End election on blockchain
-      let blockchainTxHash = null;
-      let blockchainError = null;
-      
-      try {
+    let blockchainTxHash = null;
+    let blockchainError = null;
+    
+    try {
         // Call blockchain integration with MetaMask info if available
         const blockchainResult = await endElectionOnBlockchain(signer);
         
@@ -571,9 +571,9 @@ exports.endElection = async (req, res) => {
         } else {
           blockchainError = blockchainResult?.error || 'Unknown blockchain error';
           console.warn('Blockchain integration failed or returned no transaction hash');
-        }
-      } catch (blockchainError) {
-        console.error('Error ending election on blockchain:', blockchainError);
+      }
+    } catch (blockchainError) {
+      console.error('Error ending election on blockchain:', blockchainError);
         // We'll still continue with database update even if blockchain fails
       }
       
@@ -656,17 +656,17 @@ exports.endElection = async (req, res) => {
       console.log('Election ended and archived successfully:', election);
       
       // Return success response with blockchain status
-      res.status(200).json({ 
+    res.status(200).json({ 
         message: 'Election ended and archived successfully',
-        election,
+      election,
         archivedCandidates: candidates.length,
         totalVotes,
-        blockchain: {
-          success: !!blockchainTxHash,
-          txHash: blockchainTxHash,
-          error: blockchainError
-        }
-      });
+      blockchain: {
+        success: !!blockchainTxHash,
+        txHash: blockchainTxHash,
+        error: blockchainError
+      }
+    });
     } catch (dbError) {
       console.error('Database error while ending election:', dbError);
       res.status(500).json({

@@ -2,6 +2,7 @@ const User = require('../models/user.model');
 const Voter = require('../models/voter.model');
 const Candidate = require('../models/candidate.model');
 const Election = require('../models/election.model');
+const Activity = require('../models/activity.model');
 const { 
   approveVoterOnBlockchain, 
   rejectVoterOnBlockchain,
@@ -27,8 +28,24 @@ exports.getAllVoters = async (req, res) => {
     // Find voters
     const voters = await Voter.find(query).populate('user', 'email walletAddress').sort({ createdAt: -1 });
     
+    // Log the first voter object to debug email field
+    if (voters.length > 0) {
+      console.log('First voter from database:', {
+        _id: voters[0]._id,
+        email: voters[0].email,
+        userEmail: voters[0].user ? voters[0].user.email : 'No user object',
+        emailSources: {
+          directEmail: voters[0].email,
+          userEmail: voters[0].user ? voters[0].user.email : null
+        }
+      });
+    }
+    
     // Map users to voters
     const votersWithDetails = voters.map(voter => {
+      // Ensure email is always present by checking both voter.email and voter.user.email
+      const email = voter.email || (voter.user ? voter.user.email : null);
+      
       return {
         id: voter._id,
         firstName: voter.firstName,
@@ -43,7 +60,8 @@ exports.getAllVoters = async (req, res) => {
         faceImage: voter.faceImage,
         status: voter.status,
         rejectionReason: voter.rejectionReason,
-        email: voter.user ? voter.user.email : null,
+        email: email, // Use the resolved email value
+        pincode: voter.pincode, // Ensure pincode is included
         walletAddress: voter.user ? voter.user.walletAddress : null,
         createdAt: voter.createdAt,
         blockchainRegistered: voter.blockchainRegistered,
@@ -116,6 +134,9 @@ exports.getVoterDetails = async (req, res) => {
       console.log(`Formatted face image path: ${faceImage}`);
     }
     
+    // Check if pincode exists and log it
+    console.log(`Voter pincode: ${voter.pincode || 'none'}`);
+    
     const voterDetails = {
       id: voter._id,
       firstName: voter.firstName,
@@ -131,6 +152,7 @@ exports.getVoterDetails = async (req, res) => {
       status: voter.status,
       rejectionReason: voter.rejectionReason,
       email: user.email || voter.email || null, // Try to get email from user first, then from voter
+      pincode: voter.pincode, // Include pincode in the response
       walletAddress: user.walletAddress,
       blockchainRegistered: voter.blockchainRegistered,
       blockchainTxHash: voter.blockchainTxHash,
@@ -138,7 +160,7 @@ exports.getVoterDetails = async (req, res) => {
       updatedAt: voter.updatedAt
     };
     
-    console.log(`Sending voter details with email: ${voterDetails.email || 'none'}`);
+    console.log(`Sending voter details with email: ${voterDetails.email || 'none'} and pincode: ${voterDetails.pincode || 'none'}`);
     
     res.json({
       voter: voterDetails
@@ -874,7 +896,7 @@ exports.getArchivedElections = async (req, res) => {
 // Start election
 exports.startElection = async (req, res) => {
   try {
-    const { title, description } = req.body;
+    const { title, description, metaMaskAddress } = req.body;
     
     // Validate required fields
     if (!title) {
@@ -887,26 +909,82 @@ exports.startElection = async (req, res) => {
       return res.status(400).json({ message: 'There is already an active election' });
     }
     
-    // Start election on blockchain
-    const blockchainResult = await startElectionOnBlockchain();
-    
-    if (!blockchainResult.success) {
-      return res.status(500).json({ 
-        message: 'Failed to start election on blockchain',
-        error: blockchainResult.error
-      });
-    }
-    
-    // Create election in database
+    // Create election in database first
     const election = new Election({
       title,
       description: description || '',
       startDate: new Date(),
-      isActive: true,
-      blockchainStartTxHash: blockchainResult.txHash
+      isActive: true
     });
     
     await election.save();
+    
+    // Create a simple address object if MetaMask address was provided
+    // This will be handled properly in the blockchain util
+    const signerInfo = metaMaskAddress ? { address: metaMaskAddress } : null;
+    
+    // Start election on blockchain with generated MongoDB ID as reference
+    const blockchainResult = await startElectionOnBlockchain(
+      election._id.toString(), // MongoDB ID as string
+      title, // Election name
+      [], // No candidate IDs
+      [], // No candidate names
+      signerInfo // Pass address object, will be properly handled in the blockchain util
+    );
+    
+    if (!blockchainResult.success) {
+      console.error('Blockchain transaction error:', blockchainResult.error);
+      
+      // Election already created in database, but blockchain transaction failed
+      // Update the election status to reflect the blockchain issue
+      election.blockchainError = blockchainResult.error;
+      await election.save();
+      
+      // Log the activity with error
+      try {
+        await Activity.create({
+          user: req.user?._id,
+          action: 'start-election',
+          entity: 'election',
+          entityId: election._id,
+          details: `Election "${election.title}" started in database but blockchain transaction failed: ${blockchainResult.error}`
+        });
+      } catch (activityError) {
+        console.error('Error logging activity:', activityError);
+        // Continue despite activity logging error
+      }
+      
+      return res.status(201).json({ 
+        message: 'Election started in database, but blockchain transaction encountered an issue.',
+        details: blockchainResult.error,
+        election: {
+          id: election._id,
+          title: election.title,
+          description: election.description,
+          startDate: election.startDate,
+          isActive: election.isActive,
+          blockchainStatus: 'failed'
+        }
+      });
+    }
+    
+    // Update election with blockchain transaction hash
+    election.blockchainStartTxHash = blockchainResult.txHash;
+    await election.save();
+    
+    // Log the activity
+    try {
+      await Activity.create({
+        user: req.user?._id,
+        action: 'start-election',
+        entity: 'election',
+        entityId: election._id,
+        details: `Election "${election.title}" started with transaction: ${blockchainResult.txHash}`
+      });
+    } catch (activityError) {
+      console.error('Error logging activity:', activityError);
+      // Continue despite activity logging error
+    }
     
     res.status(201).json({
       message: 'Election started successfully',
@@ -915,12 +993,13 @@ exports.startElection = async (req, res) => {
         title: election.title,
         description: election.description,
         startDate: election.startDate,
-        isActive: election.isActive
+        isActive: election.isActive,
+        blockchainTxHash: blockchainResult.txHash
       }
     });
   } catch (error) {
     console.error('Start election error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -937,9 +1016,40 @@ exports.endElection = async (req, res) => {
     const blockchainResult = await endElectionOnBlockchain();
     
     if (!blockchainResult.success) {
-      return res.status(500).json({ 
-        message: 'Failed to end election on blockchain',
-        error: blockchainResult.error
+      console.error('Blockchain transaction error when ending election:', blockchainResult.error);
+      
+      // Update election to note the blockchain error but still end it in our database
+      activeElection.isActive = false;
+      activeElection.endDate = new Date();
+      activeElection.blockchainError = blockchainResult.error;
+      
+      await activeElection.save();
+      
+      // Log the activity with error
+      try {
+        await Activity.create({
+          user: req.user?._id,
+          action: 'end-election',
+          entity: 'election',
+          entityId: activeElection._id,
+          details: `Election "${activeElection.title}" ended in database but blockchain transaction failed: ${blockchainResult.error}`
+        });
+      } catch (activityError) {
+        console.error('Error logging activity:', activityError);
+        // Continue despite activity logging error
+      }
+      
+      return res.json({
+        message: 'Election ended in database, but blockchain transaction encountered an issue.',
+        details: blockchainResult.error,
+        election: {
+          id: activeElection._id,
+          title: activeElection.title,
+          startDate: activeElection.startDate,
+          endDate: activeElection.endDate,
+          isActive: false,
+          blockchainStatus: 'failed'
+        }
       });
     }
     
@@ -950,6 +1060,20 @@ exports.endElection = async (req, res) => {
     
     await activeElection.save();
     
+    // Log the activity
+    try {
+      await Activity.create({
+        user: req.user?._id,
+        action: 'end-election',
+        entity: 'election',
+        entityId: activeElection._id,
+        details: `Election "${activeElection.title}" ended with transaction: ${blockchainResult.txHash}`
+      });
+    } catch (activityError) {
+      console.error('Error logging activity:', activityError);
+      // Continue despite activity logging error
+    }
+    
     res.json({
       message: 'Election ended successfully',
       election: {
@@ -957,12 +1081,13 @@ exports.endElection = async (req, res) => {
         title: activeElection.title,
         startDate: activeElection.startDate,
         endDate: activeElection.endDate,
-        isActive: activeElection.isActive
+        isActive: activeElection.isActive,
+        blockchainTxHash: blockchainResult.txHash
       }
     });
   } catch (error) {
     console.error('End election error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -1218,5 +1343,55 @@ exports.getCandidatesByElectionId = async (req, res) => {
       message: 'Server error while getting candidates', 
       error: error.message 
     });
+  }
+};
+
+// Update the getVoterById function to explicitly include pincode
+exports.getVoterById = async (req, res) => {
+  try {
+    const { voterId } = req.params;
+    
+    // Find voter by ID
+    const voter = await Voter.findById(voterId).populate('user');
+    
+    if (!voter) {
+      return res.status(404).json({ message: 'Voter not found' });
+    }
+    
+    // Log the voter object for debugging
+    console.log('Admin controller - Voter data being sent to frontend:', {
+      id: voter._id,
+      firstName: voter.firstName,
+      lastName: voter.lastName,
+      pincode: voter.pincode // Log the pincode specifically to check if it exists
+    });
+    
+    res.json({
+      voter: {
+        id: voter._id,
+        firstName: voter.firstName,
+        middleName: voter.middleName,
+        lastName: voter.lastName,
+        fatherName: voter.fatherName,
+        gender: voter.gender,
+        age: voter.age,
+        dateOfBirth: voter.dateOfBirth,
+        email: voter.email,
+        pincode: voter.pincode, // Ensure pincode is included
+        voterId: voter.voterId,
+        voterIdImage: voter.voterIdImage,
+        faceImage: voter.faceImage,
+        status: voter.status,
+        rejectionReason: voter.rejectionReason,
+        walletAddress: voter.user.walletAddress,
+        createdAt: voter.createdAt,
+        updatedAt: voter.updatedAt,
+        blockchainRegistered: voter.blockchainRegistered,
+        blockchainTxHash: voter.blockchainTxHash
+      }
+    });
+  } catch (error) {
+    console.error('Get voter by ID error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 }; 

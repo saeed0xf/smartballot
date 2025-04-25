@@ -10,3 +10,4 @@ ai/__pycache__/main.cpython-312.pyc
 ai/source.jpg
 ai/source_b64.txt
 backend/temp/*
+idlocker/backend/uploads/*

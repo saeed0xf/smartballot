@@ -217,6 +217,13 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
       return { success: false, error: 'Contract not initialized' };
     }
     
+    // Check if signer is just an address string
+    if (signer && typeof signer === 'object' && signer.address && !signer.signMessage) {
+      console.warn('Received only address object, not a full signer. Using admin wallet instead.');
+      // Just use the admin wallet if signer is just an address
+      signer = null;
+    }
+    
     // Use provided signer (from MetaMask) or fall back to admin wallet
     const effectiveSigner = signer || adminWallet;
     
@@ -226,10 +233,12 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
     }
     
     console.log(`Starting election on blockchain: ${electionName} (ID: ${electionId})`);
-    console.log(`Using signer ${typeof signer === 'object' && signer?.address ? 'from MetaMask' : 'from admin wallet'}`);
+    console.log(`Using signer ${typeof signer === 'object' && signer?.signMessage ? 'from MetaMask' : 'from admin wallet'}`);
     
     // Check if we're using MetaMask or admin wallet
-    const usingMetaMask = typeof signer === 'object' && signer?.address;
+    const usingMetaMask = typeof signer === 'object' && signer?.signMessage;
+    
+    // Use admin wallet if signer is invalid
     const connectedContract = voteSureContract.connect(effectiveSigner);
     
     // Check if we need to add candidates first
@@ -313,19 +322,19 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds 
       console.log('Using standard ethers.js contract call to start election');
       
       let tx;
-      // Check if our contract has a method to set the election ID
+    // Check if our contract has a method to set the election ID
       if (typeof connectedContract.startElectionWithId === 'function') {
         tx = await connectedContract.startElectionWithId(electionId, electionName);
-      } else {
-        // Fallback to standard method without ID
+    } else {
+      // Fallback to standard method without ID
         tx = await connectedContract.startElection();
-      }
-      
+    }
+    
       console.log(`Standard transaction submitted, hash: ${tx.hash}`);
-      const receipt = await tx.wait();
-      console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
-      
-      return { success: true, txHash: receipt.transactionHash };
+    const receipt = await tx.wait();
+    console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+    
+    return { success: true, txHash: receipt.transactionHash };
     }
   } catch (error) {
     console.error('Error starting election on blockchain:', error);
@@ -344,6 +353,13 @@ const endElectionOnBlockchain = async (signer = null) => {
       return { success: false, error: 'Contract not initialized' };
     }
     
+    // Check if signer is just an address string
+    if (signer && typeof signer === 'object' && signer.address && !signer.signMessage) {
+      console.warn('Received only address object, not a full signer. Using admin wallet instead.');
+      // Just use the admin wallet if signer is just an address
+      signer = null;
+    }
+    
     // Use provided signer (from MetaMask) or fall back to admin wallet
     const effectiveSigner = signer || adminWallet;
     
@@ -353,7 +369,7 @@ const endElectionOnBlockchain = async (signer = null) => {
     }
     
     // Check if we're using MetaMask or admin wallet
-    const usingMetaMask = typeof signer === 'object' && signer?.address;
+    const usingMetaMask = typeof signer === 'object' && signer?.signMessage;
     
     // Connect contract to the signer
     const connectedContract = voteSureContract.connect(effectiveSigner);
@@ -388,10 +404,10 @@ const endElectionOnBlockchain = async (signer = null) => {
       console.log('Using standard ethers.js contract call to end election');
       
       const tx = await connectedContract.endElection();
-      const receipt = await tx.wait();
-      
-      console.log('Election ended on blockchain');
-      return { success: true, txHash: receipt.transactionHash };
+    const receipt = await tx.wait();
+    
+    console.log('Election ended on blockchain');
+    return { success: true, txHash: receipt.transactionHash };
     }
   } catch (error) {
     console.error('Error ending election on blockchain:', error.message);
