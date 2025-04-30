@@ -723,7 +723,8 @@ exports.getActiveElections = async (req, res) => {
           partyName: c.partyName,
           partySymbol: c.partySymbol,
           photoUrl: c.photoUrl,
-          constituency: c.constituency
+          constituency: c.constituency,
+          pincode: c.pincode // Include candidate pincode
         }));
         
         return electionObj;
@@ -768,7 +769,9 @@ exports.getElectionStatus = async (req, res) => {
           description: election.description,
           startDate: election.startDate,
           endDate: election.endDate,
-          isActive: election.isActive
+          isActive: election.isActive,
+          pincode: election.pincode, // Include pincode in the response
+          region: election.region // Include region in the response if available
         },
         currentTime: new Date()
       });
@@ -794,7 +797,9 @@ exports.getElectionStatus = async (req, res) => {
         description: election.description,
         startDate: election.startDate,
         endDate: election.endDate,
-        isActive: election.isActive
+        isActive: election.isActive,
+        pincode: election.pincode, // Include pincode in the response
+        region: election.region // Include region in the response if available
       },
       currentTime: new Date()
     });
