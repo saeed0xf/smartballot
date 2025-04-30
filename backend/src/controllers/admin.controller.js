@@ -471,6 +471,7 @@ exports.addCandidate = async (req, res) => {
       electionType,
       electionId, // Make sure we capture election ID
       constituency,
+      pincode, // Add pincode here
       manifesto,
       education,
       experience,
@@ -481,6 +482,11 @@ exports.addCandidate = async (req, res) => {
     // Validate required fields
     if (!firstName || !lastName || !age || !gender || !partyName) {
       return res.status(400).json({ message: 'Please provide all required fields' });
+    }
+
+    // Check if pincode is provided
+    if (!pincode) {
+      return res.status(400).json({ message: 'Pincode is required' });
     }
 
     // Check if election exists and get its type
@@ -522,6 +528,7 @@ exports.addCandidate = async (req, res) => {
       partyName,
       electionType: actualElectionType,
       constituency,
+      pincode, // Add pincode here
       manifesto,
       education,
       experience,
