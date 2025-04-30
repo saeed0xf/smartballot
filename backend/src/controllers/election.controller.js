@@ -75,7 +75,7 @@ exports.getElectionById = async (req, res) => {
 exports.createElection = async (req, res) => {
   try {
     console.log('Create election request received:', req.body);
-    const { name, title, type, description, region, pincode, startDate, endDate } = req.body;
+    const { name, title, type, description, startDate, endDate, region, pincode } = req.body;
     
     // Use name or title (frontend sends name, but schema expects title)
     const electionTitle = title || name;
@@ -85,7 +85,7 @@ exports.createElection = async (req, res) => {
     console.log('Using election type:', electionType);
     
     // Validate required fields
-    if (!electionTitle || !electionType || !description || !startDate || !endDate) {
+    if (!electionTitle || !electionType || !description || !startDate || !endDate || !region || !pincode) {
       return res.status(400).json({ 
         message: 'All fields are required',
         details: { 
@@ -93,7 +93,9 @@ exports.createElection = async (req, res) => {
           type: !electionType ? 'Election type is required' : null,
           description: !description ? 'Description is required' : null,
           startDate: !startDate ? 'Start date is required' : null,
-          endDate: !endDate ? 'End date is required' : null
+          endDate: !endDate ? 'End date is required' : null,
+          region: !region ? 'Region is required' : null,
+          pincode: !pincode ? 'Pincode is required' : null
         }
       });
     }
@@ -171,6 +173,17 @@ exports.updateElection = async (req, res) => {
     const electionTitle = title || name || '';
     const electionName = name || title || '';
     const electionType = type || 'Lok Sabha Elections (General Elections)';
+    
+    // Validate required fields
+    if (!electionTitle || !pincode) {
+      return res.status(400).json({ 
+        message: 'Required fields are missing',
+        details: { 
+          title: !electionTitle ? 'Election title is required' : null,
+          pincode: !pincode ? 'Pincode is required' : null
+        }
+      });
+    }
     
     console.log('Using election title:', electionTitle);
     console.log('Using election name:', electionName);

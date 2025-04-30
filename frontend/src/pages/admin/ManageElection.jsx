@@ -1182,13 +1182,6 @@ const ManageElection = () => {
                                 <small className="text-muted text-truncate d-inline-block" style={{ maxWidth: '250px' }}>
                                   {election.description}
                                 </small>
-                                <div className="mb-2"><strong>Description:</strong> {election.description}</div>
-                                {election.region && (
-                                  <div className="mb-2"><strong>Region:</strong> {election.region}</div>
-                                )}
-                                {election.pincode && (
-                                  <div className="mb-2"><strong>Pincode:</strong> {election.pincode}</div>
-                                )}
                           </td>
                               <td className="py-3">
                                 <Badge bg={
@@ -1375,7 +1368,8 @@ const ManageElection = () => {
                   </Row>
                   
                   <Form.Group className="mb-3">
-                    <Form.Label>Region/Constituency</Form.Label>
+                    <Form.Label>Region/Constituency <span className="text-danger">*</span></Form.Label>
+                    
                     <Form.Control
                       type="text"
                       name="region"
@@ -1389,7 +1383,7 @@ const ManageElection = () => {
                   </Form.Group>
                   
                   <Form.Group className="mb-3">
-                    <Form.Label>Pincode</Form.Label>
+                    <Form.Label>Pincode <span className="text-danger">*</span></Form.Label>
                     <Form.Control
                       type="text"
                       name="pincode"

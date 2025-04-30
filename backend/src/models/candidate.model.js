@@ -64,6 +64,11 @@ const candidateSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  pincode: {
+    type: String,
+    required: true,
+    trim: true
+  },
   manifesto: {
     type: String,
     trim: true
