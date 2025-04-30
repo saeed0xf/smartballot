@@ -939,69 +939,68 @@ exports.startElection = async (req, res) => {
       signerInfo // Pass address object, will be properly handled in the blockchain util
     );
     
-    if (!blockchainResult.success) {
+    let blockchainSuccess = false;
+    let blockchainError = null;
+    
+    if (blockchainResult.success) {
+      blockchainSuccess = true;
+      console.log('Blockchain transaction successful with hash:', blockchainResult.txHash);
+      
+      // Update election with blockchain transaction hash
+      election.blockchainStartTxHash = blockchainResult.txHash;
+      await election.save();
+    } else {
+      blockchainError = blockchainResult.error;
       console.error('Blockchain transaction error:', blockchainResult.error);
+      
+      // Check if the error indicates the election is already started on the blockchain
+      if (blockchainError && 
+          (blockchainError.includes("Election already started") || 
+           blockchainError.toLowerCase().includes("already started"))) {
+        console.log("Election appears to be already started on blockchain - will still update database");
+        blockchainSuccess = true; // Consider this a success since election is active on blockchain
+      }
       
       // Election already created in database, but blockchain transaction failed
       // Update the election status to reflect the blockchain issue
       election.blockchainError = blockchainResult.error;
       await election.save();
-      
-      // Log the activity with error
-      try {
-        await Activity.create({
-          user: req.user?._id,
-          action: 'start-election',
-          entity: 'election',
-          entityId: election._id,
-          details: `Election "${election.title}" started in database but blockchain transaction failed: ${blockchainResult.error}`
-        });
-      } catch (activityError) {
-        console.error('Error logging activity:', activityError);
-        // Continue despite activity logging error
-      }
-      
-      return res.status(201).json({ 
-        message: 'Election started in database, but blockchain transaction encountered an issue.',
-        details: blockchainResult.error,
-        election: {
-          id: election._id,
-          title: election.title,
-          description: election.description,
-          startDate: election.startDate,
-          isActive: election.isActive,
-          blockchainStatus: 'failed'
-        }
-      });
     }
     
-    // Update election with blockchain transaction hash
-    election.blockchainStartTxHash = blockchainResult.txHash;
-    await election.save();
-    
-    // Log the activity
+    // Log the activity with status
     try {
       await Activity.create({
         user: req.user?._id,
         action: 'start-election',
         entity: 'election',
         entityId: election._id,
-        details: `Election "${election.title}" started with transaction: ${blockchainResult.txHash}`
+        details: blockchainSuccess 
+          ? `Election "${election.title}" started successfully${blockchainResult.txHash ? ` with transaction: ${blockchainResult.txHash}` : ''}`
+          : `Election "${election.title}" started in database but blockchain transaction failed: ${blockchainError}`
       });
     } catch (activityError) {
       console.error('Error logging activity:', activityError);
       // Continue despite activity logging error
     }
     
-    res.status(201).json({
-      message: 'Election started successfully',
+    return res.status(201).json({ 
+      message: blockchainSuccess 
+        ? 'Election started successfully' 
+        : 'Election started in database, but blockchain transaction encountered an issue.',
+      details: blockchainError,
       election: {
         id: election._id,
         title: election.title,
         description: election.description,
         startDate: election.startDate,
         isActive: election.isActive,
-        blockchainTxHash: blockchainResult.txHash
+        blockchainStatus: blockchainSuccess ? 'success' : 'failed',
+        blockchain: {
+          success: blockchainSuccess,
+          txHash: blockchainResult.txHash,
+          error: blockchainError,
+          message: blockchainSuccess && blockchainError ? 'Election was already started on blockchain' : undefined
+        }
       }
     });
   } catch (error) {
@@ -1022,74 +1021,73 @@ exports.endElection = async (req, res) => {
     // End election on blockchain
     const blockchainResult = await endElectionOnBlockchain();
     
-    if (!blockchainResult.success) {
+    let blockchainSuccess = false;
+    let blockchainError = null;
+    
+    if (blockchainResult.success) {
+      blockchainSuccess = true;
+      console.log('Blockchain transaction successful with hash:', blockchainResult.txHash);
+      
+      // Update election with blockchain transaction hash
+      activeElection.blockchainEndTxHash = blockchainResult.txHash;
+    } else {
+      blockchainError = blockchainResult.error;
       console.error('Blockchain transaction error when ending election:', blockchainResult.error);
       
-      // Update election to note the blockchain error but still end it in our database
-      activeElection.isActive = false;
-      activeElection.endDate = new Date();
-      activeElection.blockchainError = blockchainResult.error;
-      
-      await activeElection.save();
-      
-      // Log the activity with error
-      try {
-        await Activity.create({
-          user: req.user?._id,
-          action: 'end-election',
-          entity: 'election',
-          entityId: activeElection._id,
-          details: `Election "${activeElection.title}" ended in database but blockchain transaction failed: ${blockchainResult.error}`
-        });
-      } catch (activityError) {
-        console.error('Error logging activity:', activityError);
-        // Continue despite activity logging error
+      // Check if the error indicates the election is already ended on the blockchain
+      if (blockchainError && 
+          (blockchainError.includes("Election not started") || 
+           blockchainError.includes("Election already ended") ||
+           blockchainError.toLowerCase().includes("not started") ||
+           blockchainError.toLowerCase().includes("already ended"))) {
+        console.log("Election appears to be already ended on blockchain - will still update database");
+        blockchainSuccess = true; // Consider this a success since election is inactive on blockchain
       }
       
-      return res.json({
-        message: 'Election ended in database, but blockchain transaction encountered an issue.',
-        details: blockchainResult.error,
-        election: {
-          id: activeElection._id,
-          title: activeElection.title,
-          startDate: activeElection.startDate,
-          endDate: activeElection.endDate,
-          isActive: false,
-          blockchainStatus: 'failed'
-        }
-      });
+      // Update election to note the blockchain error
+      activeElection.blockchainError = blockchainResult.error;
     }
     
-    // Update election in database
+    // Update election in database regardless of blockchain result
     activeElection.isActive = false;
     activeElection.endDate = new Date();
-    activeElection.blockchainEndTxHash = blockchainResult.txHash;
     
     await activeElection.save();
     
-    // Log the activity
+    // Log the activity with status
     try {
       await Activity.create({
         user: req.user?._id,
         action: 'end-election',
         entity: 'election',
         entityId: activeElection._id,
-        details: `Election "${activeElection.title}" ended with transaction: ${blockchainResult.txHash}`
+        details: blockchainSuccess
+          ? `Election "${activeElection.title}" ended successfully${blockchainResult.txHash ? ` with transaction: ${blockchainResult.txHash}` : ''}`
+          : `Election "${activeElection.title}" ended in database but blockchain transaction failed: ${blockchainError}`
       });
     } catch (activityError) {
       console.error('Error logging activity:', activityError);
       // Continue despite activity logging error
     }
     
-    res.json({
-      message: 'Election ended successfully',
+    return res.json({
+      message: blockchainSuccess
+        ? 'Election ended successfully'
+        : 'Election ended in database, but blockchain transaction encountered an issue.',
+      details: blockchainError,
       election: {
         id: activeElection._id,
         title: activeElection.title,
         startDate: activeElection.startDate,
         endDate: activeElection.endDate,
-        isActive: activeElection.isActive,
-        blockchainTxHash: blockchainResult.txHash
+        isActive: false,
+        blockchainStatus: blockchainSuccess ? 'success' : 'failed',
+        blockchain: {
+          success: blockchainSuccess,
+          txHash: blockchainResult.txHash,
+          error: blockchainError,
+          message: blockchainSuccess && blockchainError ? 'Election was already ended on blockchain' : undefined
+        }
       }
     });
   } catch (error) {

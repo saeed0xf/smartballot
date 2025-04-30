@@ -655,15 +655,37 @@ const ManageElection = () => {
           
       console.log('Start election response:', response.data);
       
-      // Check if we need to handle blockchain transaction
+      // Check blockchain status in response
       if (response.data && response.data.blockchain) {
-        if (response.data.blockchain.txHash) {
-          console.log('Transaction successful with hash:', response.data.blockchain.txHash);
-          setSuccessMessage(`Election started successfully! Transaction hash: ${response.data.blockchain.txHash.slice(0, 10)}...`);
-        } else if (response.data.blockchain.error) {
-          console.warn('Blockchain error:', response.data.blockchain.error);
-          setSuccessMessage("Election started in database, but blockchain transaction encountered an issue.");
+        const { blockchain } = response.data;
+        
+        if (blockchain.success) {
+          if (blockchain.txHash) {
+            console.log('Transaction successful with hash:', blockchain.txHash);
+            setSuccessMessage(`Election started successfully! Transaction hash: ${blockchain.txHash.slice(0, 10)}...`);
+          } else if (blockchain.message && blockchain.message.includes('already started')) {
+            // Election was already started on blockchain
+            console.log('Election already started on blockchain');
+            setSuccessMessage('Election started successfully! (It was already active on the blockchain)');
+          } else {
+            // Generic success
+            setSuccessMessage('Election started successfully!');
+          }
+        } else if (blockchain.error) {
+          // Handle blockchain errors
+          console.warn('Blockchain error:', blockchain.error);
+          
+          // Check for specific error messages
+          if (blockchain.error.includes('already started')) {
+            setSuccessMessage('Election started successfully! (It was already active on the blockchain)');
+          } else {
+            setSuccessMessage("Election started in database, but blockchain transaction encountered an issue.");
+            setError(`Blockchain warning: ${blockchain.error.slice(0, 100)}${blockchain.error.length > 100 ? '...' : ''}`);
+          }
         }
+      } else {
+        // Generic success if no blockchain info
+        setSuccessMessage("Election started successfully!");
       }
       
       // Update elections in the UI
@@ -677,7 +699,17 @@ const ManageElection = () => {
       setActionElection(null);
     } catch (error) {
       console.error('Error starting election:', error);
-      setError('Failed to start election. ' + (error.response?.data?.message || error.message));
+      
+      // Parse and display helpful error messages
+      if (error.response?.data?.message) {
+        setError(`Failed to start election: ${error.response.data.message}`);
+      } else if (error.response?.data?.details) {
+        setError(`Failed to start election: ${error.response.data.details}`);
+      } else if (error.response?.data?.blockchain?.error) {
+        setError(`Blockchain error: ${error.response.data.blockchain.error}`);
+      } else {
+        setError('Failed to start election. ' + (error.message || 'Unknown error'));
+      }
     } finally {
       setProcessingAction(false);
       setLoading(false);
@@ -735,15 +767,37 @@ const ManageElection = () => {
           
           console.log('Election stop response:', response.data);
       
-      // Check if we need to handle blockchain transaction
+      // Check blockchain status in response
       if (response.data && response.data.blockchain) {
-        if (response.data.blockchain.txHash) {
-          console.log('Transaction successful with hash:', response.data.blockchain.txHash);
-          setSuccessMessage(`Election stopped successfully! Transaction hash: ${response.data.blockchain.txHash.slice(0, 10)}...`);
-        } else if (response.data.blockchain.error) {
-          console.warn('Blockchain error:', response.data.blockchain.error);
-          setSuccessMessage("Election stopped in database, but blockchain transaction encountered an issue.");
+        const { blockchain } = response.data;
+        
+        if (blockchain.success) {
+          if (blockchain.txHash) {
+            console.log('Transaction successful with hash:', blockchain.txHash);
+            setSuccessMessage(`Election stopped successfully! Transaction hash: ${blockchain.txHash.slice(0, 10)}...`);
+          } else if (blockchain.message && blockchain.message.includes('already ended')) {
+            // Election was already ended on blockchain
+            console.log('Election already ended on blockchain');
+            setSuccessMessage('Election stopped successfully! (It was already inactive on the blockchain)');
+          } else {
+            // Generic success
+            setSuccessMessage('Election stopped successfully!');
+          }
+        } else if (blockchain.error) {
+          // Handle blockchain errors
+          console.warn('Blockchain error:', blockchain.error);
+          
+          // Check for specific error messages
+          if (blockchain.error.includes('already ended') || blockchain.error.includes('not started')) {
+            setSuccessMessage('Election stopped successfully! (It was already inactive on the blockchain)');
+          } else {
+            setSuccessMessage("Election stopped in database, but blockchain transaction encountered an issue.");
+            setError(`Blockchain warning: ${blockchain.error.slice(0, 100)}${blockchain.error.length > 100 ? '...' : ''}`);
+          }
         }
+      } else {
+        // Generic success if no blockchain info
+        setSuccessMessage("Election stopped successfully!");
       }
       
       // Update the election status in the UI
@@ -757,7 +811,17 @@ const ManageElection = () => {
       setActionElection(null);
     } catch (error) {
       console.error('Error stopping election:', error);
-      setError('Failed to stop election. ' + (error.response?.data?.message || error.message));
+      
+      // Parse and display helpful error messages
+      if (error.response?.data?.message) {
+        setError(`Failed to stop election: ${error.response.data.message}`);
+      } else if (error.response?.data?.details) {
+        setError(`Failed to stop election: ${error.response.data.details}`);
+      } else if (error.response?.data?.blockchain?.error) {
+        setError(`Blockchain error: ${error.response.data.blockchain.error}`);
+      } else {
+        setError('Failed to stop election. ' + (error.message || 'Unknown error'));
+      }
     } finally {
       setProcessingAction(false);
       setLoading(false);
@@ -1496,6 +1560,19 @@ const ManageElection = () => {
               <li>Record all votes on the blockchain</li>
             </ul>
           </Alert>
+          <Alert variant="warning" className="mt-3">
+            <strong>Blockchain Transaction Info:</strong>
+            <p className="mb-2">
+              This action will attempt to start the election on the blockchain using MetaMask. 
+              Common issues that might occur:
+            </p>
+            <ul className="mb-0 small">
+              <li>If the election is already started on the blockchain, the transaction will be recognized as successful.</li>
+              <li>If MetaMask isn't properly set up or connected, you may encounter connection errors.</li>
+              <li>Gas estimate errors sometimes occur when the blockchain state conflicts with the operation.</li>
+              <li>Even if blockchain transaction fails, the election will still be started in our database.</li>
+            </ul>
+          </Alert>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowStartModal(false)}>
@@ -1542,6 +1619,19 @@ const ManageElection = () => {
               <li>Prevent further votes from being cast</li>
               <li>Finalize results on the blockchain</li>
               <li>This action cannot be easily reversed</li>
+            </ul>
+          </Alert>
+          <Alert variant="warning" className="mt-3">
+            <strong>Blockchain Transaction Info:</strong>
+            <p className="mb-2">
+              This action will attempt to end the election on the blockchain using MetaMask.
+              Common issues that might occur:
+            </p>
+            <ul className="mb-0 small">
+              <li>If the election is already ended on the blockchain, the transaction will be recognized as successful.</li>
+              <li>If the election was never properly started on the blockchain, you might see a "not started" error.</li>
+              <li>MetaMask connection issues might prevent the blockchain transaction from completing.</li>
+              <li>Even if the blockchain transaction fails, the election will still be ended in our database.</li>
             </ul>
           </Alert>
         </Modal.Body>
