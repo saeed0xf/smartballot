@@ -175,9 +175,10 @@ exports.getVoterDetails = async (req, res) => {
 exports.approveVoter = async (req, res) => {
   try {
     const { voterId } = req.params;
-    const { useMetaMask } = req.body; // Extract MetaMask flag from request
+    const { useMetaMask, useBackendTransaction, walletAddress } = req.body; // Extract options from request
     
-    console.log(`Approving voter with ID: ${voterId}, useMetaMask: ${useMetaMask}`);
+    console.log(`Approving voter with ID: ${voterId}, useMetaMask: ${useMetaMask}, useBackendTransaction: ${useBackendTransaction}`);
+    console.log(`Admin wallet address: ${walletAddress || 'Not provided'}`);
     
     // Find voter
     const voter = await Voter.findById(voterId);
@@ -216,57 +217,123 @@ exports.approveVoter = async (req, res) => {
       await user.save();
     }
     
-    console.log(`Attempting to approve voter on blockchain with wallet: ${user.walletAddress}`);
-    
-    // Check if voter is already approved on blockchain
-    try {
-      console.log(`Checking if voter is already approved on blockchain: ${user.walletAddress}`);
-      const statusResult = await getVoterStatusFromBlockchain(user.walletAddress);
+    // Option 1: Direct backend transaction using admin wallet (when useBackendTransaction is true)
+    if (useBackendTransaction) {
+      console.log(`Using backend to directly approve voter ${user.walletAddress}`);
       
-      if (statusResult.success && statusResult.data.isApproved) {
-        console.log(`Voter ${user.walletAddress} is already approved on blockchain`);
+      try {
+        // Check if the voter is already approved on the blockchain
+        console.log(`Checking if voter is already approved on blockchain: ${user.walletAddress}`);
+        const statusResult = await getVoterStatusFromBlockchain(user.walletAddress);
         
-        // Update voter status in our database to match blockchain
-        voter.status = 'approved';
-        voter.rejectionReason = null;
-        voter.blockchainRegistered = true;
-        // No transaction hash since we didn't perform a new transaction
+        if (statusResult.success && statusResult.data.isApproved) {
+          console.log(`Voter ${user.walletAddress} is already approved on blockchain`);
+          
+          // Update voter status in our database to match blockchain
+          voter.status = 'approved';
+          voter.rejectionReason = null;
+          voter.blockchainRegistered = true;
+          
+          await voter.save();
+          
+          console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
+          
+          return res.json({
+            success: true,
+            message: 'Voter was already approved on blockchain, database updated',
+            txHash: 'already-approved',
+            voter: {
+              id: voter._id,
+              firstName: voter.firstName,
+              lastName: voter.lastName,
+              status: voter.status
+            }
+          });
+        }
         
-        await voter.save();
+        // Execute the blockchain transaction using the admin wallet
+        console.log(`Approving voter ${user.walletAddress} with admin wallet`);
+        const blockchainResult = await approveVoterOnBlockchain(user.walletAddress);
         
-        console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
+        console.log(`Blockchain approval result:`, blockchainResult);
         
-        return res.json({
-          message: 'Voter was already approved on blockchain, database updated',
-          voter: {
-            id: voter._id,
-            firstName: voter.firstName,
-            lastName: voter.lastName,
-            status: voter.status
+        if (blockchainResult.success) {
+          // Update voter status
+          voter.status = 'approved';
+          voter.rejectionReason = null;
+          voter.blockchainRegistered = true;
+          voter.blockchainTxHash = blockchainResult.txHash;
+          
+          await voter.save();
+          
+          console.log(`Voter ${voterId} status updated to approved with txHash: ${blockchainResult.txHash}`);
+          
+          // Send approval email
+          const userEmail = user.email || voter.email;
+          try {
+            if (userEmail) {
+              console.log(`Attempting to send approval email to ${userEmail}`);
+              await sendVoterApprovalEmail(userEmail, voter.firstName);
+            }
+          } catch (emailError) {
+            console.error(`Error sending approval email: ${emailError.message}`);
+            // Continue despite email error
           }
+          
+          return res.json({
+            success: true,
+            message: 'Voter approved successfully via backend transaction',
+            txHash: blockchainResult.txHash,
+            voter: {
+              id: voter._id,
+              firstName: voter.firstName,
+              lastName: voter.lastName,
+              status: voter.status
+            }
+          });
+        } else {
+          // Handle blockchain errors
+          console.error(`Failed to approve voter ${voterId} on blockchain:`, blockchainResult.error);
+          return res.status(500).json({ 
+            success: false,
+            message: 'Failed to approve voter on blockchain',
+            error: blockchainResult.error,
+            details: blockchainResult.details || blockchainResult.stack
+          });
+        }
+      } catch (backendError) {
+        console.error('Backend transaction error:', backendError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to approve voter using backend transaction',
+          error: backendError.message,
+          stack: process.env.NODE_ENV === 'development' ? backendError.stack : undefined
         });
       }
-    } catch (checkError) {
-      console.warn(`Error checking voter approval status: ${checkError.message}`);
-      // Continue with approval process as normal
     }
     
-    // Approve voter on blockchain - pass useMetaMask option
-    const blockchainResult = await approveVoterOnBlockchain(user.walletAddress, { useMetaMask });
-    
-    console.log(`Blockchain approval result:`, blockchainResult);
-    
-    // Handle MetaMask transaction case
-    if (blockchainResult.success && blockchainResult.useMetaMask) {
-      console.log('Returning MetaMask transaction details to frontend');
-      return res.json({
-        message: 'Please approve the transaction in MetaMask',
+    // Option 2: Use MetaMask (when useMetaMask is true)
+    if (useMetaMask === true) {
+      console.log('Using MetaMask for transaction...');
+      
+      // Validate address format
+      if (!user.walletAddress || typeof user.walletAddress !== 'string' || !user.walletAddress.startsWith('0x')) {
+        console.error(`Invalid wallet address format: ${user.walletAddress}`);
+        return res.status(400).json({ message: 'Invalid wallet address format' });
+      }
+      
+      // Return special response for MetaMask with more detailed information
+      return res.json({ 
+        success: true, 
         useMetaMask: true,
         contractDetails: {
-          address: blockchainResult.contractAddress,
-          method: blockchainResult.methodName,
-          params: blockchainResult.params
+          address: process.env.CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000',
+          methodName: 'approveVoter',
+          method: 'approveVoter',
+          params: [user.walletAddress],
+          functionSelector: '0x3ce76e5f' // For convenience, include the function selector
         },
+        message: 'Please confirm the transaction in MetaMask to approve this voter',
         voter: {
           id: voter._id,
           firstName: voter.firstName,
@@ -276,80 +343,16 @@ exports.approveVoter = async (req, res) => {
       });
     }
     
-    // Special handling for "Voter already approved" error
-    if (!blockchainResult.success && 
-        blockchainResult.error && 
-        blockchainResult.error.includes('Voter already approved')) {
-      console.log(`Voter ${user.walletAddress} was already approved on blockchain`);
-      
-      // Update voter status in our database
-      voter.status = 'approved';
-      voter.rejectionReason = null;
-      voter.blockchainRegistered = true;
-      
-      await voter.save();
-      
-      console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
-      
-      return res.json({
-        message: 'Voter was already approved on blockchain, database updated',
-        voter: {
-          id: voter._id,
-          firstName: voter.firstName,
-          lastName: voter.lastName,
-          status: voter.status
-        }
-      });
-    }
-    
-    // Handle other blockchain errors
-    if (!blockchainResult.success) {
-      console.error(`Failed to approve voter ${voterId} on blockchain:`, blockchainResult.error);
-      return res.status(500).json({ 
-        message: 'Failed to approve voter on blockchain',
-        error: blockchainResult.error,
-        details: blockchainResult.details || blockchainResult.stack
-      });
-    }
-    
-    // Update voter status
-    voter.status = 'approved';
-    voter.rejectionReason = null;
-    voter.blockchainRegistered = true;
-    voter.blockchainTxHash = blockchainResult.txHash;
-    
-    await voter.save();
-    
-    console.log(`Voter ${voterId} status updated to approved`);
-    
-    // Send approval email
-    const userEmail = user.email || voter.email;
-    try {
-      if (userEmail) {
-        console.log(`Attempting to send approval email to ${userEmail} using Brevo API`);
-        const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName);
-        console.log(`Approval email sent to ${userEmail}, result:`, emailResult);
-      } else {
-        console.log(`No email available for voter ${voterId}, skipping notification`);
-      }
-    } catch (emailError) {
-      console.error(`Error sending approval email to ${userEmail}:`, emailError);
-      // Continue despite email error
-    }
-    
-    res.json({
-      message: 'Voter approved successfully',
-      voter: {
-        id: voter._id,
-        firstName: voter.firstName,
-        lastName: voter.lastName,
-        status: voter.status,
-        blockchainTxHash: blockchainResult.txHash
-      }
+    // Default option: No special flags provided
+    console.log('No transaction method specified (useMetaMask or useBackendTransaction)');
+    return res.status(400).json({ 
+      success: false,
+      message: 'Please specify a transaction method (useMetaMask or useBackendTransaction)'
     });
   } catch (error) {
     console.error('Approve voter error:', error);
     res.status(500).json({ 
+      success: false,
       message: 'Server error',
       error: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
