@@ -11,6 +11,27 @@ import { useReactMediaRecorder } from 'react-media-recorder';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const FACE_API_URL = 'http://localhost:8000/api';
 
+// Helper function to properly format image URLs
+const getImageUrl = (imagePath) => {
+  if (!imagePath) {
+    return null;
+  }
+  
+  // If the path already includes http(s), it's a complete URL
+  if (imagePath.startsWith('http')) {
+    return imagePath;
+  }
+  
+  // Extract the base URL without the /api path
+  const baseUrl = API_URL.replace('/api', '');
+  
+  // Remove any leading slash if present
+  const cleanPath = imagePath.startsWith('/') ? imagePath.substring(1) : imagePath;
+  
+  // Make sure the path is correctly formatted
+  return `${baseUrl}/${cleanPath}`;
+};
+
 const CastVote = () => {
   const [candidates, setCandidates] = useState([]);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
@@ -33,13 +54,22 @@ const CastVote = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  
+
   // Screen recording states with react-media-recorder
   const [showCandidateSection, setShowCandidateSection] = useState(false);
   const screenVideoRef = useRef(null);
   const [isRecordingActive, setIsRecordingActive] = useState(false);
   const faceCamRef = useRef(null);
   const [faceCamStream, setFaceCamStream] = useState(null);
+  
+  // Reference to track if this is first render
+  const isFirstRender = useRef(true);
+  // Reference to track if user has already visited the page (for clean re-renders)
+  const hasInitialized = useRef(false);
+  
+  // New state variables for viewing candidate details without selecting
+  const [viewingCandidate, setViewingCandidate] = useState(null);
+  const [showCandidateDetailsModal, setShowCandidateDetailsModal] = useState(false);
   
   // Initialize react-media-recorder
   const {
@@ -114,8 +144,11 @@ const CastVote = () => {
   // Handle recording stop and upload video
   const handleRecordingStop = async (blobUrl, blob) => {
     try {
+      console.log('Recording stopped, cleaning up resources');
+      
       // Stop face cam
       if (faceCamStream) {
+        console.log('Stopping face cam stream');
         faceCamStream.getTracks().forEach(track => track.stop());
         setFaceCamStream(null);
         if (faceCamRef.current) {
@@ -123,15 +156,35 @@ const CastVote = () => {
         }
       }
       
-      if (!blob || !selectedCandidate || !voterProfile) {
-        console.error('Missing required data for recording upload');
+      // Safety checks
+      if (!blob) {
+        console.error('Recording blob is missing');
+        toast.error('Recording data is missing. Your vote was processed, but the recording may not be saved.');
+        return;
+      }
+      
+      if (!selectedCandidate) {
+        console.error('No selected candidate found when stopping recording');
+        toast.error('Could not identify selected candidate for recording. Your vote was processed, but the recording may not be saved.');
+        return;
+      }
+      
+      if (!voterProfile) {
+        console.error('No voter profile found when stopping recording');
+        toast.error('Voter profile data missing. Your vote was processed, but the recording may not be saved.');
         return;
       }
       
       console.log('Recording stopped, blob URL:', blobUrl);
+      console.log('Blob size:', blob.size, 'bytes');
       
-      // Create a file from the blob
-      const file = new File([blob], `vote-recording-${Date.now()}-${voterProfile._id}-${selectedCandidate.electionId}.webm`, { 
+      // Create a file from the blob with a unique name
+      const timestamp = Date.now();
+      const randomId = Math.floor(Math.random() * 10000);
+      const fileName = `vote-recording-${timestamp}-${randomId}-${voterProfile._id}-${selectedCandidate.electionId}.webm`;
+      
+      console.log('Creating file:', fileName);
+      const file = new File([blob], fileName, { 
         type: 'video/webm',
       });
       
@@ -151,51 +204,117 @@ const CastVote = () => {
       console.log('Uploading recording...');
       toast.info('Uploading your voting record...');
       
-      // Upload to server
-      const uploadResponse = await axios.post(`${API_URL}/voter/upload-recording`, formData, { headers });
+      // Upload to server with timeout and retry logic
+      let uploadAttempts = 0;
+      const maxAttempts = 2;
+      let uploadSuccess = false;
       
-      // Update the vote record with the recording URL
-      const recordingUrl = uploadResponse.data?.recordingUrl || uploadResponse.data?.path;
-      if (recordingUrl) {
+      while (uploadAttempts < maxAttempts && !uploadSuccess) {
         try {
-          await axios.post(`${API_URL}/voter/update-vote-recording`, {
-            voterId: voterProfile._id,
-            electionId: selectedCandidate.electionId,
-            recordingUrl
-          }, { headers: { 'Authorization': `Bearer ${token}` } });
-          console.log('Vote record updated with recording URL');
-        } catch (updateErr) {
-          console.error('Error updating vote with recording URL:', updateErr);
+          uploadAttempts++;
+          console.log(`Upload attempt ${uploadAttempts} of ${maxAttempts}`);
+          
+          const uploadResponse = await axios.post(
+            `${API_URL}/voter/upload-recording`, 
+            formData, 
+            { 
+              headers,
+              timeout: 30000, // 30 second timeout
+            }
+          );
+          
+          // Update the vote record with the recording URL
+          const recordingUrl = uploadResponse.data?.recordingUrl || uploadResponse.data?.path;
+          
+          if (recordingUrl) {
+            console.log('Recording uploaded successfully, URL:', recordingUrl);
+            uploadSuccess = true;
+            
+            try {
+              await axios.post(`${API_URL}/voter/update-vote-recording`, {
+                voterId: voterProfile._id,
+                electionId: selectedCandidate.electionId,
+                recordingUrl
+              }, { headers: { 'Authorization': `Bearer ${token}` } });
+              
+              console.log('Vote record updated with recording URL');
+            } catch (updateErr) {
+              console.error('Error updating vote with recording URL:', updateErr);
+              toast.warning('Vote recorded, but linking recording to vote failed.');
+            }
+          } else {
+            console.warn('Upload succeeded but no recording URL was returned');
+            toast.warning('Recording uploaded, but the server did not return a valid URL.');
+          }
+        } catch (uploadErr) {
+          console.error(`Upload attempt ${uploadAttempts} failed:`, uploadErr);
+          
+          if (uploadAttempts < maxAttempts) {
+            console.log('Retrying upload...');
+            toast.info('Retrying upload...');
+            // Wait 2 seconds before retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } else {
+            console.error('All upload attempts failed');
+            toast.error('Failed to upload recording after multiple attempts.');
+            throw uploadErr; // Rethrow to be caught by the outer catch
+          }
         }
       }
       
-      toast.success('Voting record uploaded successfully');
-      console.log('Recording uploaded successfully');
+      if (uploadSuccess) {
+        toast.success('Voting record uploaded successfully');
+        console.log('Recording process completed successfully');
+      }
       
       // Clean up blob URL
       clearBlobUrl();
       
     } catch (err) {
-      console.error('Error uploading recording:', err);
+      console.error('Error in recording process:', err);
       toast.error('Failed to upload recording. Please contact support.');
     }
   };
 
-  // Monitor recording status changes
+  // Monitor recording status changes and update isRecordingActive properly
   useEffect(() => {
     if (status === 'acquiring_media') {
       toast.info('Please allow access to your screen and microphone');
     } else if (status === 'recording') {
       console.log('Recording successfully started');
+      setIsRecordingActive(true);
     } else if (status === 'stopped') {
       console.log('Recording stopped successfully');
+      setIsRecordingActive(false);
     } else if (status === 'failed') {
       console.error('Recording failed');
       toast.error('Recording failed, but you can still proceed with voting');
       // Allow voting even if recording fails
       setShowCandidateSection(true);
+      setIsRecordingActive(false);
     }
   }, [status]);
+
+  // Add function to restart recording if needed
+  const handleRestartRecording = () => {
+    try {
+      console.log('Attempting to restart recording');
+      toast.info('Restarting recording...');
+      
+      // Clean up any existing recording first
+      if (status === 'recording') {
+        stopRecording();
+      }
+      
+      // Add a small delay before restarting
+      setTimeout(() => {
+        startRecording();
+      }, 500);
+    } catch (err) {
+      console.error('Error restarting recording:', err);
+      toast.error('Failed to restart recording: ' + err.message);
+    }
+  };
 
   // Cleanup resources when component unmounts
   useEffect(() => {
@@ -225,12 +344,12 @@ const CastVote = () => {
         setLoading(true);
         setError(null);
         
+        // Explicitly reset selected candidate first thing
+        setSelectedCandidate(null);
+        
         // Get auth headers
         const token = localStorage.getItem('token');
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        
-        // Reset selected candidate explicitly to ensure none is selected by default
-        setSelectedCandidate(null);
         
         // Fetch voter profile
         const profileResponse = await axios.get(`${API_URL}/voter/profile`, { headers });
@@ -251,18 +370,29 @@ const CastVote = () => {
           const activeElectionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
           console.log('Active elections response:', activeElectionsResponse.data);
           
-          // Extract elections data following documented API format
+          // Safeguard against various API response formats
           let electionsData = [];
-          if (activeElectionsResponse.data && activeElectionsResponse.data.elections) {
-            // API returns { elections: [...] }
+          
+          if (activeElectionsResponse.data) {
+            if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
+              // Format: { elections: [...] }
             electionsData = activeElectionsResponse.data.elections;
-          } else if (Array.isArray(activeElectionsResponse.data)) {
-            // API returns direct array
-            electionsData = activeElectionsResponse.data;
-          } else if (activeElectionsResponse.data) {
-            // API returns single election object
-            electionsData = [activeElectionsResponse.data];
+            } else if (Array.isArray(activeElectionsResponse.data)) {
+              // Format: direct array of elections
+              electionsData = activeElectionsResponse.data;
+            } else if (typeof activeElectionsResponse.data === 'object' && activeElectionsResponse.data._id) {
+              // Format: single election object
+              electionsData = [activeElectionsResponse.data];
+            } else {
+              console.warn('Unexpected API response format:', activeElectionsResponse.data);
+              setError('Received unexpected data format from server');
+            }
+          } else {
+            console.error('No data in active elections response');
+            setError('No data received from server');
           }
+          
+          console.log(`Found ${electionsData.length} active elections`);
           
           if (electionsData.length === 0) {
             setError('No active elections found.');
@@ -274,8 +404,12 @@ const CastVote = () => {
           let allCandidates = [];
           
           electionsData.forEach(election => {
+            console.log(`Processing election: ${election.title || election.name}, ID: ${election._id}`);
+            
             // Check if election has candidates property and it's an array
             if (election.candidates && Array.isArray(election.candidates)) {
+              console.log(`Election has ${election.candidates.length} candidates`);
+              
               // Process each candidate
               election.candidates.forEach(candidate => {
                 // Ensure candidate has all required properties
@@ -286,19 +420,33 @@ const CastVote = () => {
                   electionType: election.type || '',
                   electionDescription: election.description || '',
                   electionStartDate: election.startDate,
-                  electionEndDate: election.endDate
+                  electionEndDate: election.endDate,
+                  // Format image URLs
+                  photoUrl: getImageUrl(candidate.photoUrl),
+                  partySymbol: getImageUrl(candidate.partySymbol)
                 };
+                
+                // Add candidate ID if missing
+                if (!enhancedCandidate._id && enhancedCandidate.id) {
+                  enhancedCandidate._id = enhancedCandidate.id;
+                } else if (!enhancedCandidate.id && enhancedCandidate._id) {
+                  enhancedCandidate.id = enhancedCandidate._id;
+                }
                 
                 // Add to all candidates array
                 allCandidates.push(enhancedCandidate);
               });
+            } else {
+              console.warn(`Election ${election._id} has no candidates or they are not in array format`);
             }
           });
+          
+          console.log(`Total candidates from all elections: ${allCandidates.length}`);
           
           // Add "None of the above" option if we have active elections
           if (allCandidates.length > 0 && electionsData.length > 0) {
             const firstElection = electionsData[0];
-            allCandidates.push({
+            const noneOption = {
               _id: 'none-of-the-above',
               id: 'none-of-the-above',
               firstName: 'None',
@@ -308,21 +456,28 @@ const CastVote = () => {
               isNoneOption: true,
               electionId: firstElection._id,
               electionName: firstElection.title || firstElection.name
-            });
+            };
+            
+            console.log('Adding "None of the Above" option');
+            allCandidates.push(noneOption);
           }
           
           // Set candidates state
+          console.log('Setting candidates state with:', allCandidates.length, 'candidates');
           setCandidates(allCandidates);
           
-          // Double check that no candidate is selected by default
+          // Triple-check that no candidate is selected by default
+          console.log('Explicitly ensuring no candidate is selected');
           setSelectedCandidate(null);
           
           if (allCandidates.length === 0) {
             setError('No candidates found for any active election.');
-          }
-        } catch (err) {
+        }
+      } catch (err) {
           console.error('Error fetching active elections:', err);
-          setError(`Could not fetch active elections: ${err.response?.data?.message || err.message}`);
+          const errorMsg = err.response?.data?.message || err.message || 'Unknown error';
+          console.error('Error details:', errorMsg);
+          setError(`Could not fetch active elections: ${errorMsg}`);
         }
       } catch (err) {
         console.error('Error fetching voter profile:', err);
@@ -570,7 +725,10 @@ const CastVote = () => {
     
     console.log('Continuing to voting screen after verification');
     
-    // Hide the verification section and show candidate section immediately
+    // Reset selected candidate explicitly when showing candidate section
+    setSelectedCandidate(null);
+    
+    // Hide the verification section and show candidate section
     setShowVerificationSection(false);
     setShowCandidateSection(true);
     
@@ -578,7 +736,6 @@ const CastVote = () => {
     try {
       console.log('Starting recording with react-media-recorder');
       startRecording();
-      // Note: We don't need to set isRecordingActive here as it's handled by onStart callback
       
       // If recording doesn't start within 5 seconds, show an error and let user proceed
       setTimeout(() => {
@@ -597,16 +754,28 @@ const CastVote = () => {
   };
 
   const handleSelectCandidate = (candidate) => {
-    console.log('Candidate selected:', candidate.name || `${candidate.firstName} ${candidate.lastName}`);
-    // Explicitly set the selected candidate to the one clicked
-    setSelectedCandidate(candidate);
+    console.log('handleSelectCandidate called with:', candidate.name || `${candidate.firstName} ${candidate.lastName}`);
+    
+    // Format the candidate with proper image URLs before setting it as the selected candidate
+    const formattedCandidate = {
+      ...candidate,
+      photoUrl: getImageUrl(candidate.photoUrl),
+      partySymbol: getImageUrl(candidate.partySymbol)
+    };
+    
+    // Set the selected candidate to the one clicked
+    setSelectedCandidate(formattedCandidate);
   };
 
   const handleVoteClick = () => {
     if (!selectedCandidate) {
+      console.log('Vote attempted with no candidate selected');
       toast.error('Please select a candidate first');
       return;
     }
+    
+    console.log('Vote button clicked for candidate:', 
+      selectedCandidate.name || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`);
     
     // Face verification is now required
     if (!faceVerified) {
@@ -622,13 +791,14 @@ const CastVote = () => {
         toast.error('Recording has stopped. Please refresh the page to restart the voting process.');
       } else if (status === 'failed') {
         // Special case: if recording failed but we want to allow voting anyway
-        setShowConfirmModal(true);
+        console.log('Recording failed but allowing vote to proceed');
+    setShowConfirmModal(true);
       } else {
         toast.error('Recording must be active to cast your vote');
       }
       return;
     }
-    
+
     setShowConfirmModal(true);
   };
 
@@ -662,7 +832,7 @@ const CastVote = () => {
       
       // Redirect after a short delay to allow the recording to be processed
       setTimeout(() => {
-        navigate('/voter/verify');
+      navigate('/voter/verify');
       }, 2000);
       
     } catch (err) {
@@ -673,19 +843,56 @@ const CastVote = () => {
     }
   };
 
-  // Ensure no candidate is selected by default
   useEffect(() => {
-    // Explicitly ensure no candidate is selected by default
-    console.log('Initializing with no selected candidate');
+    // This will only run once when the component mounts
+    console.log('Component mounted, initializing with no selected candidate');
     setSelectedCandidate(null);
+    
+    // Track that initialization has happened
+    hasInitialized.current = true;
+    
+    return () => {
+      // Reset on unmount for clean re-render if component is remounted
+      hasInitialized.current = false;
+    };
   }, []);
   
-  // Add logging to monitor selectedCandidate changes
+  // Add logging to monitor selectedCandidate changes with better lifecycle tracking
   useEffect(() => {
+    // Skip the first render since the state is already null
+    if (isFirstRender.current) {
+      console.log('Initial render, selectedCandidate is null');
+      isFirstRender.current = false;
+      return;
+    }
+    
     console.log('Selected candidate updated:', selectedCandidate ? 
       (selectedCandidate.name || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`) : 
       'None');
   }, [selectedCandidate]);
+
+  // Handle viewing candidate details without selecting them
+  const handleViewCandidateDetails = (candidate) => {
+    // Make sure we have the complete candidate data with formatted image URLs
+    const candidateWithFormattedImages = {
+      ...candidate,
+      photoUrl: getImageUrl(candidate.photoUrl),
+      partySymbol: getImageUrl(candidate.partySymbol)
+    };
+    
+    console.log('Viewing details for candidate:', 
+      candidateWithFormattedImages.name || 
+      `${candidateWithFormattedImages.firstName} ${candidateWithFormattedImages.lastName}`);
+    
+    setViewingCandidate(candidateWithFormattedImages);
+    setShowCandidateDetailsModal(true);
+  };
+
+  // Close the candidate details modal
+  const handleCloseCandidateDetails = () => {
+    setShowCandidateDetailsModal(false);
+    setViewingCandidate(null);
+  };
 
   if (loading) {
     return (
@@ -738,7 +945,6 @@ const CastVote = () => {
   }
 
   // Add detailed logging in the component render
-  // Add this right before the return statement in the main component
   if (process.env.NODE_ENV !== 'production') {
     console.log('CastVote component rendering with:', {
       candidatesCount: candidates.length,
@@ -748,7 +954,9 @@ const CastVote = () => {
       showVerificationSection,
       showCandidateSection,
       isRecordingActive,
-      recordingStatus: status
+      recordingStatus: status,
+      hasMounted: !isFirstRender.current,
+      hasInitializedRef: hasInitialized.current
     });
   }
 
@@ -1001,7 +1209,7 @@ const CastVote = () => {
                   <p className="mb-0">
                     {recorderError.message || "An error occurred with the recording. You can still proceed with voting."}
                   </p>
-                </Alert>
+            </Alert>
               )}
               
               <div className="text-center mb-3">
@@ -1103,6 +1311,19 @@ const CastVote = () => {
                     </small>
                   </p>
                 </div>
+
+                {/* Add restart recording button if recording has stopped */}
+                {status === 'stopped' && (
+                  <div className="mt-2">
+                    <Button 
+                      variant="outline-danger" 
+                      size="sm"
+                      onClick={handleRestartRecording}
+                    >
+                      Restart Recording
+                    </Button>
+                  </div>
+                )}
               </div>
             </Card.Body>
           </Card>
@@ -1116,19 +1337,28 @@ const CastVote = () => {
                 <h5 className="mb-0">Step 3: Select Your Candidate</h5>
               </Card.Header>
               <Card.Body>
-                <Row>
-                  {candidates.map(candidate => (
+              <Row>
+                {candidates.map(candidate => (
                     <Col 
                       key={candidate._id || candidate.id} 
                       md={candidate.isNoneOption ? 12 : 4} 
                       className="mb-4"
                     >
-                      <Card 
-                        className={`h-100 shadow-sm candidate-card ${selectedCandidate && (selectedCandidate._id === candidate._id || selectedCandidate.id === candidate.id) ? 'border-primary' : ''}`}
+                    <Card 
+                        className={`h-100 shadow-sm candidate-card ${
+                          selectedCandidate && 
+                          ((selectedCandidate._id && candidate._id && selectedCandidate._id === candidate._id) || 
+                           (selectedCandidate.id && candidate.id && selectedCandidate.id === candidate.id)) 
+                          ? 'border-primary' : ''
+                        }`}
                         onClick={() => handleSelectCandidate(candidate)}
-                        style={{ 
+                      style={{ 
                           cursor: 'pointer',
-                          backgroundColor: candidate.isNoneOption ? '#f8f9fa' : 'white'
+                          backgroundColor: candidate.isNoneOption ? '#f8f9fa' : 'white',
+                          borderWidth: selectedCandidate && 
+                            ((selectedCandidate._id && candidate._id && selectedCandidate._id === candidate._id) || 
+                             (selectedCandidate.id && candidate.id && selectedCandidate.id === candidate.id)) 
+                            ? '2px' : '1px' // Make selected border more visible
                         }}
                       >
                         {!candidate.isNoneOption ? (
@@ -1136,7 +1366,7 @@ const CastVote = () => {
                             {candidate.photoUrl ? (
                               <div className="candidate-img-container mx-auto">
                                 <img 
-                                  src={candidate.photoUrl}
+                                  src={getImageUrl(candidate.photoUrl)}
                                   alt={candidate.name || `${candidate.firstName} ${candidate.lastName}`}
                                   className="rounded-circle candidate-img"
                                   style={{ width: '120px', height: '120px', objectFit: 'cover' }}
@@ -1154,14 +1384,14 @@ const CastVote = () => {
                                   }}
                                 />
                               </div>
-                            ) : (
-                              <div 
+                      ) : (
+                        <div 
                                 className="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center"
                                 style={{ width: '120px', height: '120px' }}
-                              >
+                        >
                                 <FaUser size={40} className="text-secondary" />
-                              </div>
-                            )}
+                        </div>
+                      )}
                           </div>
                         ) : (
                           <div className="text-center pt-3 pb-2">
@@ -1181,7 +1411,7 @@ const CastVote = () => {
                               <div className="d-flex align-items-center justify-content-center mb-2">
                                 {candidate.partySymbol && (
                                   <img 
-                                    src={candidate.partySymbol} 
+                                    src={getImageUrl(candidate.partySymbol)} 
                                     alt={candidate.partyName} 
                                     className="me-2" 
                                     style={{ width: '24px', height: '24px' }}
@@ -1196,7 +1426,7 @@ const CastVote = () => {
                                   />
                                 )}
                                 <Badge bg="primary" className="me-2">{candidate.partyName}</Badge>
-                              </div>
+                          </div>
                               
                               {candidate.constituency && (
                                 <p className="text-muted small mb-2">
@@ -1210,56 +1440,76 @@ const CastVote = () => {
                             </p>
                           )}
                           
-                          {selectedCandidate && (selectedCandidate._id === candidate._id || selectedCandidate.id === candidate.id) ? (
-                            <div className="mt-2">
+                          {/* Buttons for selection and viewing details */}
+                          <div className="d-flex flex-column gap-2 mt-3">
+                            {selectedCandidate && 
+                              ((selectedCandidate._id && candidate._id && selectedCandidate._id === candidate._id) || 
+                              (selectedCandidate.id && candidate.id && selectedCandidate.id === candidate.id)) ? (
                               <Badge bg="success" className="w-100 py-2">
                                 <FaCheckCircle className="me-1" /> Selected
                               </Badge>
-                            </div>
-                          ) : (
-                            <Button 
-                              variant="outline-primary" 
-                              size="sm" 
-                              className="w-100 mt-2"
-                              onClick={() => handleSelectCandidate(candidate)}
-                            >
-                              Select
-                            </Button>
-                          )}
+                            ) : (
+                              <Button 
+                                variant="outline-primary" 
+                                size="sm" 
+                                className="w-100"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent double-click issues
+                                  handleSelectCandidate(candidate);
+                                }}
+                              >
+                                Select
+                              </Button>
+                            )}
+                            
+                            {!candidate.isNoneOption && (
+                              <Button 
+                                variant="outline-secondary" 
+                                size="sm" 
+                                className="w-100"
+                                onClick={(e) => {
+                                  e.stopPropagation(); // Prevent double-click issues
+                                  handleViewCandidateDetails(candidate);
+                                }}
+                              >
+                                View Details
+                              </Button>
+                            )}
+                          </div>
                         </Card.Body>
-                      </Card>
-                    </Col>
-                  ))}
-                </Row>
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
               </Card.Body>
             </Card>
-            
+              
             <div className="d-grid gap-2 col-md-6 mx-auto mt-4 mb-5">
-              <Button 
-                variant="primary" 
-                size="lg" 
-                onClick={handleVoteClick}
+                <Button 
+                  variant="primary" 
+                  size="lg" 
+                  onClick={handleVoteClick}
                 disabled={!selectedCandidate || (!isRecordingActive && status !== 'failed')}
-              >
-                Cast My Vote
-              </Button>
+                >
+                  Cast My Vote
+                </Button>
               {!selectedCandidate && (
-                <div className="text-center mt-2 text-danger">
+                  <div className="text-center mt-2 text-danger">
                   <small>Please select a candidate or "None of the above"</small>
-                </div>
-              )}
+                  </div>
+                )}
               {selectedCandidate && !isRecordingActive && status !== 'failed' && (
-                <div className="text-center mt-2 text-danger">
+                  <div className="text-center mt-2 text-danger">
                   <small>
                     {status === 'acquiring_media' ? 'Waiting for recording permission...' : 
                      status === 'idle' ? 'Recording must be started to cast your vote' : 
                      status === 'stopped' ? 'Recording has stopped. Please refresh to restart voting.' :
                      'Recording must be active to cast your vote'}
                   </small>
-                </div>
-              )}
-            </div>
-          </div>
+                  </div>
+                )}
+              </div>
+        </div>
         )}
         
         {/* Confirmation Modal */}
@@ -1308,6 +1558,124 @@ const CastVote = () => {
               )}
             </Button>
           </Modal.Footer>
+        </Modal>
+
+        {/* Candidate Details Modal */}
+        <Modal show={showCandidateDetailsModal} onHide={handleCloseCandidateDetails} size="lg">
+          {viewingCandidate && (
+            <>
+              <Modal.Header closeButton>
+                <Modal.Title>Candidate Profile</Modal.Title>
+              </Modal.Header>
+              <Modal.Body>
+                <Row>
+                  <Col md={4} className="text-center">
+                    {viewingCandidate.photoUrl ? (
+                      <img 
+                        src={getImageUrl(viewingCandidate.photoUrl)}
+                        alt={viewingCandidate.name || `${viewingCandidate.firstName} ${viewingCandidate.lastName}`}
+                        className="img-fluid rounded candidate-detail-img mb-3"
+                        style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }}
+                        onError={(e) => {
+                          console.error('Error loading image:', e);
+                          e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiB2aWV3Qm94PSIwIDAgMjAwIDIwMCIgZmlsbD0ibm9uZSI+CiAgPHJlY3Qgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiNFOUVDRUYiLz4KICA8dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzZDNzU3RCI+Tm8gSW1hZ2U8L3RleHQ+Cjwvc3ZnPg==';
+                        }}
+                      />
+                    ) : (
+                      <div 
+                        className="bg-light rounded d-flex align-items-center justify-content-center mb-3"
+                        style={{ height: '200px' }}
+                      >
+                        <FaUser size={60} className="text-secondary" />
+                      </div>
+                    )}
+                    
+                    <div className="mb-3">
+                      {viewingCandidate.partySymbol && (
+                        <img 
+                          src={getImageUrl(viewingCandidate.partySymbol)} 
+                          alt={viewingCandidate.partyName} 
+                          className="img-fluid mb-2"
+                          style={{ maxWidth: '80px', maxHeight: '80px' }}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      )}
+                      
+                      <h5 className="mb-1">{viewingCandidate.partyName}</h5>
+                      <Badge bg="primary">{viewingCandidate.electionType || 'General Election'}</Badge>
+                    </div>
+                  </Col>
+                  <Col md={8}>
+                    <h3 className="mb-3">
+                      {viewingCandidate.name || `${viewingCandidate.firstName} ${viewingCandidate.middleName ? viewingCandidate.middleName + ' ' : ''}${viewingCandidate.lastName}`}
+                    </h3>
+                    
+                    <div className="candidate-details">
+                      <Card className="mb-3">
+                        <Card.Header className="bg-light">
+                          <h6 className="mb-0">Basic Information</h6>
+                        </Card.Header>
+                        <Card.Body>
+                          <Row>
+                            <Col md={6}>
+                              <p className="mb-2"><strong>Election:</strong> {viewingCandidate.electionName}</p>
+                              <p className="mb-2"><strong>Constituency:</strong> {viewingCandidate.constituency || 'Not specified'}</p>
+                            </Col>
+                            <Col md={6}>
+                              {viewingCandidate.age && (
+                                <p className="mb-2"><strong>Age:</strong> {viewingCandidate.age} years</p>
+                              )}
+                              
+                              {viewingCandidate.gender && (
+                                <p className="mb-2"><strong>Gender:</strong> {viewingCandidate.gender}</p>
+                              )}
+                            </Col>
+                          </Row>
+                        </Card.Body>
+                      </Card>
+                      
+                      <Card className="mb-3">
+                        <Card.Header className="bg-light">
+                          <h6 className="mb-0">Qualifications & Experience</h6>
+                        </Card.Header>
+                        <Card.Body>
+                          {viewingCandidate.education && (
+                            <p className="mb-2"><strong>Education:</strong> {viewingCandidate.education}</p>
+                          )}
+                          
+                          {viewingCandidate.experience && (
+                            <p className="mb-2"><strong>Experience:</strong> {viewingCandidate.experience}</p>
+                          )}
+                          
+                          {!viewingCandidate.education && !viewingCandidate.experience && (
+                            <p className="text-muted">No detailed qualification information available.</p>
+                          )}
+                        </Card.Body>
+                      </Card>
+                      
+                      {viewingCandidate.manifesto && (
+                        <Card className="mb-3">
+                          <Card.Header className="bg-light">
+                            <h6 className="mb-0">Manifesto</h6>
+                          </Card.Header>
+                          <Card.Body>
+                            <p className="mb-0">{viewingCandidate.manifesto}</p>
+                          </Card.Body>
+                        </Card>
+                      )}
+                    </div>
+                  </Col>
+                </Row>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button variant="secondary" onClick={handleCloseCandidateDetails}>
+                  Close
+                </Button>
+              </Modal.Footer>
+            </>
+          )}
         </Modal>
       </Container>
     </Layout>
