@@ -873,6 +873,14 @@ const CastVote = () => {
 
   // Handle viewing candidate details without selecting them
   const handleViewCandidateDetails = (candidate) => {
+    if (!candidate) {
+      console.error('No candidate provided to view details');
+      return;
+    }
+    
+    console.log('Viewing details for candidate:', 
+      candidate.name || `${candidate.firstName} ${candidate.lastName}`);
+    
     // Make sure we have the complete candidate data with formatted image URLs
     const candidateWithFormattedImages = {
       ...candidate,
@@ -880,12 +888,84 @@ const CastVote = () => {
       partySymbol: getImageUrl(candidate.partySymbol)
     };
     
-    console.log('Viewing details for candidate:', 
-      candidateWithFormattedImages.name || 
-      `${candidateWithFormattedImages.firstName} ${candidateWithFormattedImages.lastName}`);
-    
+    // Set basic candidate info first (in case loading details fails)
     setViewingCandidate(candidateWithFormattedImages);
     setShowCandidateDetailsModal(true);
+    
+    // Extract the candidate ID (supporting multiple ID formats)
+    const candidateId = candidate._id || candidate.id;
+    
+    if (candidateId) {
+      console.log(`Using candidate ID: ${candidateId} to fetch full details`);
+      loadCandidateDetails(candidateId);
+    } else {
+      console.warn('No valid ID found for candidate:', candidate);
+    }
+  };
+
+  // Function to load detailed candidate information from the API
+  const loadCandidateDetails = async (candidateId) => {
+    try {
+      if (!candidateId) {
+        console.error('No candidate ID provided for loading details');
+        return;
+      }
+      
+      console.log(`Loading details for candidate ID: ${candidateId}`);
+      
+      const token = localStorage.getItem('token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      
+      // Try primary candidate endpoint first
+      try {
+        const apiCandidateId = candidateId.toString();
+        console.log(`Fetching from candidate endpoint: ${API_URL}/candidates/${apiCandidateId}`);
+        
+        const response = await axios.get(`${API_URL}/candidates/${apiCandidateId}`, { headers });
+        console.log('Candidate details response:', response.data);
+        
+        if (response.data && response.data.candidate) {
+          // Update with the detailed info
+          setViewingCandidate(prevCandidate => ({
+            ...prevCandidate,
+            ...response.data.candidate,
+            photoUrl: getImageUrl(response.data.candidate.photoUrl || response.data.candidate.image),
+            partySymbol: getImageUrl(response.data.candidate.partySymbol)
+          }));
+        } else if (response.data) {
+          // Direct candidate data
+          setViewingCandidate(prevCandidate => ({
+            ...prevCandidate,
+            ...response.data,
+            photoUrl: getImageUrl(response.data.photoUrl || response.data.image),
+            partySymbol: getImageUrl(response.data.partySymbol)
+          }));
+        }
+      } catch (apiError) {
+        console.error('Error fetching from primary candidate endpoint:', apiError);
+        
+        // Try fallback endpoint
+        try {
+          console.log(`Trying fallback endpoint: ${API_URL}/election/candidates/${candidateId}`);
+          const fallbackResponse = await axios.get(`${API_URL}/election/candidates/${candidateId}`, { headers });
+          
+          if (fallbackResponse.data && fallbackResponse.data.candidate) {
+            setViewingCandidate(prevCandidate => ({
+              ...prevCandidate,
+              ...fallbackResponse.data.candidate,
+              photoUrl: getImageUrl(fallbackResponse.data.candidate.photoUrl || fallbackResponse.data.candidate.image),
+              partySymbol: getImageUrl(fallbackResponse.data.candidate.partySymbol)
+            }));
+          }
+        } catch (fallbackError) {
+          console.error('Error fetching from fallback endpoint:', fallbackError);
+          // We already set the basic candidate above, so no need to do anything here
+        }
+      }
+    } catch (error) {
+      console.error('Error in loadCandidateDetails:', error);
+      // Don't show error to user, just log it and continue with what we have
+    }
   };
 
   // Close the candidate details modal
