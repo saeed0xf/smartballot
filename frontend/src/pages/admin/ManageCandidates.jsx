@@ -36,7 +36,8 @@ const ManageCandidates = () => {
     education: '',
     experience: '',
     criminalRecord: 'None',
-    email: ''
+    email: '',
+    pincode: ''
   });
   
   const [candidateImage, setCandidateImage] = useState(null);
@@ -189,6 +190,16 @@ const ManageCandidates = () => {
         electionType: selectedElection.type || 'Lok Sabha Elections'
       }));
       
+      // If we're editing, also update the editing candidate object to reflect the change
+      if (isEditing && editingCandidate) {
+        setEditingCandidate(prev => ({
+          ...prev,
+          election: electionId,
+          electionType: selectedElection.type || 'Lok Sabha Elections',
+          electionName: selectedElection.title || selectedElection.name || "Unknown Election"
+        }));
+      }
+      
       // Clear error if there was one
       if (formErrors.electionId) {
         setFormErrors(prev => ({ ...prev, electionId: null }));
@@ -250,13 +261,20 @@ const ManageCandidates = () => {
     }
   };
   
-  // Update the validateForm function to require an election
+  // Update the validateForm function to require all mandatory fields
   const validateForm = () => {
     const errors = {};
     
+    // Basic validation for required fields
     if (!newCandidate.firstName) errors.firstName = 'First name is required';
     if (!newCandidate.lastName) errors.lastName = 'Last name is required';
     if (!newCandidate.dateOfBirth) errors.dateOfBirth = 'Date of birth is required';
+    if (!newCandidate.partyName) errors.partyName = 'Party name is required';
+    if (!newCandidate.electionId) errors.electionId = 'Please select an election';
+    if (!newCandidate.constituency) errors.constituency = 'Constituency is required';
+    if (!newCandidate.pincode) errors.pincode = 'Pincode is required';
+    if (!newCandidate.photoUrl) errors.photoUrl = 'Candidate photo is required';
+    
     // Calculate age if birth date is provided
     if (newCandidate.dateOfBirth) {
       const calculatedAge = calculateAge(newCandidate.dateOfBirth);
@@ -264,10 +282,6 @@ const ManageCandidates = () => {
         errors.dateOfBirth = 'Candidate must be at least 18 years old';
       }
     }
-    if (!newCandidate.partyName) errors.partyName = 'Party name is required';
-    if (!newCandidate.electionId) errors.electionId = 'Please select an election';
-    if (!newCandidate.constituency) errors.constituency = 'Constituency is required';
-    if (!newCandidate.photoUrl) errors.photoUrl = 'Candidate photo is required';
     
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -287,11 +301,30 @@ const ManageCandidates = () => {
       
       // Add candidate data to formData, ensuring age is up-to-date
       const calculatedAge = calculateAge(newCandidate.dateOfBirth);
+      
+      // Create a sanitized copy of the candidate data
       const candidateData = {
         ...newCandidate,
         age: calculatedAge
       };
-
+      
+      // Ensure election is stored as an ID string, not an object
+      if (candidateData.election && typeof candidateData.election === 'object' && candidateData.election._id) {
+        candidateData.election = candidateData.election._id;
+      }
+      
+      // Make sure electionId is properly formatted
+      if (candidateData.electionId) {
+        // Ensure it's a string, not an object
+        if (typeof candidateData.electionId === 'object' && candidateData.electionId._id) {
+          candidateData.electionId = candidateData.electionId._id;
+        }
+        // Also set the election field to match electionId
+        candidateData.election = candidateData.electionId;
+      }
+      
+      console.log('Sanitized candidate data for submission:', candidateData);
+      
       Object.keys(candidateData).forEach(key => {
         if (key !== 'photoUrl' && key !== 'partySymbol' && key !== 'id' && key !== '_id') {
           formData.append(key, candidateData[key]);
@@ -554,7 +587,8 @@ const ManageCandidates = () => {
       education: '',
       experience: '',
       criminalRecord: 'None',
-      email: ''
+      email: '',
+      pincode: ''
     });
     setCandidateImage(null);
     setPartySymbolImage(null);
@@ -742,12 +776,21 @@ const ManageCandidates = () => {
                   </Alert>
                 )}
                 {isEditing && !successMessage && (
-                  <Alert variant="info" className="mb-4">
+                  <Alert variant={editingCandidate?.inActiveElection ? "warning" : "info"} className="mb-4">
                     <div className="d-flex align-items-center">
                       <FaEdit className="me-2" /> 
                       <div>
-                        <strong>Edit Mode:</strong> You are editing candidate "{editingCandidate?.firstName} {editingCandidate?.lastName}". 
-                        Make your changes and click 'Update Candidate' to save them.
+                        <strong>Edit Mode:</strong> You are editing candidate "{editingCandidate?.firstName} {editingCandidate?.lastName}".
+                        {editingCandidate?.inActiveElection ? (
+                          <span className="ms-1">
+                            <strong>This candidate is part of an active election.</strong> Only basic information can be edited. 
+                            The election association cannot be changed until the election ends.
+                          </span>
+                        ) : (
+                          <span className="ms-1">
+                            Make your changes and click 'Update Candidate' to save them. You can change any details including the election.
+                          </span>
+                        )}
                       </div>
                     </div>
                   </Alert>
@@ -987,7 +1030,7 @@ const ManageCandidates = () => {
                           value={newCandidate.electionId}
                           onChange={handleElectionChange}
                           isInvalid={!!formErrors.electionId}
-                          disabled={isEditing} // Can't change election when editing
+                          disabled={isEditing && editingCandidate?.inActiveElection}
                         >
                           <option value="">-- Select a Pending Election --</option>
                           {elections.map(election => (
@@ -1007,7 +1050,9 @@ const ManageCandidates = () => {
                           {formErrors.electionId}
                         </Form.Control.Feedback>
                         <Form.Text className="text-muted">
-                          Only pending elections (not started, not archived) are shown. Candidates can only be added to pending elections.
+                          {isEditing && editingCandidate?.inActiveElection 
+                            ? "Election cannot be changed while the election is active." 
+                            : "Only pending elections (not started, not archived) are shown. You can change the election as long as it hasn't started yet."}
                         </Form.Text>
                       </Form.Group>
                     </Col>
@@ -1027,6 +1072,25 @@ const ManageCandidates = () => {
                         <Form.Control.Feedback type="invalid">
                           {formErrors.constituency}
                         </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Pincode <span className="text-danger">*</span></Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="pincode"
+                          value={newCandidate.pincode}
+                          onChange={handleInputChange}
+                          placeholder="Enter postal code"
+                          isInvalid={!!formErrors.pincode}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {formErrors.pincode}
+                        </Form.Control.Feedback>
+                        <Form.Text className="text-muted">
+                          Postal code of the constituency area
+                        </Form.Text>
                       </Form.Group>
                     </Col>
                   </Row>
@@ -1217,6 +1281,10 @@ const ManageCandidates = () => {
                   <Row className="mb-3">
                     <Col sm={4} className="text-muted">Constituency:</Col>
                     <Col sm={8}>{selectedCandidate.constituency}</Col>
+                  </Row>
+                  <Row className="mb-3">
+                    <Col sm={4} className="text-muted">Pincode:</Col>
+                    <Col sm={8}>{selectedCandidate.pincode || 'Not provided'}</Col>
                   </Row>
                   
                   <h5 className="border-bottom pb-2 mt-4">Additional Information</h5>

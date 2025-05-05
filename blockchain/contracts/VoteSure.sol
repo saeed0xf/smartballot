@@ -34,6 +34,8 @@ contract VoteSure {
     event VoteCast(address indexed voter, uint256 indexed candidateId);
     event ElectionStarted(uint256 timestamp);
     event ElectionEnded(uint256 timestamp);
+    event ElectionAlreadyStarted();
+    event ElectionAlreadyEnded();
     
     modifier onlyAdmin() {
         require(msg.sender == admin, "Only admin can call this function");
@@ -87,7 +89,11 @@ contract VoteSure {
     }
     
     function startElection() external onlyAdmin {
-        require(!electionStarted, "Election already started");
+        if (electionStarted) {
+            emit ElectionAlreadyStarted();
+            return;
+        }
+        
         require(!electionEnded, "Election already ended");
         
         electionStarted = true;
@@ -96,8 +102,12 @@ contract VoteSure {
     }
     
     function endElection() external onlyAdmin {
+        if (electionEnded) {
+            emit ElectionAlreadyEnded();
+            return;
+        }
+        
         require(electionStarted, "Election not started yet");
-        require(!electionEnded, "Election already ended");
         
         electionEnded = true;
         

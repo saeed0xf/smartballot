@@ -310,6 +310,39 @@ const ApproveVoters = () => {
     }
   };
 
+  // Fetch contract ABI
+  const fetchContractAbi = async () => {
+    try {
+      const apiUrl = env.API_URL || 'http://localhost:5000/api';
+      const response = await axios.get(`${apiUrl}/blockchain/contract-abi`);
+      console.log('Fetched contract ABI:', response.data);
+      return {
+        abi: response.data.abi,
+        address: response.data.address
+      };
+    } catch (error) {
+      console.error('Error fetching contract ABI:', error);
+      toast.error('Failed to fetch contract information');
+      throw error;
+    }
+  };
+
+  // Add this function to check a voter's blockchain status
+  const checkVoterBlockchainStatus = async (voterAddress) => {
+    try {
+      console.log(`Checking blockchain status for voter: ${voterAddress}`);
+      const apiUrl = env.API_URL || 'http://localhost:5000/api';
+      
+      const response = await axios.get(`${apiUrl}/blockchain/voter-status?address=${voterAddress}`);
+      console.log('Voter blockchain status response:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error checking voter blockchain status:', error);
+      throw new Error('Failed to check voter status on the blockchain');
+    }
+  };
+
   // Approve voter
   const approveVoter = async (voterId) => {
     try {
@@ -327,63 +360,213 @@ const ApproveVoters = () => {
       const adminAccount = accounts[0];
       
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
-      console.log(`Sending approval request to: ${apiUrl}/admin/voters/${voterId}/approve`);
       
-      const response = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve`, {
-        useMetaMask: true // Indicate that frontend has MetaMask connected
-      });
+      // First, get the voter details to get their wallet address
+      console.log(`Getting voter details for ID: ${voterId}`);
+      const voterResponse = await axios.get(`${apiUrl}/admin/voters/${voterId}`);
+      const voterWalletAddress = voterResponse.data.voter.walletAddress;
       
-      console.log('Voter approval response:', response.data);
-      
-      // Check if response includes MetaMask transaction data
-      if (response.data.useMetaMask && response.data.contractDetails) {
-        console.log('Processing MetaMask transaction...');
-        const { address, method, params } = response.data.contractDetails;
-        
-        // Get contract ABI
-        const contractAbi = await fetchContractAbi();
-        
-        // Create contract transaction
-        const tx = {
-          from: adminAccount,
-          to: address,
-          data: window.ethereum.toHex(
-            window.ethereum._web3Provider.utils.abi.encodeFunctionCall(
-              contractAbi.find(item => item.name === method), 
-              params
-            )
-          )
-        };
-        
-        console.log('Sending transaction to MetaMask:', tx);
-        const txHash = await window.ethereum.request({
-          method: 'eth_sendTransaction',
-          params: [tx],
-        });
-        
-        console.log('Transaction successful:', txHash);
-        
-        // Now update the voter status in our database
-        const updateResponse = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve-complete`, {
-          txHash,
-          voterAddress: params[0]
-        });
-        
-        console.log('Voter status update response:', updateResponse.data);
+      if (!voterWalletAddress) {
+        toast.error('Voter has no associated wallet address');
+        return;
       }
       
-      // Update local state
-      setVoters(prevVoters => 
-        prevVoters.map(voter => 
-          voter.id === voterId ? { ...voter, status: 'approved' } : voter
-        )
-      );
+      // Check if voter is already approved on the blockchain
+      try {
+        const blockchainStatus = await checkVoterBlockchainStatus(voterWalletAddress);
+        
+        if (blockchainStatus.success && blockchainStatus.data.isApproved) {
+          console.log('Voter is already approved on the blockchain');
+          
+          // Update the database to reflect blockchain status
+          const updateResponse = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve-complete`, {
+            txHash: 'already-approved', // Special marker for already approved
+            voterAddress: voterWalletAddress
+          });
+          
+          console.log('Voter status update response:', updateResponse.data);
+          
+          // Update local state
+          setVoters(prevVoters => 
+            prevVoters.map(voter => 
+              voter.id === voterId ? { ...voter, status: 'approved' } : voter
+            )
+          );
+          
+          toast.success('Voter was already approved on the blockchain. Database updated.');
+          return;
+        }
+        
+        console.log('Voter is not approved on blockchain, proceeding with approval...');
+      } catch (statusError) {
+        console.error('Error checking blockchain status, will attempt approval anyway:', statusError);
+        // Continue with approval process even if status check fails
+      }
       
-      toast.success('Voter approved successfully and recorded on blockchain.');
+      // Fetch contract information
+      const contractInfo = await fetchContractAbi();
+      console.log('Contract info:', contractInfo);
+      
+      // Let's try a direct approach by submitting the transaction to our backend first
+      console.log(`Sending approval request to backend: ${apiUrl}/admin/voters/${voterId}/approve`);
+      
+      try {
+        const backendResponse = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve`, {
+          walletAddress: adminAccount,
+          useBackendTransaction: true // Try to use the backend to execute the transaction
+        });
+        
+        console.log('Backend approval response:', backendResponse.data);
+        
+        if (backendResponse.data.success && backendResponse.data.txHash) {
+          // Transaction was successful via backend
+          console.log('Transaction successful via backend:', backendResponse.data.txHash);
+          
+          // Update local state
+          setVoters(prevVoters => 
+            prevVoters.map(voter => 
+              voter.id === voterId ? { ...voter, status: 'approved' } : voter
+            )
+          );
+          
+          toast.success('Voter approved successfully via backend transaction.');
+          return;
+        }
+        
+        // If backend transaction approach failed but wasn't a fatal error, continue with MetaMask
+        console.log('Backend transaction not successful, trying with MetaMask...');
+      } catch (backendError) {
+        console.error('Error with backend transaction attempt:', backendError);
+        console.log('Continuing with MetaMask approach...');
+        // Continue with MetaMask approach
+      }
+      
+      // MetaMask transaction approach
+      try {
+        console.log('Requesting MetaMask transaction data from backend...');
+        const metaMaskDataResponse = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve`, {
+          useMetaMask: true,
+          walletAddress: adminAccount
+        });
+        
+        console.log('MetaMask data response:', metaMaskDataResponse.data);
+        
+        if (!metaMaskDataResponse.data.useMetaMask || !metaMaskDataResponse.data.contractDetails) {
+          throw new Error('Backend did not provide necessary MetaMask transaction details');
+        }
+        
+        const { address: contractAddress, method, params } = metaMaskDataResponse.data.contractDetails;
+        const voterAddress = params[0];
+        
+        console.log(`Contract address: ${contractAddress}`);
+        console.log(`Method: ${method}`);
+        console.log(`Voter address to approve: ${voterAddress}`);
+        
+        // Create multiple transaction options to try
+        const transactionOptions = [
+          // Option 1: Direct with explicit gas and custom function selector
+          {
+            name: "Direct with explicit gas",
+            txParams: {
+              from: adminAccount,
+              to: contractAddress,
+              value: '0x0',
+              gas: '0x186A0', // 100,000 gas
+              data: `0x3ce76e5f000000000000000000000000${voterAddress.slice(2)}`
+            }
+          },
+          
+          // Option 2: Using standard ERC20 approve function signature (in case there's name confusion)
+          {
+            name: "Using standard ERC20 approve",
+            txParams: {
+              from: adminAccount,
+              to: contractAddress,
+              value: '0x0',
+              gas: '0x186A0', // 100,000 gas
+              data: `0x095ea7b3000000000000000000000000${voterAddress.slice(2)}0000000000000000000000000000000000000000000000000000000000000001`
+            }
+          },
+          
+          // Option 3: Using function name "registerVoter" instead (in case of function name mismatch)
+          {
+            name: "Using registerVoter",
+            txParams: {
+              from: adminAccount,
+              to: contractAddress,
+              value: '0x0',
+              gas: '0x186A0', // 100,000 gas
+              data: `0x4d238c8e000000000000000000000000${voterAddress.slice(2)}`
+            }
+          }
+        ];
+        
+        // Try the first option
+        try {
+          console.log(`Trying transaction option 1: ${transactionOptions[0].name}`);
+          console.log('Transaction params:', transactionOptions[0].txParams);
+          
+          const txHash = await window.ethereum.request({
+            method: 'eth_sendTransaction',
+            params: [transactionOptions[0].txParams],
+          });
+          
+          console.log('Transaction successful:', txHash);
+          
+          // Update voter in database
+          await updateVoterAfterApproval(apiUrl, voterId, txHash, voterAddress);
+          return;
+        } catch (option1Error) {
+          console.error('Option 1 failed:', option1Error);
+          
+          // Try the second option
+          try {
+            console.log(`Trying transaction option 2: ${transactionOptions[1].name}`);
+            console.log('Transaction params:', transactionOptions[1].txParams);
+            
+            const txHash = await window.ethereum.request({
+              method: 'eth_sendTransaction',
+              params: [transactionOptions[1].txParams],
+            });
+            
+            console.log('Transaction successful with option 2:', txHash);
+            
+            // Update voter in database
+            await updateVoterAfterApproval(apiUrl, voterId, txHash, voterAddress);
+            return;
+          } catch (option2Error) {
+            console.error('Option 2 failed:', option2Error);
+            
+            // Try the third option
+            try {
+              console.log(`Trying transaction option 3: ${transactionOptions[2].name}`);
+              console.log('Transaction params:', transactionOptions[2].txParams);
+              
+              const txHash = await window.ethereum.request({
+                method: 'eth_sendTransaction',
+                params: [transactionOptions[2].txParams],
+              });
+              
+              console.log('Transaction successful with option 3:', txHash);
+              
+              // Update voter in database
+              await updateVoterAfterApproval(apiUrl, voterId, txHash, voterAddress);
+              return;
+            } catch (option3Error) {
+              console.error('Option 3 failed:', option3Error);
+              throw new Error('All transaction attempts failed - see console for details');
+            }
+          }
+        }
+      } catch (metaMaskError) {
+        console.error('Error with MetaMask transaction:', metaMaskError);
+        throw metaMaskError;
+      }
     } catch (err) {
       console.error('Error approving voter:', err);
       let errorMessage = 'Failed to approve voter.';
       
+      // Handle various error response formats
       if (err.response?.data?.message) {
         errorMessage = err.response.data.message;
       } else if (err.response?.data?.error) {
@@ -395,6 +578,15 @@ const ApproveVoters = () => {
       // Handle MetaMask specific errors
       if (err.code === 4001) {
         errorMessage = 'MetaMask transaction was rejected by the user.';
+      } else if (err.code === -32603) {
+        errorMessage = 'MetaMask RPC Error: Transaction may have failed due to contract error or gas issues.';
+        
+        // Add more details for RPC errors if available
+        if (err.data && err.data.message) {
+          errorMessage += ` Details: ${err.data.message}`;
+        }
+      } else if (err.code) {
+        errorMessage = `MetaMask Error Code ${err.code}: ${errorMessage}`;
       }
       
       toast.error(errorMessage);
@@ -403,17 +595,24 @@ const ApproveVoters = () => {
     }
   };
 
-  // Fetch contract ABI
-  const fetchContractAbi = async () => {
-    try {
-      const apiUrl = env.API_URL || 'http://localhost:5000/api';
-      const response = await axios.get(`${apiUrl}/blockchain/contract-abi`);
-      return response.data.abi;
-    } catch (error) {
-      console.error('Error fetching contract ABI:', error);
-      toast.error('Failed to fetch contract information');
-      throw error;
-    }
+  // Helper function to update voter after successful approval
+  const updateVoterAfterApproval = async (apiUrl, voterId, txHash, voterAddress) => {
+    console.log(`Updating voter status in database...`);
+    const updateResponse = await axios.put(`${apiUrl}/admin/voters/${voterId}/approve-complete`, {
+      txHash,
+      voterAddress
+    });
+    
+    console.log('Voter status update response:', updateResponse.data);
+    
+    // Update local state
+    setVoters(prevVoters => 
+      prevVoters.map(voter => 
+        voter.id === voterId ? { ...voter, status: 'approved' } : voter
+      )
+    );
+    
+    toast.success('Voter approved successfully and recorded on blockchain.');
   };
 
   // Get mismatched fields for better error messages

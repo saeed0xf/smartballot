@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Container, Row, Col, Card, Button, Alert, Badge, Spinner } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaVoteYea, FaUserCheck, FaClipboardList, FaCalendarAlt, FaClock } from 'react-icons/fa';
+import { FaVoteYea, FaUserCheck, FaClipboardList, FaCalendarAlt, FaClock, FaMapMarkerAlt } from 'react-icons/fa';
 import axios from 'axios';
 import Layout from '../../components/Layout';
 import { AuthContext } from '../../context/AuthContext';
@@ -99,6 +99,7 @@ const VoterDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [voteStatus, setVoteStatus] = useState(null);
+  const [filteredElections, setFilteredElections] = useState([]);
 
   // Format date for display
   const formatDate = (dateString) => {
@@ -148,10 +149,12 @@ const VoterDashboard = () => {
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
         // Fetch voter profile
+        let voterData = null;
         try {
           const profileResponse = await axios.get(`${API_URL}/voter/profile`, { headers });
           console.log('Voter profile:', profileResponse.data);
-          setVoterProfile(profileResponse.data.voter);
+          voterData = profileResponse.data.voter;
+          setVoterProfile(voterData);
         } catch (profileError) {
           console.error('Error fetching voter profile:', profileError);
           // Continue with other fetches even if profile fails
@@ -174,13 +177,47 @@ const VoterDashboard = () => {
           
           setActiveElections(electionsData);
           
-          // If we have active elections, set the first one as the current election status
-          if (electionsData.length > 0) {
-            setElectionStatus({
-              active: true,
-              election: electionsData[0],
-              currentTime: new Date()
+          // Filter elections based on voter's pincode if voter data is available
+          if (voterData && voterData.pincode) {
+            console.log(`Filtering elections for voter pincode: ${voterData.pincode}`);
+            
+            // Filter elections that match the voter's pincode
+            const matchingElections = electionsData.filter(election => {
+              // Check if the election pincode matches voter's pincode
+              return election.pincode === voterData.pincode;
             });
+            
+            console.log(`Found ${matchingElections.length} elections matching voter's pincode`);
+            setFilteredElections(matchingElections);
+            
+            // If we have filtered elections, set the first one as the current election status
+            if (matchingElections.length > 0) {
+              setElectionStatus({
+                active: true,
+                election: matchingElections[0],
+                currentTime: new Date()
+              });
+            } else {
+              // No matching elections for this voter's pincode
+              setElectionStatus({
+                active: false,
+                election: null,
+                currentTime: new Date(),
+                message: "No active elections in your area."
+              });
+            }
+          } else {
+            // If no voter pincode is available, just set all active elections
+            setFilteredElections(electionsData);
+            
+            // If we have active elections, set the first one as the current election status
+            if (electionsData.length > 0) {
+              setElectionStatus({
+                active: true,
+                election: electionsData[0],
+                currentTime: new Date()
+              });
+            }
           }
         } catch (electionsError) {
           console.error('Error fetching active elections:', electionsError);
@@ -188,7 +225,34 @@ const VoterDashboard = () => {
           try {
             const electionResponse = await axios.get(`${API_URL}/election/status`, { headers });
             console.log('Election status:', electionResponse.data);
-            setElectionStatus(electionResponse.data);
+            
+            // If we have election data and voter data, check for pincode match
+            if (electionResponse.data.active && voterData && voterData.pincode && 
+                electionResponse.data.election && electionResponse.data.election.pincode) {
+              
+              // Only set as active if pincode matches
+              if (electionResponse.data.election.pincode === voterData.pincode) {
+                setElectionStatus(electionResponse.data);
+                setFilteredElections([electionResponse.data.election]);
+              } else {
+                // No matching election for this voter's pincode
+                setElectionStatus({
+                  active: false,
+                  election: null,
+                  currentTime: new Date(),
+                  message: "No active elections in your area."
+                });
+                setFilteredElections([]);
+              }
+            } else {
+              // If no pincode information, just use the response as is
+              setElectionStatus(electionResponse.data);
+              if (electionResponse.data.active && electionResponse.data.election) {
+                setFilteredElections([electionResponse.data.election]);
+              } else {
+                setFilteredElections([]);
+              }
+            }
           } catch (statusError) {
             console.error('Error fetching election status:', statusError);
             setElectionStatus({
@@ -196,6 +260,7 @@ const VoterDashboard = () => {
               election: null,
               currentTime: new Date()
             });
+            setFilteredElections([]);
           }
         }
 
@@ -284,6 +349,9 @@ const VoterDashboard = () => {
                   <p className="text-muted mb-2">Voter ID: {voterProfile.voterId}</p>
                   <p className="text-muted mb-2">Age: {voterProfile.age}</p>
                   <p className="text-muted mb-3">Date of Birth: {new Date(voterProfile.dateOfBirth).toLocaleDateString()}</p>
+                  <p className="text-muted mb-3">
+                    <FaMapMarkerAlt className="me-1" /> Pincode: {voterProfile.pincode || 'Not specified'}
+                  </p>
                   
                   <div>
                     <span className={`badge ${voterProfile.status === 'approved' ? 'bg-success' : voterProfile.status === 'rejected' ? 'bg-danger' : 'bg-warning'} me-2`}>
@@ -310,14 +378,14 @@ const VoterDashboard = () => {
         <Card className="mb-4 shadow-sm">
           <Card.Header className="bg-light d-flex justify-content-between align-items-center">
             <h4 className="mb-0">Election Status</h4>
-            {activeElections.length > 0 && (
-              <Badge bg="success">{activeElections.length} Active Election{activeElections.length !== 1 ? 's' : ''}</Badge>
+            {filteredElections.length > 0 && (
+              <Badge bg="success">{filteredElections.length} Active Election{filteredElections.length !== 1 ? 's' : ''} in Your Area</Badge>
             )}
           </Card.Header>
           <Card.Body>
-            {activeElections.length > 0 ? (
+            {filteredElections.length > 0 ? (
               <>
-                {activeElections.map((election, index) => (
+                {filteredElections.map((election, index) => (
                   <Card key={election._id || index} className={index > 0 ? "mt-4 border" : "border"}>
                     <Card.Body>
                       <div className="d-flex justify-content-between align-items-start">
@@ -326,6 +394,10 @@ const VoterDashboard = () => {
                           <p className="text-muted">
                             <FaCalendarAlt className="me-2" />
                             {election.type || "General Election"}
+                          </p>
+                          <p className="text-muted">
+                            <FaMapMarkerAlt className="me-2" />
+                            Pincode: {election.pincode || 'Not specified'}
                           </p>
                           {election.description && (
                             <p>{election.description}</p>
@@ -362,6 +434,20 @@ const VoterDashboard = () => {
                       {election.candidates && election.candidates.length > 0 && (
                         <ElectionCandidatesList candidates={election.candidates} />
                       )}
+                      
+                      {/* Show a link to view all candidates if there are any */}
+                      {election.candidates && election.candidates.length > 0 && (
+                        <div className="text-center mt-3">
+                          <Button 
+                            as={Link} 
+                            to="/voter/candidates" 
+                            variant="outline-primary"
+                            size="sm"
+                          >
+                            View All Candidates
+                          </Button>
+                        </div>
+                      )}
                     </Card.Body>
                   </Card>
                 ))}
@@ -373,6 +459,10 @@ const VoterDashboard = () => {
                     <h5>{electionStatus.election.title || electionStatus.election.name}</h5>
                     <p>
                       <strong>Description:</strong> {electionStatus.election.description || "No description available"}
+                    </p>
+                    <p>
+                      <FaMapMarkerAlt className="me-2" />
+                      <strong>Pincode:</strong> {electionStatus.election.pincode || 'Not specified'}
                     </p>
                     <p>
                       <strong>Started:</strong> {formatDate(electionStatus.election.startDate)}
@@ -390,10 +480,24 @@ const VoterDashboard = () => {
                     {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
                   </Button>
                 </div>
+                
+                <div className="text-center mt-3">
+                  <Button 
+                    as={Link} 
+                    to="/voter/candidates" 
+                    variant="outline-primary"
+                    size="sm"
+                  >
+                    View All Candidates
+                  </Button>
+                </div>
               </Alert>
             ) : (
               <Alert variant="info">
-                No active election at the moment. Please check back later.
+                {electionStatus && electionStatus.message ? electionStatus.message : 
+                 voterProfile && voterProfile.pincode ? 
+                 "No active elections for your pincode area. Please check back later." : 
+                 "No active election at the moment. Please check back later."}
               </Alert>
             )}
           </Card.Body>
@@ -438,7 +542,7 @@ const VoterDashboard = () => {
                   to="/voter/vote" 
                   variant="outline-primary" 
                   className="mt-auto"
-                  disabled={!electionStatus?.active || hasVoted() || voterProfile?.status !== 'approved'}
+                  disabled={filteredElections.length === 0 || hasVoted() || voterProfile?.status !== 'approved'}
                 >
                   {hasVoted() ? 'Already Voted' : 'Cast Vote'}
                 </Button>

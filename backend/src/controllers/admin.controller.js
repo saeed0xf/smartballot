@@ -13,6 +13,7 @@ const {
 } = require('../utils/blockchain.util');
 const { sendVoterApprovalEmail, sendVoterRejectionEmail } = require('../utils/email.util');
 const mongoose = require('mongoose');
+const path = require('path');
 
 // Get all voters
 exports.getAllVoters = async (req, res) => {
@@ -471,6 +472,7 @@ exports.addCandidate = async (req, res) => {
       electionType,
       electionId, // Make sure we capture election ID
       constituency,
+      pincode, // Add pincode here
       manifesto,
       education,
       experience,
@@ -481,6 +483,11 @@ exports.addCandidate = async (req, res) => {
     // Validate required fields
     if (!firstName || !lastName || !age || !gender || !partyName) {
       return res.status(400).json({ message: 'Please provide all required fields' });
+    }
+
+    // Check if pincode is provided
+    if (!pincode) {
+      return res.status(400).json({ message: 'Pincode is required' });
     }
 
     // Check if election exists and get its type
@@ -522,6 +529,7 @@ exports.addCandidate = async (req, res) => {
       partyName,
       electionType: actualElectionType,
       constituency,
+      pincode, // Add pincode here
       manifesto,
       education,
       experience,
@@ -559,14 +567,20 @@ exports.addCandidate = async (req, res) => {
         console.log('Candidate photo file:', photo.name);
         
         // Generate unique filename
-        const photoFileName = `candidate_${Date.now()}_${photo.name}`;
-        const photoFilePath = path.join(candidatesDir, photoFileName);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const filename = `candidate_${uniqueSuffix}${path.extname(photo.name)}`;
+        const uploadPath = path.join(__dirname, '../../uploads/candidates', filename);
+        
+        // Ensure directory exists
+        const fs = require('fs');
+        
+        const candidatesDir = path.join(__dirname, '../../uploads/candidates');
         
         try {
           // Move the uploaded file
-          await photo.mv(photoFilePath);
-          console.log(`Candidate photo saved to: ${photoFilePath}`);
-          newCandidate.photoUrl = `/uploads/candidates/${photoFileName}`;
+          await photo.mv(uploadPath);
+          console.log(`Candidate photo saved to: ${uploadPath}`);
+          newCandidate.photoUrl = `/uploads/candidates/${filename}`;
         } catch (fileError) {
           console.error('Error saving candidate photo:', fileError);
           // Continue without the photo
@@ -724,32 +738,129 @@ exports.updateCandidate = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body };
+    const fs = require('fs');
     
-    // Handle file uploads
-    if (req.files) {
-      if (req.files.candidatePhoto) {
-        updateData.photoUrl = `/uploads/${req.files.candidatePhoto[0].filename}`;
+    console.log('Updating candidate with ID:', id);
+    console.log('Update data received:', JSON.stringify(updateData, null, 2));
+    
+    // Ensure election field is properly formatted as ObjectId
+    if (updateData.election) {
+      // If election is an object with _id field, extract the ID
+      if (typeof updateData.election === 'object' && updateData.election._id) {
+        console.log('Converting election object to string ID:', updateData.election._id);
+        updateData.election = updateData.election._id;
       }
-      if (req.files.partySymbol) {
-        updateData.partySymbol = `/uploads/${req.files.partySymbol[0].filename}`;
+      
+      // Validate that the election ID is a valid ObjectId
+      if (!mongoose.Types.ObjectId.isValid(updateData.election)) {
+        console.error('Invalid election ID format:', updateData.election);
+        return res.status(400).json({ 
+          message: 'Invalid election ID format',
+          details: 'The provided election ID is not valid'
+        });
       }
     }
+    
+    // If electionId was provided, use it as the election reference
+    if (updateData.electionId && mongoose.Types.ObjectId.isValid(updateData.electionId)) {
+      console.log('Using electionId as election reference:', updateData.electionId);
+      updateData.election = updateData.electionId;
+    }
+    
+    // Handle file uploads for express-fileupload
+    if (req.files) {
+      console.log('Processing files in update:', Object.keys(req.files));
+      
+      // Ensure upload directories exist
+      const candidatesDir = path.join(__dirname, '../../uploads/candidates');
+      const partiesDir = path.join(__dirname, '../../uploads/parties');
+      
+      if (!fs.existsSync(candidatesDir)) {
+        fs.mkdirSync(candidatesDir, { recursive: true });
+      }
+      
+      if (!fs.existsSync(partiesDir)) {
+        fs.mkdirSync(partiesDir, { recursive: true });
+      }
+      
+      if (req.files.candidatePhoto) {
+        const photo = req.files.candidatePhoto;
+        
+        // If it's an array (multer style), handle that
+        if (Array.isArray(photo)) {
+          updateData.photoUrl = `/uploads/${photo[0].filename}`;
+        } 
+        // If it's a single file object (express-fileupload style)
+        else {
+          // Generate unique filename
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const filename = `candidate_${uniqueSuffix}${path.extname(photo.name)}`;
+          const uploadPath = path.join(candidatesDir, filename);
+          
+          try {
+            // Move the file
+            await photo.mv(uploadPath);
+            console.log(`Candidate photo saved to: ${uploadPath}`);
+            updateData.photoUrl = `/uploads/candidates/${filename}`;
+          } catch (fileError) {
+            console.error('Error saving candidate photo:', fileError);
+            // Continue without updating the photo
+          }
+        }
+      }
+      
+      if (req.files.partySymbol) {
+        const symbol = req.files.partySymbol;
+        
+        // If it's an array (multer style), handle that
+        if (Array.isArray(symbol)) {
+          updateData.partySymbol = `/uploads/${symbol[0].filename}`;
+        } 
+        // If it's a single file object (express-fileupload style)
+        else {
+          // Generate unique filename
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const filename = `party_${uniqueSuffix}${path.extname(symbol.name)}`;
+          const uploadPath = path.join(partiesDir, filename);
+          
+          try {
+            // Move the file
+            await symbol.mv(uploadPath);
+            console.log(`Party symbol saved to: ${uploadPath}`);
+            updateData.partySymbol = `/uploads/parties/${filename}`;
+          } catch (fileError) {
+            console.error('Error saving party symbol:', fileError);
+            // Continue without updating the symbol
+          }
+        }
+      }
+    }
+    
+    console.log('Final update data for MongoDB:', {
+      ...updateData,
+      election: updateData.election
+    });
     
     // Update candidate
     const updatedCandidate = await Candidate.findByIdAndUpdate(
       id,
       updateData,
-      { new: true }
+      { new: true, runValidators: true }
     );
     
     if (!updatedCandidate) {
       return res.status(404).json({ message: 'Candidate not found' });
     }
     
+    console.log('Candidate updated successfully:', updatedCandidate._id);
     res.status(200).json(updatedCandidate);
   } catch (error) {
     console.error('Error updating candidate:', error);
-    res.status(500).json({ message: 'Server error while updating candidate', error: error.message });
+    res.status(500).json({ 
+      message: 'Server error while updating candidate', 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
@@ -932,69 +1043,68 @@ exports.startElection = async (req, res) => {
       signerInfo // Pass address object, will be properly handled in the blockchain util
     );
     
-    if (!blockchainResult.success) {
+    let blockchainSuccess = false;
+    let blockchainError = null;
+    
+    if (blockchainResult.success) {
+      blockchainSuccess = true;
+      console.log('Blockchain transaction successful with hash:', blockchainResult.txHash);
+      
+      // Update election with blockchain transaction hash
+      election.blockchainStartTxHash = blockchainResult.txHash;
+      await election.save();
+    } else {
+      blockchainError = blockchainResult.error;
       console.error('Blockchain transaction error:', blockchainResult.error);
+      
+      // Check if the error indicates the election is already started on the blockchain
+      if (blockchainError && 
+          (blockchainError.includes("Election already started") || 
+           blockchainError.toLowerCase().includes("already started"))) {
+        console.log("Election appears to be already started on blockchain - will still update database");
+        blockchainSuccess = true; // Consider this a success since election is active on blockchain
+      }
       
       // Election already created in database, but blockchain transaction failed
       // Update the election status to reflect the blockchain issue
       election.blockchainError = blockchainResult.error;
       await election.save();
-      
-      // Log the activity with error
-      try {
-        await Activity.create({
-          user: req.user?._id,
-          action: 'start-election',
-          entity: 'election',
-          entityId: election._id,
-          details: `Election "${election.title}" started in database but blockchain transaction failed: ${blockchainResult.error}`
-        });
-      } catch (activityError) {
-        console.error('Error logging activity:', activityError);
-        // Continue despite activity logging error
-      }
-      
-      return res.status(201).json({ 
-        message: 'Election started in database, but blockchain transaction encountered an issue.',
-        details: blockchainResult.error,
-        election: {
-          id: election._id,
-          title: election.title,
-          description: election.description,
-          startDate: election.startDate,
-          isActive: election.isActive,
-          blockchainStatus: 'failed'
-        }
-      });
     }
     
-    // Update election with blockchain transaction hash
-    election.blockchainStartTxHash = blockchainResult.txHash;
-    await election.save();
-    
-    // Log the activity
+    // Log the activity with status
     try {
       await Activity.create({
         user: req.user?._id,
         action: 'start-election',
         entity: 'election',
         entityId: election._id,
-        details: `Election "${election.title}" started with transaction: ${blockchainResult.txHash}`
+        details: blockchainSuccess 
+          ? `Election "${election.title}" started successfully${blockchainResult.txHash ? ` with transaction: ${blockchainResult.txHash}` : ''}`
+          : `Election "${election.title}" started in database but blockchain transaction failed: ${blockchainError}`
       });
     } catch (activityError) {
       console.error('Error logging activity:', activityError);
       // Continue despite activity logging error
     }
     
-    res.status(201).json({
-      message: 'Election started successfully',
+    return res.status(201).json({ 
+      message: blockchainSuccess 
+        ? 'Election started successfully' 
+        : 'Election started in database, but blockchain transaction encountered an issue.',
+      details: blockchainError,
       election: {
         id: election._id,
         title: election.title,
         description: election.description,
         startDate: election.startDate,
         isActive: election.isActive,
-        blockchainTxHash: blockchainResult.txHash
+        blockchainStatus: blockchainSuccess ? 'success' : 'failed',
+        blockchain: {
+          success: blockchainSuccess,
+          txHash: blockchainResult.txHash,
+          error: blockchainError,
+          message: blockchainSuccess && blockchainError ? 'Election was already started on blockchain' : undefined
+        }
       }
     });
   } catch (error) {
@@ -1015,74 +1125,73 @@ exports.endElection = async (req, res) => {
     // End election on blockchain
     const blockchainResult = await endElectionOnBlockchain();
     
-    if (!blockchainResult.success) {
+    let blockchainSuccess = false;
+    let blockchainError = null;
+    
+    if (blockchainResult.success) {
+      blockchainSuccess = true;
+      console.log('Blockchain transaction successful with hash:', blockchainResult.txHash);
+      
+      // Update election with blockchain transaction hash
+      activeElection.blockchainEndTxHash = blockchainResult.txHash;
+    } else {
+      blockchainError = blockchainResult.error;
       console.error('Blockchain transaction error when ending election:', blockchainResult.error);
       
-      // Update election to note the blockchain error but still end it in our database
-      activeElection.isActive = false;
-      activeElection.endDate = new Date();
-      activeElection.blockchainError = blockchainResult.error;
-      
-      await activeElection.save();
-      
-      // Log the activity with error
-      try {
-        await Activity.create({
-          user: req.user?._id,
-          action: 'end-election',
-          entity: 'election',
-          entityId: activeElection._id,
-          details: `Election "${activeElection.title}" ended in database but blockchain transaction failed: ${blockchainResult.error}`
-        });
-      } catch (activityError) {
-        console.error('Error logging activity:', activityError);
-        // Continue despite activity logging error
+      // Check if the error indicates the election is already ended on the blockchain
+      if (blockchainError && 
+          (blockchainError.includes("Election not started") || 
+           blockchainError.includes("Election already ended") ||
+           blockchainError.toLowerCase().includes("not started") ||
+           blockchainError.toLowerCase().includes("already ended"))) {
+        console.log("Election appears to be already ended on blockchain - will still update database");
+        blockchainSuccess = true; // Consider this a success since election is inactive on blockchain
       }
       
-      return res.json({
-        message: 'Election ended in database, but blockchain transaction encountered an issue.',
-        details: blockchainResult.error,
-        election: {
-          id: activeElection._id,
-          title: activeElection.title,
-          startDate: activeElection.startDate,
-          endDate: activeElection.endDate,
-          isActive: false,
-          blockchainStatus: 'failed'
-        }
-      });
+      // Update election to note the blockchain error
+      activeElection.blockchainError = blockchainResult.error;
     }
     
-    // Update election in database
+    // Update election in database regardless of blockchain result
     activeElection.isActive = false;
     activeElection.endDate = new Date();
-    activeElection.blockchainEndTxHash = blockchainResult.txHash;
     
     await activeElection.save();
     
-    // Log the activity
+    // Log the activity with status
     try {
       await Activity.create({
         user: req.user?._id,
         action: 'end-election',
         entity: 'election',
         entityId: activeElection._id,
-        details: `Election "${activeElection.title}" ended with transaction: ${blockchainResult.txHash}`
+        details: blockchainSuccess
+          ? `Election "${activeElection.title}" ended successfully${blockchainResult.txHash ? ` with transaction: ${blockchainResult.txHash}` : ''}`
+          : `Election "${activeElection.title}" ended in database but blockchain transaction failed: ${blockchainError}`
       });
     } catch (activityError) {
       console.error('Error logging activity:', activityError);
       // Continue despite activity logging error
     }
     
-    res.json({
-      message: 'Election ended successfully',
+    return res.json({
+      message: blockchainSuccess
+        ? 'Election ended successfully'
+        : 'Election ended in database, but blockchain transaction encountered an issue.',
+      details: blockchainError,
       election: {
         id: activeElection._id,
         title: activeElection.title,
         startDate: activeElection.startDate,
         endDate: activeElection.endDate,
-        isActive: activeElection.isActive,
-        blockchainTxHash: blockchainResult.txHash
+        isActive: false,
+        blockchainStatus: blockchainSuccess ? 'success' : 'failed',
+        blockchain: {
+          success: blockchainSuccess,
+          txHash: blockchainResult.txHash,
+          error: blockchainError,
+          message: blockchainSuccess && blockchainError ? 'Election was already ended on blockchain' : undefined
+        }
       }
     });
   } catch (error) {

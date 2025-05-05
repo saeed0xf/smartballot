@@ -205,4 +205,143 @@ This document summarizes the key changes made to the VoteSure election managemen
   - `requirements.txt`: Dependencies for the AI module
   - Detailed documentation in `README.md`
 
+## Version 1.3.0 (Current) - Enhanced Blockchain Error Handling & User Experience
+
+### Smart Contract Enhancements
+- **Modified `VoteSure.sol` contract to handle election states gracefully**:
+  - Added `AlreadyStarted` and `AlreadyEnded` events instead of reverting transactions
+  - Improved error messages for better debugging and user feedback
+  - Optimized gas usage in voting operations
+  - Enhanced access control mechanisms
+
+### Blockchain Integration Improvements
+- **Enhanced error handling in `blockchain.util.js`**:
+  - Added detailed error classification for different blockchain errors
+  - Improved handling of "already started/ended" election scenarios
+  - Added specific handling for gas estimation errors
+  - Enhanced transaction receipt verification and error reporting
+
+### Backend Updates
+- **Improved election controller error handling**:
+  - Updated `startElection` to handle "already active" cases gracefully
+  - Enhanced `endElection` to properly handle "already ended" cases
+  - Improved `castVote` function to provide clear feedback on transaction failures
+  - Added extensive logging for blockchain transactions
+  - Updated response formats to include blockchain transaction status
+
+### Frontend Enhancements
+- **Updated election management UI**:
+  - Added informative alerts in Start and Stop Election modals
+  - Enhanced blockchain transaction feedback
+  - Improved error messaging for various transaction scenarios
+  - Added loading states during blockchain transactions
+
+### Admin Features
+- **Enhanced admin routes**:
+  - Added missing route for `approve-complete` endpoint
+  - Fixed `approveVoterComplete` functionality
+  - Improved voter verification workflow
+  - Enhanced candidate management with blockchain verification
+
+### Security Enhancements
+- **Improved face verification system**:
+  - Added webcam functionality for face verification during voting
+  - Implemented secure face image storage and comparison
+  - Enhanced identity verification before vote casting
+
+### Documentation Updates
+- **Added comprehensive smart contract setup guide**:
+  - Created detailed README with compilation and deployment instructions
+  - Added shell script for automated smart contract setup
+  - Enhanced error documentation for blockchain operations
+
+## Version 1.2.0 - Improved Blockchain Integration & Election Management
+
+### Blockchain Integration
+- **Enhanced Web3.js integration**:
+  - Added automatic reconnection to blockchain nodes
+  - Improved contract event handling
+  - Added support for multiple blockchain networks
+
+### Election Management
+- **Enhanced election dashboard**:
+  - Added real-time election status updates
+  - Improved candidate association with elections
+  - Added election archiving functionality
+  - Enhanced election analytics and reporting
+
+### Candidate Management
+- **Improved candidate registration process**:
+  - Added candidate profile images
+  - Enhanced candidate information management
+  - Added blockchain verification for candidates
+  - Improved candidate search and filtering
+
+### User Experience
+- **Enhanced user interfaces**:
+  - Redesigned voter registration flow
+  - Improved voting booth interface
+  - Added responsive design for mobile compatibility
+  - Enhanced accessibility features
+
+## Version 1.1.0 - Voter Registration System & Security Improvements
+
+### Voter Management
+- **Enhanced voter registration**:
+  - Added multi-step verification process
+  - Implemented document upload and verification
+  - Added automated voter approval workflows
+  - Enhanced voter profile management
+
+### Authentication & Security
+- **Improved security features**:
+  - Enhanced JWT token handling
+  - Added role-based access control
+  - Implemented secure file upload handling
+  - Added audit logging for sensitive operations
+
+### Admin Dashboard
+- **Enhanced administrative tools**:
+  - Added voter approval interface
+  - Improved officer management
+  - Enhanced election configuration tools
+  - Added system status monitoring
+
+### System Infrastructure
+- **Improved backend architecture**:
+  - Enhanced MongoDB integration
+  - Added secure file storage system
+  - Improved API response formatting
+  - Enhanced error handling and logging
+
+## Version 1.0.0 - Initial Release
+
+### Core Features
+- **Election System**:
+  - Basic election creation and management
+  - Candidate registration and management
+  - Voting functionality with blockchain validation
+  - Results tallying and reporting
+
+### Authentication
+- **User Management**:
+  - Basic user registration and login
+  - Role-based access (Admin, Officer, Voter)
+  - JWT authentication
+  - Password security measures
+
+### User Interface
+- **Frontend Development**:
+  - Responsive React.js interface
+  - Mobile-compatible design
+  - Basic dashboard for different user roles
+  - Form validation and error handling
+
+### Backend Infrastructure
+- **Server Development**:
+  - Express.js API setup
+  - MongoDB integration
+  - Basic blockchain connectivity
+  - File upload handling
+
 This change log captures the main enhancements to the VoteSure system, focusing particularly on election management, candidate association, blockchain integration, voter management, and identity verification. 

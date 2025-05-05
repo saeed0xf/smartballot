@@ -1,5 +1,5 @@
 {
-  "address": "0x046912900a05e7f80BA931a74cc838743560dc8E",
+  "address": "0xc92f1EFdF1622cd6e5C1cC2aB6994085619A2f69",
   "abi": [
     {
       "inputs": [],
@@ -32,6 +32,20 @@
       "name": "CandidateAdded",
       "type": "event",
       "signature": "0xe64f834082661dd9ed89427b87edb6270fd6dad17198b0938f0edd058914c87f"
+    },
+    {
+      "anonymous": false,
+      "inputs": [],
+      "name": "ElectionAlreadyEnded",
+      "type": "event",
+      "signature": "0xe676620c2027ae20988f4f36ddadfe6f4eda07ff669749bca4085e9f62727d29"
+    },
+    {
+      "anonymous": false,
+      "inputs": [],
+      "name": "ElectionAlreadyStarted",
+      "type": "event",
+      "signature": "0xd54e43078a7e41a7f62391ae0c0c4c604441f38c285d67a7eff6c745b919de03"
     },
     {
       "anonymous": false,
