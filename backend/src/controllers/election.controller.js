@@ -858,12 +858,128 @@ exports.getElectionStatus = async (req, res) => {
 // Get all candidates
 exports.getAllCandidates = async (req, res) => {
   try {
-    const candidates = await Candidate.find().sort({ name: 1 });
+    console.log('Fetching candidates with query params:', req.query);
+    const { electionId, active } = req.query;
     
-    res.json({ candidates });
+    // Build query for candidates
+    const candidateQuery = {};
+
+    // Build query for finding active elections
+    const electionQuery = { isActive: true };
+    
+    // If specific election ID is provided
+    if (electionId && mongoose.Types.ObjectId.isValid(electionId)) {
+      candidateQuery.election = electionId;
+      
+      // If we're querying by specific election ID, we should get that election
+      // regardless of active status (but we'll still respect the active parameter)
+      if (active !== 'false') {
+        electionQuery._id = electionId;
+      } else {
+        // If active=false and electionId is provided, adjust election query
+        delete electionQuery.isActive;
+        electionQuery._id = electionId;
+      }
+      
+      console.log(`Filtering candidates by election ID: ${electionId}`);
+    }
+    
+    // Get active elections or specified election
+    const activeElections = await Election.find(electionQuery);
+    console.log(`Found ${activeElections.length} active elections`);
+    
+    if (activeElections.length === 0 && !candidateQuery.election) {
+      // If no active elections and no specific election ID, return empty result
+      return res.json({ 
+        candidates: [],
+        message: 'No active elections found'
+      });
+    }
+    
+    // If no specific election ID provided, find candidates from all active elections
+    if (!candidateQuery.election && activeElections.length > 0) {
+      const electionIds = activeElections.map(e => e._id);
+      candidateQuery.election = { $in: electionIds };
+    }
+    
+    console.log('Final candidate query:', JSON.stringify(candidateQuery));
+    
+    // Get candidates with populated election data
+    const candidates = await Candidate.find(candidateQuery)
+      .populate({
+        path: 'election',
+        select: 'title name type description startDate endDate isActive pincode',
+        options: { lean: true }
+      })
+      .sort({ firstName: 1 });
+    
+    console.log(`Found ${candidates.length} candidates matching the query`);
+    
+    // Format candidates with consistent field names and additional details
+    const formattedCandidates = candidates.map(candidate => {
+      const candidateObj = candidate.toObject();
+      
+      // Create a consistent representation
+      return {
+        id: candidateObj._id,
+        _id: candidateObj._id, // Include both for compatibility
+        firstName: candidateObj.firstName,
+        lastName: candidateObj.lastName,
+        middleName: candidateObj.middleName || '',
+        name: `${candidateObj.firstName} ${candidateObj.middleName ? candidateObj.middleName + ' ' : ''}${candidateObj.lastName}`,
+        age: candidateObj.age,
+        gender: candidateObj.gender,
+        dateOfBirth: candidateObj.dateOfBirth,
+        photoUrl: candidateObj.photoUrl,
+        partyName: candidateObj.partyName,
+        partySymbol: candidateObj.partySymbol,
+        constituency: candidateObj.constituency,
+        manifesto: candidateObj.manifesto,
+        education: candidateObj.education,
+        experience: candidateObj.experience,
+        biography: candidateObj.biography,
+        slogan: candidateObj.slogan,
+        email: candidateObj.email,
+        electionId: candidateObj.election?._id,
+        electionName: candidateObj.election?.title || candidateObj.election?.name || 'Unknown Election',
+        electionType: candidateObj.election?.type || candidateObj.electionType || 'General Election',
+        electionDescription: candidateObj.election?.description,
+        electionStartDate: candidateObj.election?.startDate,
+        electionEndDate: candidateObj.election?.endDate,
+        electionPincode: candidateObj.election?.pincode
+      };
+    });
+    
+    // Group candidates by election for better organization
+    const candidatesByElection = {};
+    formattedCandidates.forEach(candidate => {
+      if (!candidatesByElection[candidate.electionId]) {
+        candidatesByElection[candidate.electionId] = {
+          electionId: candidate.electionId,
+          electionName: candidate.electionName,
+          electionType: candidate.electionType,
+          electionDescription: candidate.electionDescription,
+          electionStartDate: candidate.electionStartDate,
+          electionEndDate: candidate.electionEndDate,
+          electionPincode: candidate.electionPincode,
+          candidates: []
+        };
+      }
+      candidatesByElection[candidate.electionId].candidates.push(candidate);
+    });
+    
+    // Convert to array format
+    const electionGroups = Object.values(candidatesByElection);
+    
+    res.json({ 
+      candidates: formattedCandidates,
+      elections: electionGroups,
+      totalCandidates: formattedCandidates.length,
+      totalElections: electionGroups.length
+    });
   } catch (error) {
     console.error('Get all candidates error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -871,30 +987,78 @@ exports.getAllCandidates = async (req, res) => {
 exports.getCandidateDetails = async (req, res) => {
   try {
     const { candidateId } = req.params;
+    console.log(`Fetching details for candidate ID: ${candidateId}`);
     
-    // Find candidate
-    const candidate = await Candidate.findById(candidateId);
+    if (!mongoose.Types.ObjectId.isValid(candidateId)) {
+      return res.status(400).json({ 
+        message: 'Invalid candidate ID format',
+        details: 'The provided candidate ID is not in a valid MongoDB ObjectId format'
+      });
+    }
+    
+    // Find candidate with populated election data
+    const candidate = await Candidate.findById(candidateId)
+      .populate({
+        path: 'election',
+        select: 'title name type description startDate endDate isActive pincode',
+      });
+    
     if (!candidate) {
       return res.status(404).json({ message: 'Candidate not found' });
     }
     
-    // Get blockchain data
-    const blockchainData = await getCandidateFromBlockchain(candidate.blockchainId);
+    console.log(`Found candidate: ${candidate.firstName} ${candidate.lastName}`);
     
-    res.json({
-      candidate: {
-        id: candidate._id,
-        name: candidate.name,
-        party: candidate.party,
-        slogan: candidate.slogan,
-        image: candidate.image,
-        blockchainId: candidate.blockchainId,
-        voteCount: blockchainData.success ? blockchainData.data.voteCount : candidate.voteCount
+    // Try to get blockchain data if available
+    let blockchainData = { success: false };
+    try {
+      if (candidate.blockchainId) {
+        blockchainData = await getCandidateFromBlockchain(candidate.blockchainId);
       }
-    });
+    } catch (blockchainError) {
+      console.error('Error fetching blockchain data:', blockchainError);
+      // Continue without blockchain data
+    }
+    
+    // Convert to a clean response object
+    const response = {
+      id: candidate._id,
+      _id: candidate._id,
+      firstName: candidate.firstName,
+      lastName: candidate.lastName,
+      middleName: candidate.middleName || '',
+      name: `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`,
+      age: candidate.age,
+      gender: candidate.gender,
+      dateOfBirth: candidate.dateOfBirth,
+      photoUrl: candidate.photoUrl,
+      partyName: candidate.partyName,
+      partySymbol: candidate.partySymbol,
+      constituency: candidate.constituency,
+      manifesto: candidate.manifesto,
+      education: candidate.education,
+      experience: candidate.experience,
+      biography: candidate.biography,
+      slogan: candidate.slogan,
+      email: candidate.email,
+      blockchainId: candidate.blockchainId,
+      voteCount: blockchainData.success ? blockchainData.data?.voteCount : (candidate.voteCount || 0),
+      election: candidate.election ? {
+        id: candidate.election._id,
+        name: candidate.election.title || candidate.election.name,
+        type: candidate.election.type,
+        description: candidate.election.description,
+        startDate: candidate.election.startDate,
+        endDate: candidate.election.endDate,
+        isActive: candidate.election.isActive,
+        pincode: candidate.election.pincode
+      } : null
+    };
+    
+    res.json({ candidate: response });
   } catch (error) {
     console.error('Get candidate details error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 

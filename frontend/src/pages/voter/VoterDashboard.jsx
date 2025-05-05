@@ -434,6 +434,20 @@ const VoterDashboard = () => {
                       {election.candidates && election.candidates.length > 0 && (
                         <ElectionCandidatesList candidates={election.candidates} />
                       )}
+                      
+                      {/* Show a link to view all candidates if there are any */}
+                      {election.candidates && election.candidates.length > 0 && (
+                        <div className="text-center mt-3">
+                          <Button 
+                            as={Link} 
+                            to="/voter/candidates" 
+                            variant="outline-primary"
+                            size="sm"
+                          >
+                            View All Candidates
+                          </Button>
+                        </div>
+                      )}
                     </Card.Body>
                   </Card>
                 ))}
@@ -464,6 +478,17 @@ const VoterDashboard = () => {
                     disabled={hasVoted() || voterProfile?.status !== 'approved'}
                   >
                     {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
+                  </Button>
+                </div>
+                
+                <div className="text-center mt-3">
+                  <Button 
+                    as={Link} 
+                    to="/voter/candidates" 
+                    variant="outline-primary"
+                    size="sm"
+                  >
+                    View All Candidates
                   </Button>
                 </div>
               </Alert>
