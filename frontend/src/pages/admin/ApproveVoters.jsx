@@ -506,13 +506,6 @@ const ApproveVoters = () => {
           console.log(`Trying transaction option 1: ${transactionOptions[0].name}`);
           console.log('Transaction params:', transactionOptions[0].txParams);
           
-          // Use the function selector provided by the backend if available
-          if (metaMaskDataResponse.data.contractDetails.functionSelector) {
-            const functionSelector = metaMaskDataResponse.data.contractDetails.functionSelector;
-            console.log(`Using function selector from backend: ${functionSelector}`);
-            transactionOptions[0].txParams.data = `${functionSelector}000000000000000000000000${voterAddress.slice(2)}`;
-          }
-          
           const txHash = await window.ethereum.request({
             method: 'eth_sendTransaction',
             params: [transactionOptions[0].txParams],

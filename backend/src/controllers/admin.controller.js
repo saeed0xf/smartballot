@@ -13,6 +13,7 @@ const {
 } = require('../utils/blockchain.util');
 const { sendVoterApprovalEmail, sendVoterRejectionEmail } = require('../utils/email.util');
 const mongoose = require('mongoose');
+const path = require('path');
 
 // Get all voters
 exports.getAllVoters = async (req, res) => {
@@ -175,10 +176,9 @@ exports.getVoterDetails = async (req, res) => {
 exports.approveVoter = async (req, res) => {
   try {
     const { voterId } = req.params;
-    const { useMetaMask, useBackendTransaction, walletAddress } = req.body; // Extract options from request
+    const { useMetaMask } = req.body; // Extract MetaMask flag from request
     
-    console.log(`Approving voter with ID: ${voterId}, useMetaMask: ${useMetaMask}, useBackendTransaction: ${useBackendTransaction}`);
-    console.log(`Admin wallet address: ${walletAddress || 'Not provided'}`);
+    console.log(`Approving voter with ID: ${voterId}, useMetaMask: ${useMetaMask}`);
     
     // Find voter
     const voter = await Voter.findById(voterId);
@@ -217,123 +217,57 @@ exports.approveVoter = async (req, res) => {
       await user.save();
     }
     
-    // Option 1: Direct backend transaction using admin wallet (when useBackendTransaction is true)
-    if (useBackendTransaction) {
-      console.log(`Using backend to directly approve voter ${user.walletAddress}`);
+    console.log(`Attempting to approve voter on blockchain with wallet: ${user.walletAddress}`);
+    
+    // Check if voter is already approved on blockchain
+    try {
+      console.log(`Checking if voter is already approved on blockchain: ${user.walletAddress}`);
+      const statusResult = await getVoterStatusFromBlockchain(user.walletAddress);
       
-      try {
-        // Check if the voter is already approved on the blockchain
-        console.log(`Checking if voter is already approved on blockchain: ${user.walletAddress}`);
-        const statusResult = await getVoterStatusFromBlockchain(user.walletAddress);
+      if (statusResult.success && statusResult.data.isApproved) {
+        console.log(`Voter ${user.walletAddress} is already approved on blockchain`);
         
-        if (statusResult.success && statusResult.data.isApproved) {
-          console.log(`Voter ${user.walletAddress} is already approved on blockchain`);
-          
-          // Update voter status in our database to match blockchain
-          voter.status = 'approved';
-          voter.rejectionReason = null;
-          voter.blockchainRegistered = true;
-          
-          await voter.save();
-          
-          console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
-          
-          return res.json({
-            success: true,
-            message: 'Voter was already approved on blockchain, database updated',
-            txHash: 'already-approved',
-            voter: {
-              id: voter._id,
-              firstName: voter.firstName,
-              lastName: voter.lastName,
-              status: voter.status
-            }
-          });
-        }
+        // Update voter status in our database to match blockchain
+        voter.status = 'approved';
+        voter.rejectionReason = null;
+        voter.blockchainRegistered = true;
+        // No transaction hash since we didn't perform a new transaction
         
-        // Execute the blockchain transaction using the admin wallet
-        console.log(`Approving voter ${user.walletAddress} with admin wallet`);
-        const blockchainResult = await approveVoterOnBlockchain(user.walletAddress);
+        await voter.save();
         
-        console.log(`Blockchain approval result:`, blockchainResult);
+        console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
         
-        if (blockchainResult.success) {
-          // Update voter status
-          voter.status = 'approved';
-          voter.rejectionReason = null;
-          voter.blockchainRegistered = true;
-          voter.blockchainTxHash = blockchainResult.txHash;
-          
-          await voter.save();
-          
-          console.log(`Voter ${voterId} status updated to approved with txHash: ${blockchainResult.txHash}`);
-          
-          // Send approval email
-          const userEmail = user.email || voter.email;
-          try {
-            if (userEmail) {
-              console.log(`Attempting to send approval email to ${userEmail}`);
-              await sendVoterApprovalEmail(userEmail, voter.firstName);
-            }
-          } catch (emailError) {
-            console.error(`Error sending approval email: ${emailError.message}`);
-            // Continue despite email error
+        return res.json({
+          message: 'Voter was already approved on blockchain, database updated',
+          voter: {
+            id: voter._id,
+            firstName: voter.firstName,
+            lastName: voter.lastName,
+            status: voter.status
           }
-          
-          return res.json({
-            success: true,
-            message: 'Voter approved successfully via backend transaction',
-            txHash: blockchainResult.txHash,
-            voter: {
-              id: voter._id,
-              firstName: voter.firstName,
-              lastName: voter.lastName,
-              status: voter.status
-            }
-          });
-        } else {
-          // Handle blockchain errors
-          console.error(`Failed to approve voter ${voterId} on blockchain:`, blockchainResult.error);
-          return res.status(500).json({ 
-            success: false,
-            message: 'Failed to approve voter on blockchain',
-            error: blockchainResult.error,
-            details: blockchainResult.details || blockchainResult.stack
-          });
-        }
-      } catch (backendError) {
-        console.error('Backend transaction error:', backendError);
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to approve voter using backend transaction',
-          error: backendError.message,
-          stack: process.env.NODE_ENV === 'development' ? backendError.stack : undefined
         });
       }
+    } catch (checkError) {
+      console.warn(`Error checking voter approval status: ${checkError.message}`);
+      // Continue with approval process as normal
     }
     
-    // Option 2: Use MetaMask (when useMetaMask is true)
-    if (useMetaMask === true) {
-      console.log('Using MetaMask for transaction...');
-      
-      // Validate address format
-      if (!user.walletAddress || typeof user.walletAddress !== 'string' || !user.walletAddress.startsWith('0x')) {
-        console.error(`Invalid wallet address format: ${user.walletAddress}`);
-        return res.status(400).json({ message: 'Invalid wallet address format' });
-      }
-      
-      // Return special response for MetaMask with more detailed information
-      return res.json({ 
-        success: true, 
+    // Approve voter on blockchain - pass useMetaMask option
+    const blockchainResult = await approveVoterOnBlockchain(user.walletAddress, { useMetaMask });
+    
+    console.log(`Blockchain approval result:`, blockchainResult);
+    
+    // Handle MetaMask transaction case
+    if (blockchainResult.success && blockchainResult.useMetaMask) {
+      console.log('Returning MetaMask transaction details to frontend');
+      return res.json({
+        message: 'Please approve the transaction in MetaMask',
         useMetaMask: true,
         contractDetails: {
-          address: process.env.CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000',
-          methodName: 'approveVoter',
-          method: 'approveVoter',
-          params: [user.walletAddress],
-          functionSelector: '0x3ce76e5f' // For convenience, include the function selector
+          address: blockchainResult.contractAddress,
+          method: blockchainResult.methodName,
+          params: blockchainResult.params
         },
-        message: 'Please confirm the transaction in MetaMask to approve this voter',
         voter: {
           id: voter._id,
           firstName: voter.firstName,
@@ -343,16 +277,80 @@ exports.approveVoter = async (req, res) => {
       });
     }
     
-    // Default option: No special flags provided
-    console.log('No transaction method specified (useMetaMask or useBackendTransaction)');
-    return res.status(400).json({ 
-      success: false,
-      message: 'Please specify a transaction method (useMetaMask or useBackendTransaction)'
+    // Special handling for "Voter already approved" error
+    if (!blockchainResult.success && 
+        blockchainResult.error && 
+        blockchainResult.error.includes('Voter already approved')) {
+      console.log(`Voter ${user.walletAddress} was already approved on blockchain`);
+      
+      // Update voter status in our database
+      voter.status = 'approved';
+      voter.rejectionReason = null;
+      voter.blockchainRegistered = true;
+      
+      await voter.save();
+      
+      console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
+      
+      return res.json({
+        message: 'Voter was already approved on blockchain, database updated',
+        voter: {
+          id: voter._id,
+          firstName: voter.firstName,
+          lastName: voter.lastName,
+          status: voter.status
+        }
+      });
+    }
+    
+    // Handle other blockchain errors
+    if (!blockchainResult.success) {
+      console.error(`Failed to approve voter ${voterId} on blockchain:`, blockchainResult.error);
+      return res.status(500).json({ 
+        message: 'Failed to approve voter on blockchain',
+        error: blockchainResult.error,
+        details: blockchainResult.details || blockchainResult.stack
+      });
+    }
+    
+    // Update voter status
+    voter.status = 'approved';
+    voter.rejectionReason = null;
+    voter.blockchainRegistered = true;
+    voter.blockchainTxHash = blockchainResult.txHash;
+    
+    await voter.save();
+    
+    console.log(`Voter ${voterId} status updated to approved`);
+    
+    // Send approval email
+    const userEmail = user.email || voter.email;
+    try {
+      if (userEmail) {
+        console.log(`Attempting to send approval email to ${userEmail} using Brevo API`);
+        const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName);
+        console.log(`Approval email sent to ${userEmail}, result:`, emailResult);
+      } else {
+        console.log(`No email available for voter ${voterId}, skipping notification`);
+      }
+    } catch (emailError) {
+      console.error(`Error sending approval email to ${userEmail}:`, emailError);
+      // Continue despite email error
+    }
+    
+    res.json({
+      message: 'Voter approved successfully',
+      voter: {
+        id: voter._id,
+        firstName: voter.firstName,
+        lastName: voter.lastName,
+        status: voter.status,
+        blockchainTxHash: blockchainResult.txHash
+      }
     });
   } catch (error) {
     console.error('Approve voter error:', error);
     res.status(500).json({ 
-      success: false,
       message: 'Server error',
       error: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -569,14 +567,20 @@ exports.addCandidate = async (req, res) => {
         console.log('Candidate photo file:', photo.name);
         
         // Generate unique filename
-        const photoFileName = `candidate_${Date.now()}_${photo.name}`;
-        const photoFilePath = path.join(candidatesDir, photoFileName);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const filename = `candidate_${uniqueSuffix}${path.extname(photo.name)}`;
+        const uploadPath = path.join(__dirname, '../../uploads/candidates', filename);
+        
+        // Ensure directory exists
+        const fs = require('fs');
+        
+        const candidatesDir = path.join(__dirname, '../../uploads/candidates');
         
         try {
           // Move the uploaded file
-          await photo.mv(photoFilePath);
-          console.log(`Candidate photo saved to: ${photoFilePath}`);
-          newCandidate.photoUrl = `/uploads/candidates/${photoFileName}`;
+          await photo.mv(uploadPath);
+          console.log(`Candidate photo saved to: ${uploadPath}`);
+          newCandidate.photoUrl = `/uploads/candidates/${filename}`;
         } catch (fileError) {
           console.error('Error saving candidate photo:', fileError);
           // Continue without the photo
@@ -734,32 +738,129 @@ exports.updateCandidate = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body };
+    const fs = require('fs');
     
-    // Handle file uploads
-    if (req.files) {
-      if (req.files.candidatePhoto) {
-        updateData.photoUrl = `/uploads/${req.files.candidatePhoto[0].filename}`;
+    console.log('Updating candidate with ID:', id);
+    console.log('Update data received:', JSON.stringify(updateData, null, 2));
+    
+    // Ensure election field is properly formatted as ObjectId
+    if (updateData.election) {
+      // If election is an object with _id field, extract the ID
+      if (typeof updateData.election === 'object' && updateData.election._id) {
+        console.log('Converting election object to string ID:', updateData.election._id);
+        updateData.election = updateData.election._id;
       }
-      if (req.files.partySymbol) {
-        updateData.partySymbol = `/uploads/${req.files.partySymbol[0].filename}`;
+      
+      // Validate that the election ID is a valid ObjectId
+      if (!mongoose.Types.ObjectId.isValid(updateData.election)) {
+        console.error('Invalid election ID format:', updateData.election);
+        return res.status(400).json({ 
+          message: 'Invalid election ID format',
+          details: 'The provided election ID is not valid'
+        });
       }
     }
+    
+    // If electionId was provided, use it as the election reference
+    if (updateData.electionId && mongoose.Types.ObjectId.isValid(updateData.electionId)) {
+      console.log('Using electionId as election reference:', updateData.electionId);
+      updateData.election = updateData.electionId;
+    }
+    
+    // Handle file uploads for express-fileupload
+    if (req.files) {
+      console.log('Processing files in update:', Object.keys(req.files));
+      
+      // Ensure upload directories exist
+      const candidatesDir = path.join(__dirname, '../../uploads/candidates');
+      const partiesDir = path.join(__dirname, '../../uploads/parties');
+      
+      if (!fs.existsSync(candidatesDir)) {
+        fs.mkdirSync(candidatesDir, { recursive: true });
+      }
+      
+      if (!fs.existsSync(partiesDir)) {
+        fs.mkdirSync(partiesDir, { recursive: true });
+      }
+      
+      if (req.files.candidatePhoto) {
+        const photo = req.files.candidatePhoto;
+        
+        // If it's an array (multer style), handle that
+        if (Array.isArray(photo)) {
+          updateData.photoUrl = `/uploads/${photo[0].filename}`;
+        } 
+        // If it's a single file object (express-fileupload style)
+        else {
+          // Generate unique filename
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const filename = `candidate_${uniqueSuffix}${path.extname(photo.name)}`;
+          const uploadPath = path.join(candidatesDir, filename);
+          
+          try {
+            // Move the file
+            await photo.mv(uploadPath);
+            console.log(`Candidate photo saved to: ${uploadPath}`);
+            updateData.photoUrl = `/uploads/candidates/${filename}`;
+          } catch (fileError) {
+            console.error('Error saving candidate photo:', fileError);
+            // Continue without updating the photo
+          }
+        }
+      }
+      
+      if (req.files.partySymbol) {
+        const symbol = req.files.partySymbol;
+        
+        // If it's an array (multer style), handle that
+        if (Array.isArray(symbol)) {
+          updateData.partySymbol = `/uploads/${symbol[0].filename}`;
+        } 
+        // If it's a single file object (express-fileupload style)
+        else {
+          // Generate unique filename
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+          const filename = `party_${uniqueSuffix}${path.extname(symbol.name)}`;
+          const uploadPath = path.join(partiesDir, filename);
+          
+          try {
+            // Move the file
+            await symbol.mv(uploadPath);
+            console.log(`Party symbol saved to: ${uploadPath}`);
+            updateData.partySymbol = `/uploads/parties/${filename}`;
+          } catch (fileError) {
+            console.error('Error saving party symbol:', fileError);
+            // Continue without updating the symbol
+          }
+        }
+      }
+    }
+    
+    console.log('Final update data for MongoDB:', {
+      ...updateData,
+      election: updateData.election
+    });
     
     // Update candidate
     const updatedCandidate = await Candidate.findByIdAndUpdate(
       id,
       updateData,
-      { new: true }
+      { new: true, runValidators: true }
     );
     
     if (!updatedCandidate) {
       return res.status(404).json({ message: 'Candidate not found' });
     }
     
+    console.log('Candidate updated successfully:', updatedCandidate._id);
     res.status(200).json(updatedCandidate);
   } catch (error) {
     console.error('Error updating candidate:', error);
-    res.status(500).json({ message: 'Server error while updating candidate', error: error.message });
+    res.status(500).json({ 
+      message: 'Server error while updating candidate', 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

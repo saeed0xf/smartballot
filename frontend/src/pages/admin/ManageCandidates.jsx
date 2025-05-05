@@ -190,6 +190,16 @@ const ManageCandidates = () => {
         electionType: selectedElection.type || 'Lok Sabha Elections'
       }));
       
+      // If we're editing, also update the editing candidate object to reflect the change
+      if (isEditing && editingCandidate) {
+        setEditingCandidate(prev => ({
+          ...prev,
+          election: electionId,
+          electionType: selectedElection.type || 'Lok Sabha Elections',
+          electionName: selectedElection.title || selectedElection.name || "Unknown Election"
+        }));
+      }
+      
       // Clear error if there was one
       if (formErrors.electionId) {
         setFormErrors(prev => ({ ...prev, electionId: null }));
@@ -291,11 +301,30 @@ const ManageCandidates = () => {
       
       // Add candidate data to formData, ensuring age is up-to-date
       const calculatedAge = calculateAge(newCandidate.dateOfBirth);
+      
+      // Create a sanitized copy of the candidate data
       const candidateData = {
         ...newCandidate,
         age: calculatedAge
       };
-
+      
+      // Ensure election is stored as an ID string, not an object
+      if (candidateData.election && typeof candidateData.election === 'object' && candidateData.election._id) {
+        candidateData.election = candidateData.election._id;
+      }
+      
+      // Make sure electionId is properly formatted
+      if (candidateData.electionId) {
+        // Ensure it's a string, not an object
+        if (typeof candidateData.electionId === 'object' && candidateData.electionId._id) {
+          candidateData.electionId = candidateData.electionId._id;
+        }
+        // Also set the election field to match electionId
+        candidateData.election = candidateData.electionId;
+      }
+      
+      console.log('Sanitized candidate data for submission:', candidateData);
+      
       Object.keys(candidateData).forEach(key => {
         if (key !== 'photoUrl' && key !== 'partySymbol' && key !== 'id' && key !== '_id') {
           formData.append(key, candidateData[key]);
@@ -747,12 +776,21 @@ const ManageCandidates = () => {
                   </Alert>
                 )}
                 {isEditing && !successMessage && (
-                  <Alert variant="info" className="mb-4">
+                  <Alert variant={editingCandidate?.inActiveElection ? "warning" : "info"} className="mb-4">
                     <div className="d-flex align-items-center">
                       <FaEdit className="me-2" /> 
                       <div>
-                        <strong>Edit Mode:</strong> You are editing candidate "{editingCandidate?.firstName} {editingCandidate?.lastName}". 
-                        Make your changes and click 'Update Candidate' to save them.
+                        <strong>Edit Mode:</strong> You are editing candidate "{editingCandidate?.firstName} {editingCandidate?.lastName}".
+                        {editingCandidate?.inActiveElection ? (
+                          <span className="ms-1">
+                            <strong>This candidate is part of an active election.</strong> Only basic information can be edited. 
+                            The election association cannot be changed until the election ends.
+                          </span>
+                        ) : (
+                          <span className="ms-1">
+                            Make your changes and click 'Update Candidate' to save them. You can change any details including the election.
+                          </span>
+                        )}
                       </div>
                     </div>
                   </Alert>
@@ -992,7 +1030,7 @@ const ManageCandidates = () => {
                           value={newCandidate.electionId}
                           onChange={handleElectionChange}
                           isInvalid={!!formErrors.electionId}
-                          disabled={isEditing} // Can't change election when editing
+                          disabled={isEditing && editingCandidate?.inActiveElection}
                         >
                           <option value="">-- Select a Pending Election --</option>
                           {elections.map(election => (
@@ -1012,7 +1050,9 @@ const ManageCandidates = () => {
                           {formErrors.electionId}
                         </Form.Control.Feedback>
                         <Form.Text className="text-muted">
-                          Only pending elections (not started, not archived) are shown. Candidates can only be added to pending elections.
+                          {isEditing && editingCandidate?.inActiveElection 
+                            ? "Election cannot be changed while the election is active." 
+                            : "Only pending elections (not started, not archived) are shown. You can change the election as long as it hasn't started yet."}
                         </Form.Text>
                       </Form.Group>
                     </Col>
