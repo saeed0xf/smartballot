@@ -1496,8 +1496,8 @@ const CastVote = () => {
                     {recorderError.message || "An error occurred with the recording. You can still proceed with voting."}
                   </p>
             </Alert>
-              )}
-              
+          )}
+          
               <div className="text-center mb-3">
                 <div className="recording-container position-relative" style={{ maxWidth: '100%', maxHeight: '300px', overflow: 'hidden' }}>
                   {/* Main screen preview */}
@@ -1601,9 +1601,9 @@ const CastVote = () => {
                 {/* Remove the "Restart Recording" button and replace with instructions if recording is stopped */}
                 {status === 'stopped' && (
                   <div className="mt-2">
-                    <Alert variant="warning">
+            <Alert variant="warning">
                       <strong>Recording has stopped!</strong> Please refresh the page to restart the voting process.
-                    </Alert>
+            </Alert>
                   </div>
                 )}
               </div>
