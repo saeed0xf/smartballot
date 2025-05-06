@@ -59,10 +59,23 @@ try {
     else {
       console.warn('CONTRACT_ADDRESS provided but no CONTRACT_ABI found. Will try to use default ABI.');
       
-      // Try to load the ABI from the VoteSure.json file
-      const abiPath = path.join(__dirname, '../../../blockchain/build/contracts/VoteSure.json');
+      // Try to load the ABI from the VoteSureV2.json file
+      const abiPath = path.join(__dirname, '../../../blockchain/build/contracts/VoteSureV2.json');
+      
+      // If VoteSureV2.json doesn't exist, fall back to VoteSure.json
+      let contractJson;
       if (fs.existsSync(abiPath)) {
-        const contractJson = JSON.parse(fs.readFileSync(abiPath, 'utf8'));
+        contractJson = JSON.parse(fs.readFileSync(abiPath, 'utf8'));
+        console.log('Found VoteSureV2.json contract ABI');
+      } else {
+        const fallbackPath = path.join(__dirname, '../../../blockchain/build/contracts/VoteSure.json');
+        if (fs.existsSync(fallbackPath)) {
+          contractJson = JSON.parse(fs.readFileSync(fallbackPath, 'utf8'));
+          console.log('Falling back to VoteSure.json contract ABI');
+        }
+      }
+
+      if (contractJson) {
         deploymentInfo = {
           address: process.env.CONTRACT_ADDRESS,
           abi: contractJson.abi
@@ -92,32 +105,74 @@ try {
 }
 
 // Register voter on blockchain
-const registerVoterOnBlockchain = async (voterAddress) => {
+const registerVoterOnBlockchain = async (voterAddress, electionId) => {
   try {
     if (!voteSureContract) {
       return { success: false, error: 'Contract not initialized' };
     }
     
-    const tx = await voteSureContract.registerVoter(voterAddress);
+    // Validate parameters
+    if (!voterAddress || typeof voterAddress !== 'string' || !voterAddress.startsWith('0x')) {
+      return { success: false, error: 'Invalid wallet address format' };
+    }
+    
+    if (!electionId) {
+      return { success: false, error: 'Election ID is required for voter registration' };
+    }
+    
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { success: false, error: `Invalid election ID format: "${electionId}"` };
+    }
+    
+    console.log(`Registering voter ${voterAddress} for election ${numericElectionId}`);
+    
+    const tx = await voteSureContract.registerVoter(voterAddress, numericElectionId);
     const receipt = await tx.wait();
     
-    console.log(`Voter registered on blockchain: ${voterAddress}`);
+    console.log(`Voter registered on blockchain: ${voterAddress} for election ${numericElectionId}`);
+    console.log(`Transaction hash: ${receipt.transactionHash}`);
+    
     return { success: true, txHash: receipt.transactionHash };
   } catch (error) {
     console.error('Error registering voter on blockchain:', error.message);
+    
+    // Check if the error indicates the voter is already registered
+    if (error.message && error.message.includes('Voter already registered')) {
+      return {
+        success: true,
+        alreadyRegistered: true,
+        message: 'Voter was already registered on blockchain'
+      };
+    }
+    
     return { success: false, error: error.message };
   }
 };
 
 // Approve voter on blockchain
-const approveVoterOnBlockchain = async (voterAddress, options = {}) => {
+const approveVoterOnBlockchain = async (voterAddress, electionId, options = {}) => {
   try {
     if (!voteSureContract) {
       console.error('Contract not initialized when approving voter');
       return { success: false, error: 'Contract not initialized' };
     }
     
-    console.log(`Attempting to approve voter on blockchain: ${voterAddress}`);
+    // Validate parameters
+    if (!voterAddress || typeof voterAddress !== 'string' || !voterAddress.startsWith('0x')) {
+      return { success: false, error: 'Invalid wallet address format' };
+    }
+    
+    if (!electionId) {
+      return { success: false, error: 'Election ID is required for voter approval' };
+    }
+    
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { success: false, error: `Invalid election ID format: "${electionId}"` };
+    }
+    
+    console.log(`Attempting to approve voter ${voterAddress} for election ${numericElectionId}`);
     console.log('Options:', options);
     
     // If useMetaMask is true, then we should delegate the transaction
@@ -125,19 +180,13 @@ const approveVoterOnBlockchain = async (voterAddress, options = {}) => {
     if (options.useMetaMask === true) {
       console.log('Using MetaMask for transaction...');
       
-      // Validate address format
-      if (!voterAddress || typeof voterAddress !== 'string' || !voterAddress.startsWith('0x')) {
-        console.error(`Invalid wallet address format: ${voterAddress}`);
-        return { success: false, error: 'Invalid wallet address format' };
-      }
-      
       // Return special response for MetaMask
       return { 
         success: true, 
         useMetaMask: true,
         contractAddress: deploymentInfo.address,
         methodName: 'approveVoter',
-        params: [voterAddress],
+        params: [voterAddress, numericElectionId],
         message: 'Please confirm the transaction in MetaMask to approve this voter'
       };
     }
@@ -148,22 +197,28 @@ const approveVoterOnBlockchain = async (voterAddress, options = {}) => {
       return { success: false, error: 'Admin wallet not initialized. Check ADMIN_PRIVATE_KEY in .env file.' };
     }
     
-    // Validate address format
-    if (!voterAddress || typeof voterAddress !== 'string' || !voterAddress.startsWith('0x')) {
-      console.error(`Invalid wallet address format: ${voterAddress}`);
-      return { success: false, error: 'Invalid wallet address format' };
-    }
-    
-    console.log(`Using admin wallet ${adminWallet.address} to approve voter ${voterAddress}`);
+    console.log(`Using admin wallet ${adminWallet.address} to approve voter ${voterAddress} for election ${numericElectionId}`);
     
     try {
       // First check if voter is already registered in the contract
       let isRegistered = false;
       try {
-        isRegistered = await voteSureContract.isVoterRegistered(voterAddress);
-        console.log(`Voter registered status check: ${isRegistered}`);
+        const status = await voteSureContract.getVoterStatus(voterAddress, numericElectionId);
+        isRegistered = status[0]; // isRegistered from status tuple
+        const isApproved = status[1]; // isApproved from status tuple
+        
+        console.log(`Voter status check: registered=${isRegistered}, approved=${isApproved}`);
+        
+        // If already approved, return success
+        if (isApproved) {
+          return {
+            success: true,
+            alreadyApproved: true,
+            message: 'Voter was already approved on blockchain'
+          };
+        }
       } catch (checkError) {
-        console.warn(`Could not check if voter is registered: ${checkError.message}`);
+        console.warn(`Could not check voter status: ${checkError.message}`);
         // Continue despite the check error
       }
       
@@ -171,7 +226,7 @@ const approveVoterOnBlockchain = async (voterAddress, options = {}) => {
       if (!isRegistered) {
         try {
           console.log(`Voter not registered, attempting to register first: ${voterAddress}`);
-          const regTx = await voteSureContract.registerVoter(voterAddress);
+          const regTx = await voteSureContract.registerVoter(voterAddress, numericElectionId);
           const regReceipt = await regTx.wait();
           console.log(`Voter registered first, hash: ${regReceipt.transactionHash}`);
         } catch (regError) {
@@ -181,17 +236,27 @@ const approveVoterOnBlockchain = async (voterAddress, options = {}) => {
       }
       
       // Now attempt to approve
-      const tx = await voteSureContract.approveVoter(voterAddress);
+      const tx = await voteSureContract.approveVoter(voterAddress, numericElectionId);
       console.log(`Approval transaction submitted, hash: ${tx.hash}`);
       
       const receipt = await tx.wait();
       console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
       
-      console.log(`Voter approved on blockchain: ${voterAddress}`);
+      console.log(`Voter approved on blockchain: ${voterAddress} for election ${numericElectionId}`);
       console.log(`Transaction hash: ${receipt.transactionHash}`);
       return { success: true, txHash: receipt.transactionHash };
     } catch (txError) {
       console.error('Transaction error when approving voter:', txError);
+      
+      // Check if it's already approved
+      if (txError.message && txError.message.includes('Voter already approved')) {
+        return {
+          success: true,
+          alreadyApproved: true,
+          message: 'Voter was already approved on blockchain'
+        };
+      }
+      
       return { 
         success: false, 
         error: `Transaction failed: ${txError.message}`,
@@ -199,37 +264,44 @@ const approveVoterOnBlockchain = async (voterAddress, options = {}) => {
       };
     }
   } catch (error) {
-    console.error('Error approving voter on blockchain:', error.message);
-    return { 
-      success: false, 
-      error: error.message,
-      stack: error.stack 
-    };
+    console.error('Error in approveVoterOnBlockchain:', error);
+    return { success: false, error: error.message || 'Unknown error during voter approval' };
   }
 };
 
-// Reject voter on blockchain - this function now only simulates the process
-// We don't actually register rejections on the blockchain as per requirements
-const rejectVoterOnBlockchain = async (voterAddress) => {
+// Reject voter on blockchain
+const rejectVoterOnBlockchain = async (voterAddress, electionId) => {
   try {
-    // We don't actually need to call the blockchain for rejections
-    // Just log the information and return a successful result
-    console.log(`Simulating rejection of voter on blockchain: ${voterAddress}`);
-    console.log('Voter rejections are not recorded on the blockchain');
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
+    }
     
-    // Return a simulated successful response
-    return { 
-      success: true, 
-      txHash: `simulated-rejection-${Date.now()}`,
-      note: 'This is a simulated rejection - not recorded on blockchain'
-    };
+    // Validate parameters
+    if (!voterAddress || typeof voterAddress !== 'string' || !voterAddress.startsWith('0x')) {
+      return { success: false, error: 'Invalid wallet address format' };
+    }
+    
+    if (!electionId) {
+      return { success: false, error: 'Election ID is required for voter rejection' };
+    }
+    
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { success: false, error: `Invalid election ID format: "${electionId}"` };
+    }
+    
+    console.log(`Rejecting voter ${voterAddress} for election ${numericElectionId}`);
+    
+    const tx = await voteSureContract.rejectVoter(voterAddress, numericElectionId);
+    const receipt = await tx.wait();
+    
+    console.log(`Voter rejected on blockchain: ${voterAddress} for election ${numericElectionId}`);
+    console.log(`Transaction hash: ${receipt.transactionHash}`);
+    
+    return { success: true, txHash: receipt.transactionHash };
   } catch (error) {
-    console.error('Error in rejection simulation:', error.message);
-    return { 
-      success: false, 
-      error: error.message,
-      stack: error.stack
-    };
+    console.error('Error rejecting voter on blockchain:', error.message);
+    return { success: false, error: error.message };
   }
 };
 
@@ -255,62 +327,139 @@ const addCandidateOnBlockchain = async (name, party, slogan) => {
   }
 };
 
-// Start election on blockchain
-const startElectionOnBlockchain = async (electionId, electionName, candidateIds, candidateNames, signer = null) => {
+// Create a new election on blockchain
+const createElectionOnBlockchain = async (
+  title,
+  description,
+  electionType,
+  region,
+  pincode,
+  startTime,
+  endTime
+) => {
   try {
-    console.log('Attempting to start election on blockchain...');
-    console.log(`Election ID: ${electionId}, Name: ${electionName}`);
-    console.log(`Candidates (${candidateIds.length}): ${candidateNames.join(', ')}`);
-    
-    // Get contract instance
-    const voteSureContract = await getVoteSureContract(signer);
-    
-    // Try to start the election
-    let tx;
-    
-    if (signer) {
-      console.log('Using MetaMask for transaction signing');
-      tx = await voteSureContract.startElection();
-    } else {
-      console.log('Using standard ethers.js contract call to start election');
-      tx = await voteSureContract.startElection();
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
     }
     
-    // Wait for transaction to be mined
-    console.log('Waiting for transaction to be mined...');
+    console.log(`Creating election on blockchain with title: ${title}`);
+    
+    // Convert timestamps to seconds for blockchain
+    const startTimeSeconds = Math.floor(new Date(startTime).getTime() / 1000);
+    const endTimeSeconds = Math.floor(new Date(endTime).getTime() / 1000);
+    
+    const tx = await voteSureContract.createElection(
+      title,
+      description,
+      electionType,
+      region,
+      pincode,
+      startTimeSeconds,
+      endTimeSeconds
+    );
+    
     const receipt = await tx.wait();
-    console.log('Election started on blockchain with transaction:', receipt.transactionHash);
+    
+    // Try to get the electionId from event logs
+    let electionId = null;
+    const event = receipt.events.find(e => e.event === 'ElectionCreated');
+    if (event && event.args) {
+      electionId = event.args.electionId.toString();
+    }
+    
+    console.log(`Election created on blockchain with ID: ${electionId}, tx hash: ${receipt.transactionHash}`);
+    
+    return { 
+      success: true, 
+      txHash: receipt.transactionHash,
+      electionId: electionId
+    };
+  } catch (error) {
+    console.error('Error creating election on blockchain:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Unknown blockchain error'
+    };
+  }
+};
+
+// Start an election on blockchain
+const startElectionOnBlockchain = async (electionId, signer = null) => {
+  try {
+    console.log(`Starting election with ID: ${electionId} on blockchain`);
+    
+    if (!electionId) {
+      return { 
+        success: false, 
+        error: 'Election ID is required for starting an election' 
+      };
+    }
+    
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { 
+        success: false, 
+        error: `Invalid election ID format: "${electionId}"` 
+      };
+    }
+
+    // If no contract available, we can't do anything
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
+    }
+    
+    // If signer is an object with address property (MetaMask style), we should delegate to frontend
+    if (signer && typeof signer === 'object' && signer.address && signer.address.startsWith('0x')) {
+      console.log(`Delegating election start to MetaMask with address: ${signer.address}`);
+      
+      // Return special response for MetaMask
+      return { 
+        success: true, 
+        useMetaMask: true,
+        contractAddress: deploymentInfo.address,
+        methodName: 'startElection',
+        params: [numericElectionId],
+        message: 'Please confirm the transaction in MetaMask to start this election'
+      };
+    }
+    
+    // Get contract with proper signer or use default admin wallet
+    const contract = await getVoteSureContract(signer);
+    
+    if (!contract) {
+      return { success: false, error: 'Could not get contract instance. Check contract deployment and admin wallet.' };
+    }
+    
+    // Check if election exists and is not already started
+    try {
+      const isActive = await contract.isElectionActive(numericElectionId);
+      if (isActive) {
+        console.log(`Election ${numericElectionId} is already active`);
+        return {
+          success: true,
+          alreadyStarted: true,
+          message: 'Election was already started on blockchain'
+        };
+      }
+    } catch (checkError) {
+      console.warn('Error checking election status:', checkError);
+      // Continue anyway, let the contract function handle validation
+    }
+    
+    const tx = await contract.startElection(numericElectionId);
+    const receipt = await tx.wait();
+    
+    console.log(`Election ${numericElectionId} started on blockchain, tx hash: ${receipt.transactionHash}`);
     
     return {
       success: true,
       txHash: receipt.transactionHash
     };
   } catch (error) {
-    console.error('Error starting election on blockchain:', error, 'tx=', error.transaction, 'code=', error.code);
+    console.error('Error starting election on blockchain:', error);
     
-    // Check if the error message indicates the election is already started
-    const errorMsg = error.message ? error.message.toLowerCase() : '';
-    const errorReason = error.reason ? error.reason.toLowerCase() : '';
-    const errorData = error.error?.data || {};
-    const revertReason = errorData.reason ? errorData.reason.toLowerCase() : '';
-    
-    // Look for specific error messages indicating the election is already started
-    const alreadyStartedPatterns = [
-      'election already started',
-      'already started',
-      'active'
-    ];
-    
-    // Check if any of these patterns appear in various error fields
-    const isAlreadyStartedError = alreadyStartedPatterns.some(pattern => 
-      errorMsg.includes(pattern) || 
-      errorReason.includes(pattern) || 
-      revertReason.includes(pattern) ||
-      (error.error?.message && error.error.message.toLowerCase().includes(pattern))
-    );
-    
-    if (isAlreadyStartedError) {
-      console.log('Election is already started on blockchain - treating as success');
+    // Check if error indicates the election is already started
+    if (error.message && error.message.includes('Election already started')) {
       return {
         success: true,
         alreadyStarted: true,
@@ -320,65 +469,89 @@ const startElectionOnBlockchain = async (electionId, electionName, candidateIds,
     
     return {
       success: false,
-      error: error.reason || error.message || 'Unknown blockchain error'
+      error: error.message || 'Unknown blockchain error'
     };
   }
 };
 
-// End election on blockchain
-const endElectionOnBlockchain = async (signer = null) => {
+// End an election on blockchain
+const endElectionOnBlockchain = async (electionId, signer = null) => {
   try {
-    console.log('Attempting to end election on blockchain...');
+    console.log(`Ending election with ID: ${electionId} on blockchain`);
     
-    // Get contract instance
-    const voteSureContract = await getVoteSureContract(signer);
-    
-    // Try to end the election
-    let tx;
-    
-    if (signer) {
-      console.log('Using MetaMask for transaction signing');
-      tx = await voteSureContract.endElection();
-    } else {
-      console.log('Using standard ethers.js contract call to end election');
-      tx = await voteSureContract.endElection();
+    if (!electionId) {
+      return { 
+        success: false, 
+        error: 'Election ID is required for ending an election' 
+      };
     }
     
-    // Wait for transaction to be mined
-    console.log('Waiting for transaction to be mined...');
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { 
+        success: false, 
+        error: `Invalid election ID format: "${electionId}"` 
+      };
+    }
+
+    // If no contract available, we can't do anything
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
+    }
+    
+    // If signer is an object with address property (MetaMask style), we should delegate to frontend
+    if (signer && typeof signer === 'object' && signer.address && signer.address.startsWith('0x')) {
+      console.log(`Delegating election end to MetaMask with address: ${signer.address}`);
+      
+      // Return special response for MetaMask
+      return { 
+        success: true, 
+        useMetaMask: true,
+        contractAddress: deploymentInfo.address,
+        methodName: 'endElection',
+        params: [numericElectionId],
+        message: 'Please confirm the transaction in MetaMask to end this election'
+      };
+    }
+    
+    // Get contract with proper signer or use default admin wallet
+    const contract = await getVoteSureContract(signer);
+    
+    if (!contract) {
+      return { success: false, error: 'Could not get contract instance. Check contract deployment and admin wallet.' };
+    }
+    
+    // Check if election exists and is active
+    try {
+      const isActive = await contract.isElectionActive(numericElectionId);
+      if (!isActive) {
+        console.log(`Election ${numericElectionId} is not active`);
+        return {
+          success: true,
+          alreadyEnded: true,
+          message: 'Election was already ended on blockchain'
+        };
+      }
+    } catch (checkError) {
+      console.warn('Error checking election status:', checkError);
+      // Continue anyway, let the contract function handle validation
+    }
+    
+    const tx = await contract.endElection(numericElectionId);
     const receipt = await tx.wait();
-    console.log('Election ended on blockchain with transaction:', receipt.transactionHash);
+    
+    console.log(`Election ${numericElectionId} ended on blockchain, tx hash: ${receipt.transactionHash}`);
     
     return {
       success: true,
       txHash: receipt.transactionHash
     };
   } catch (error) {
-    console.error('Error ending election on blockchain:', error, 'tx=', error.transaction, 'code=', error.code);
+    console.error('Error ending election on blockchain:', error);
     
-    // Check if the error message indicates the election is already ended
-    const errorMsg = error.message ? error.message.toLowerCase() : '';
-    const errorReason = error.reason ? error.reason.toLowerCase() : '';
-    const errorData = error.error?.data || {};
-    const revertReason = errorData.reason ? errorData.reason.toLowerCase() : '';
-    
-    // Look for specific error messages indicating the election is already ended
-    const alreadyEndedPatterns = [
-      'election already ended',
-      'already ended',
-      'not active'
-    ];
-    
-    // Check if any of these patterns appear in various error fields
-    const isAlreadyEndedError = alreadyEndedPatterns.some(pattern => 
-      errorMsg.includes(pattern) || 
-      errorReason.includes(pattern) || 
-      revertReason.includes(pattern) ||
-      (error.error?.message && error.error.message.toLowerCase().includes(pattern))
-    );
-    
-    if (isAlreadyEndedError) {
-      console.log('Election is already ended on blockchain - treating as success');
+    // Check if error indicates the election is already ended
+    if (error.message && (error.message.includes('Election not started') || 
+        error.message.includes('Election already ended'))) {
       return {
         success: true,
         alreadyEnded: true,
@@ -388,44 +561,160 @@ const endElectionOnBlockchain = async (signer = null) => {
     
     return {
       success: false,
-      error: error.reason || error.message || 'Unknown blockchain error'
+      error: error.message || 'Unknown blockchain error'
     };
   }
 };
 
-// Cast vote on blockchain
-const castVoteOnBlockchain = async (voterPrivateKey, candidateId) => {
+// Archive an election on blockchain
+const archiveElectionOnBlockchain = async (electionId) => {
   try {
     if (!voteSureContract) {
       return { success: false, error: 'Contract not initialized' };
     }
     
+    console.log(`Archiving election with ID: ${electionId} on blockchain`);
+    
+    const tx = await voteSureContract.archiveElection(electionId);
+    const receipt = await tx.wait();
+    
+    console.log(`Election ${electionId} archived on blockchain, tx hash: ${receipt.transactionHash}`);
+    
+    return {
+      success: true,
+      txHash: receipt.transactionHash
+    };
+  } catch (error) {
+    console.error('Error archiving election on blockchain:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown blockchain error'
+    };
+  }
+};
+
+// Add a candidate to an election on blockchain
+const addCandidateToBlockchain = async (name, party, partySymbol, electionId) => {
+  try {
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
+    }
+    
+    console.log(`Adding candidate ${name} to election ${electionId} on blockchain`);
+    
+    const tx = await voteSureContract.addCandidate(name, party, partySymbol, electionId);
+    const receipt = await tx.wait();
+    
+    // Try to get the candidateId from event logs
+    let candidateId = null;
+    const event = receipt.events.find(e => e.event === 'CandidateAdded');
+    if (event && event.args) {
+      candidateId = event.args.candidateId.toString();
+    }
+    
+    console.log(`Candidate added on blockchain with ID: ${candidateId}, tx hash: ${receipt.transactionHash}`);
+    
+    return { 
+      success: true, 
+      txHash: receipt.transactionHash,
+      candidateId: candidateId
+    };
+  } catch (error) {
+    console.error('Error adding candidate on blockchain:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Unknown blockchain error'
+    };
+  }
+};
+
+// Cast vote on blockchain - updated for multiple elections
+const castVoteOnBlockchain = async (privateKey, electionId, candidateId) => {
+  try {
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
+    }
+    
+    // Validate params
+    if (!electionId || electionId <= 0) {
+      return { 
+        success: false, 
+        error: `Invalid election ID: "${electionId}"` 
+      };
+    }
+    
+    if (!candidateId || candidateId <= 0) {
+      return { 
+        success: false, 
+        error: `Invalid candidate ID: "${candidateId}"` 
+      };
+    }
+    
+    // Convert to numbers if needed
+    const numericElectionId = parseInt(electionId);
+    const numericCandidateId = parseInt(candidateId);
+    
+    if (isNaN(numericElectionId) || isNaN(numericCandidateId)) {
+      return { 
+        success: false, 
+        error: `Invalid numeric format: election=${electionId}, candidate=${candidateId}` 
+      };
+    }
+    
+    console.log(`Casting vote for election ${numericElectionId}, candidate ${numericCandidateId}`);
+    
     // Create voter wallet
-    const voterWallet = new ethers.Wallet(voterPrivateKey, provider);
+    const voterWallet = new ethers.Wallet(privateKey, provider);
     
     // Connect voter to contract
     const voterContract = voteSureContract.connect(voterWallet);
     
-    // Cast vote
-    const tx = await voterContract.castVote(candidateId);
+    // Cast vote with the new function signature
+    const tx = await voterContract.castVote(numericElectionId, numericCandidateId);
     const receipt = await tx.wait();
     
-    console.log(`Vote cast on blockchain by ${voterWallet.address} for candidate ${candidateId}`);
-    return { success: true, txHash: receipt.transactionHash };
+    console.log(`Vote cast on blockchain by ${voterWallet.address} for election ${numericElectionId}, candidate ${numericCandidateId}`);
+    console.log(`Transaction hash: ${receipt.transactionHash}`);
+    
+    return { 
+      success: true, 
+      txHash: receipt.transactionHash 
+    };
   } catch (error) {
-    console.error('Error casting vote on blockchain:', error.message);
-    return { success: false, error: error.message };
+    console.error('Error casting vote on blockchain:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Unknown blockchain error',
+      stack: error.stack
+    };
   }
 };
 
-// Get voter status from blockchain
-const getVoterStatusFromBlockchain = async (voterAddress) => {
+// Get voter status for specific election
+const getVoterStatusFromBlockchain = async (voterAddress, electionId) => {
   try {
     if (!voteSureContract) {
       return { success: false, error: 'Contract not initialized' };
     }
     
-    const status = await voteSureContract.getVoterStatus(voterAddress);
+    // If electionId is not provided, we can't use the new contract
+    if (!electionId) {
+      return { 
+        success: false, 
+        error: 'Election ID is required for checking voter status' 
+      };
+    }
+    
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { 
+        success: false, 
+        error: `Invalid election ID format: "${electionId}"` 
+      };
+    }
+    
+    console.log(`Checking status for voter ${voterAddress} in election ${numericElectionId}`);
+    const status = await voteSureContract.getVoterStatus(voterAddress, numericElectionId);
     
     return {
       success: true,
@@ -437,7 +726,7 @@ const getVoterStatusFromBlockchain = async (voterAddress) => {
       }
     };
   } catch (error) {
-    console.error('Error getting voter status from blockchain:', error.message);
+    console.error('Error getting voter status from blockchain:', error);
     return { success: false, error: error.message };
   }
 };
@@ -449,7 +738,16 @@ const getCandidateFromBlockchain = async (candidateId) => {
       return { success: false, error: 'Contract not initialized' };
     }
     
-    const candidate = await voteSureContract.getCandidate(candidateId);
+    const numericCandidateId = parseInt(candidateId);
+    if (isNaN(numericCandidateId)) {
+      return { 
+        success: false, 
+        error: `Invalid candidate ID format: "${candidateId}"` 
+      };
+    }
+    
+    console.log(`Fetching candidate ${numericCandidateId} from blockchain`);
+    const candidate = await voteSureContract.getCandidate(numericCandidateId);
     
     return {
       success: true,
@@ -457,42 +755,183 @@ const getCandidateFromBlockchain = async (candidateId) => {
         id: candidate[0].toNumber(),
         name: candidate[1],
         party: candidate[2],
-        slogan: candidate[3],
-        voteCount: candidate[4].toNumber()
+        partySymbol: candidate[3],
+        electionId: candidate[4].toNumber(),
+        voteCount: candidate[5].toNumber()
       }
     };
   } catch (error) {
-    console.error('Error getting candidate from blockchain:', error.message);
+    console.error('Error getting candidate from blockchain:', error);
     return { success: false, error: error.message };
   }
 };
 
-// Get election status from blockchain
-const getElectionStatusFromBlockchain = async () => {
+// Get election from blockchain
+const getElectionFromBlockchain = async (electionId) => {
   try {
     if (!voteSureContract) {
       return { success: false, error: 'Contract not initialized' };
     }
     
-    const status = await voteSureContract.getElectionStatus();
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { 
+        success: false, 
+        error: `Invalid election ID format: "${electionId}"` 
+      };
+    }
+    
+    console.log(`Fetching election ${numericElectionId} from blockchain`);
+    const election = await voteSureContract.getElection(numericElectionId);
     
     return {
       success: true,
       data: {
-        started: status[0],
-        ended: status[1],
-        totalCandidates: status[2].toNumber(),
-        totalApprovedVoters: status[3].toNumber(),
-        totalVotes: status[4].toNumber()
+        id: election[0].toNumber(),
+        title: election[1],
+        description: election[2],
+        electionType: election[3],
+        startTime: new Date(election[4].toNumber() * 1000),
+        endTime: new Date(election[5].toNumber() * 1000),
+        isActive: election[6],
+        isArchived: election[7],
+        totalVotes: election[8].toNumber(),
+        candidateIds: election[9].map(id => id.toNumber())
       }
     };
   } catch (error) {
-    console.error('Error getting election status from blockchain:', error.message);
+    console.error('Error getting election from blockchain:', error);
     return { success: false, error: error.message };
   }
 };
 
-// Update contract instance with new deployment info
+// Get election status from blockchain
+const getElectionStatusFromBlockchain = async (electionId) => {
+  try {
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
+    }
+    
+    // If no electionId is provided, return error
+    if (!electionId) {
+      return { 
+        success: false, 
+        error: 'Election ID is required for checking status' 
+      };
+    }
+    
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { 
+        success: false, 
+        error: `Invalid election ID format: "${electionId}"` 
+      };
+    }
+    
+    // Get election data from blockchain
+    const isActive = await voteSureContract.isElectionActive(numericElectionId);
+    
+    // Get more detailed information
+    let electionDetails = { started: false, ended: false };
+    try {
+      const election = await voteSureContract.getElection(numericElectionId);
+      electionDetails = {
+        started: election[6], // isActive
+        ended: !election[6] || election[7], // !isActive || isArchived
+      };
+    } catch (detailError) {
+      console.warn('Could not get detailed election info:', detailError.message);
+    }
+    
+    return {
+      success: true,
+      data: {
+        isActive: isActive,
+        started: electionDetails.started,
+        ended: electionDetails.ended
+      }
+    };
+  } catch (error) {
+    console.error('Error getting election status from blockchain:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Get all elections from blockchain
+const getAllElectionsFromBlockchain = async () => {
+  try {
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
+    }
+    
+    // Get all election IDs
+    const electionIds = await voteSureContract.getAllElections();
+    const numericIds = electionIds.map(id => id.toNumber());
+    
+    console.log(`Retrieved ${numericIds.length} election IDs from blockchain`);
+    
+    // Get details for each election
+    const elections = [];
+    for (const id of numericIds) {
+      try {
+        const electionResult = await getElectionFromBlockchain(id);
+        if (electionResult.success) {
+          elections.push(electionResult.data);
+        }
+      } catch (detailError) {
+        console.warn(`Error fetching details for election ${id}:`, detailError.message);
+      }
+    }
+    
+    return {
+      success: true,
+      data: elections
+    };
+  } catch (error) {
+    console.error('Error getting all elections from blockchain:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Get election results from blockchain
+const getElectionResultsFromBlockchain = async (electionId) => {
+  try {
+    if (!voteSureContract) {
+      return { success: false, error: 'Contract not initialized' };
+    }
+    
+    const numericElectionId = parseInt(electionId);
+    if (isNaN(numericElectionId)) {
+      return { 
+        success: false, 
+        error: `Invalid election ID format: "${electionId}"` 
+      };
+    }
+    
+    console.log(`Fetching results for election ${numericElectionId} from blockchain`);
+    const results = await voteSureContract.getElectionResults(numericElectionId);
+    
+    // Format the results
+    const candidateIds = results[0].map(id => id.toNumber());
+    const voteCounts = results[1].map(count => count.toNumber());
+    
+    // Create an array of candidate results
+    const formattedResults = candidateIds.map((id, index) => ({
+      candidateId: id,
+      voteCount: voteCounts[index]
+    }));
+    
+    return {
+      success: true,
+      data: formattedResults
+    };
+  } catch (error) {
+    console.error('Error getting election results from blockchain:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to update contract instance with new address and ABI
 const updateContractInstance = (address, abi) => {
   try {
     if (!adminWallet) {
@@ -500,7 +939,7 @@ const updateContractInstance = (address, abi) => {
     }
     
     voteSureContract = new ethers.Contract(address, abi, adminWallet);
-    console.log(`Contract updated at address: ${address}`);
+    console.log(`Contract instance updated at address: ${address}`);
     return { success: true };
   } catch (error) {
     console.error('Error updating contract instance:', error.message);
@@ -508,81 +947,24 @@ const updateContractInstance = (address, abi) => {
   }
 };
 
-// Helper function to get the contract instance with proper signer
+// Get VoteSure contract instance with optional signer
 const getVoteSureContract = async (signer = null) => {
-  // Check if deployment info is available
-  if (!deploymentInfo || !deploymentInfo.abi || !deploymentInfo.address) {
-    // Try to refresh deployment info from environment
-    if (process.env.CONTRACT_ADDRESS) {
-      console.log(`Attempting to use CONTRACT_ADDRESS from .env: ${process.env.CONTRACT_ADDRESS}`);
-      
-      let abi = null;
-      // Try to get ABI from environment or file
-      if (process.env.CONTRACT_ABI) {
-        try {
-          abi = JSON.parse(process.env.CONTRACT_ABI);
-        } catch (error) {
-          console.error('Error parsing CONTRACT_ABI:', error.message);
-        }
-      }
-      
-      // If no ABI from environment, try to load from build file
-      if (!abi) {
-        try {
-          const abiPath = path.join(__dirname, '../../../blockchain/build/contracts/VoteSure.json');
-          if (fs.existsSync(abiPath)) {
-            const contractJson = JSON.parse(fs.readFileSync(abiPath, 'utf8'));
-            abi = contractJson.abi;
-          }
-        } catch (error) {
-          console.error('Error loading ABI from build file:', error.message);
-        }
-      }
-      
-      if (abi) {
-        deploymentInfo = {
-          address: process.env.CONTRACT_ADDRESS,
-          abi: abi
-        };
-      } else {
-        throw new Error('Contract ABI not available. Check CONTRACT_ABI in .env or ensure build files exist.');
-      }
-    } else {
-      throw new Error('Contract deployment information not available');
+  try {
+    if (!voteSureContract) {
+      return null;
     }
+    
+    // If no signer provided, return the admin-connected contract
+    if (!signer) {
+      return voteSureContract;
+    }
+    
+    // Otherwise, connect contract to the provided signer
+    return voteSureContract.connect(signer);
+  } catch (error) {
+    console.error('Error getting contract with signer:', error);
+    return null;
   }
-
-  // Check if signer is just an address string
-  if (signer && typeof signer === 'object' && signer.address && !signer.signMessage) {
-    console.warn('Received only address object, not a full signer. Using admin wallet instead.');
-    // Just use the admin wallet if signer is just an address
-    signer = null;
-  }
-  
-  // Use provided signer (from MetaMask) or fall back to admin wallet
-  const effectiveSigner = signer || adminWallet;
-  
-  if (!effectiveSigner) {
-    throw new Error('No signer available. Check ADMIN_PRIVATE_KEY in .env file or connect with MetaMask.');
-  }
-  
-  // Check if contract address has changed from what voteSureContract was initialized with
-  if (voteSureContract && voteSureContract.address !== deploymentInfo.address) {
-    console.log(`Contract address has changed from ${voteSureContract.address} to ${deploymentInfo.address}. Updating...`);
-    // We need to reinitialize the voteSureContract
-    voteSureContract = new ethers.Contract(
-      deploymentInfo.address,
-      deploymentInfo.abi,
-      adminWallet
-    );
-  }
-  
-  // Connect contract to the signer (this doesn't change the underlying contract, just returns a connected instance)
-  return new ethers.Contract(
-    deploymentInfo.address,
-    deploymentInfo.abi,
-    effectiveSigner
-  );
 };
 
 module.exports = {
@@ -590,12 +972,18 @@ module.exports = {
   approveVoterOnBlockchain,
   rejectVoterOnBlockchain,
   addCandidateOnBlockchain,
+  createElectionOnBlockchain,
   startElectionOnBlockchain,
   endElectionOnBlockchain,
+  archiveElectionOnBlockchain,
+  addCandidateToBlockchain,
   castVoteOnBlockchain,
   getVoterStatusFromBlockchain,
   getCandidateFromBlockchain,
+  getElectionFromBlockchain,
   getElectionStatusFromBlockchain,
+  getAllElectionsFromBlockchain,
+  getElectionResultsFromBlockchain,
   updateContractInstance,
   getVoteSureContract
 }; 

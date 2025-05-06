@@ -13,7 +13,7 @@ async function main() {
   console.log('Deploying contracts with the account:', wallet.address);
   
   // Read the compiled contract artifact
-  const contractPath = path.join(__dirname, '../build/VoteSure.json');
+  const contractPath = path.join(__dirname, '../build/contracts/VoteSureV2.json');
   const contractJson = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
   
   // Create a contract factory
@@ -27,7 +27,7 @@ async function main() {
   const contract = await contractFactory.deploy();
   await contract.deployed();
   
-  console.log('VoteSure contract deployed to:', contract.address);
+  console.log('VoteSureV2 contract deployed to:', contract.address);
   
   // Save the contract address and ABI to a file for easy access
   const deploymentInfo = {

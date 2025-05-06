@@ -18,7 +18,11 @@ const voteSchema = new mongoose.Schema({
   },
   blockchainTxHash: {
     type: String,
-    required: true
+    required: false
+  },
+  blockchainError: {
+    type: String,
+    required: false
   },
   timestamp: {
     type: Date,

@@ -1,18 +1,18 @@
-const VoteSure = artifacts.require("VoteSure");
+const VoteSureV2 = artifacts.require("VoteSureV2");
 const fs = require('fs');
 const path = require('path');
 
 module.exports = async function(deployer, network, accounts) {
   // Deploy the contract
-  await deployer.deploy(VoteSure);
-  const voteSure = await VoteSure.deployed();
+  await deployer.deploy(VoteSureV2);
+  const voteSureV2 = await VoteSureV2.deployed();
   
-  console.log(`VoteSure contract deployed at: ${voteSure.address}`);
+  console.log(`VoteSureV2 contract deployed at: ${voteSureV2.address}`);
   
   // Save deployment info to a file
   const deploymentInfo = {
-    address: voteSure.address,
-    abi: voteSure.abi,
+    address: voteSureV2.address,
+    abi: voteSureV2.abi,
     network: network,
     deployer: accounts[0]
   };

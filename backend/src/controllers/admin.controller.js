@@ -1,5 +1,6 @@
 const User = require('../models/user.model');
 const Voter = require('../models/voter.model');
+const VoterElection = require('../models/voter-election.model');
 const Candidate = require('../models/candidate.model');
 const Election = require('../models/election.model');
 const Activity = require('../models/activity.model');
@@ -176,9 +177,36 @@ exports.getVoterDetails = async (req, res) => {
 exports.approveVoter = async (req, res) => {
   try {
     const { voterId } = req.params;
-    const { useMetaMask } = req.body; // Extract MetaMask flag from request
+    const { useMetaMask, electionId } = req.body; // Extract MetaMask flag and election ID from request
     
-    console.log(`Approving voter with ID: ${voterId}, useMetaMask: ${useMetaMask}`);
+    console.log(`Approving voter with ID: ${voterId}, useMetaMask: ${useMetaMask}, electionId: ${electionId}`);
+    
+    // Validate election ID
+    if (!electionId || !mongoose.Types.ObjectId.isValid(electionId)) {
+      return res.status(400).json({ 
+        message: 'Valid election ID is required',
+        details: 'You must specify which election this voter is being approved for'
+      });
+    }
+    
+    // Find the election
+    const election = await Election.findById(electionId);
+    if (!election) {
+      return res.status(404).json({ 
+        message: 'Election not found',
+        details: 'The specified election does not exist'
+      });
+    }
+    
+    // Get blockchain election ID
+    if (!election.blockchainElectionId) {
+      return res.status(400).json({ 
+        message: 'Election not found on blockchain',
+        details: 'This election has no blockchain ID, so voters cannot be approved for it'
+      });
+    }
+    
+    console.log(`Found election: ${election.title} with blockchain ID: ${election.blockchainElectionId}`);
     
     // Find voter
     const voter = await Voter.findById(voterId);
@@ -188,12 +216,6 @@ exports.approveVoter = async (req, res) => {
     }
     
     console.log(`Found voter: ${voter._id}, status: ${voter.status}`);
-    
-    // Check if voter is already approved in our database
-    if (voter.status === 'approved') {
-      console.log(`Voter ${voterId} is already approved in database`);
-      return res.status(400).json({ message: 'Voter is already approved' });
-    }
     
     // Get user
     const user = await User.findById(voter.user);
@@ -217,33 +239,64 @@ exports.approveVoter = async (req, res) => {
       await user.save();
     }
     
-    console.log(`Attempting to approve voter on blockchain with wallet: ${user.walletAddress}`);
+    console.log(`Attempting to approve voter on blockchain with wallet: ${user.walletAddress}, for election: ${election.blockchainElectionId}`);
     
-    // Check if voter is already approved on blockchain
+    // Check if voter is already approved on blockchain for this election
     try {
-      console.log(`Checking if voter is already approved on blockchain: ${user.walletAddress}`);
-      const statusResult = await getVoterStatusFromBlockchain(user.walletAddress);
+      console.log(`Checking if voter is already approved on blockchain: ${user.walletAddress} for election: ${election.blockchainElectionId}`);
+      const statusResult = await getVoterStatusFromBlockchain(user.walletAddress, election.blockchainElectionId);
       
       if (statusResult.success && statusResult.data.isApproved) {
-        console.log(`Voter ${user.walletAddress} is already approved on blockchain`);
+        console.log(`Voter ${user.walletAddress} is already approved on blockchain for election: ${election.blockchainElectionId}`);
         
-        // Update voter status in our database to match blockchain
-        voter.status = 'approved';
-        voter.rejectionReason = null;
-        voter.blockchainRegistered = true;
-        // No transaction hash since we didn't perform a new transaction
+        // Check if we already have an approval record for this election
+        let voterElection = await VoterElection.findOne({
+          voter: voter._id,
+          election: electionId
+        });
         
-        await voter.save();
+        if (!voterElection) {
+          // Create a new approval record for this election
+          voterElection = new VoterElection({
+            voter: voter._id,
+            election: electionId,
+            status: 'approved',
+            blockchainRegistered: true
+          });
+          
+          await voterElection.save();
+          console.log(`Created new voter-election record for voter ${voterId} and election ${electionId}`);
+        } else if (voterElection.status !== 'approved') {
+          // Update existing record
+          voterElection.status = 'approved';
+          voterElection.rejectionReason = null;
+          voterElection.blockchainRegistered = true;
+          
+          await voterElection.save();
+          console.log(`Updated voter-election record for voter ${voterId} and election ${electionId} to approved`);
+        }
         
-        console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
+        // Also update the voter's overall status if needed
+        if (voter.status !== 'approved') {
+          voter.status = 'approved';
+          voter.rejectionReason = null;
+          voter.blockchainRegistered = true;
+          
+          await voter.save();
+          console.log(`Updated voter ${voterId} status to approved (to match blockchain)`);
+        }
         
         return res.json({
-          message: 'Voter was already approved on blockchain, database updated',
+          message: 'Voter was already approved on blockchain for this election, database updated',
           voter: {
             id: voter._id,
             firstName: voter.firstName,
             lastName: voter.lastName,
             status: voter.status
+          },
+          election: {
+            id: election._id,
+            title: election.title
           }
         });
       }
@@ -252,8 +305,12 @@ exports.approveVoter = async (req, res) => {
       // Continue with approval process as normal
     }
     
-    // Approve voter on blockchain - pass useMetaMask option
-    const blockchainResult = await approveVoterOnBlockchain(user.walletAddress, { useMetaMask });
+    // Approve voter on blockchain - pass useMetaMask option and election ID
+    const blockchainResult = await approveVoterOnBlockchain(
+      user.walletAddress, 
+      election.blockchainElectionId, 
+      { useMetaMask }
+    );
     
     console.log(`Blockchain approval result:`, blockchainResult);
     
@@ -273,39 +330,77 @@ exports.approveVoter = async (req, res) => {
           firstName: voter.firstName,
           lastName: voter.lastName,
           status: voter.status
+        },
+        election: {
+          id: election._id,
+          title: election.title
         }
       });
     }
     
     // Special handling for "Voter already approved" error
-    if (!blockchainResult.success && 
-        blockchainResult.error && 
-        blockchainResult.error.includes('Voter already approved')) {
-      console.log(`Voter ${user.walletAddress} was already approved on blockchain`);
+    if ((!blockchainResult.success && 
+         blockchainResult.error && 
+         blockchainResult.error.includes('Voter already approved')) || 
+        (blockchainResult.success && blockchainResult.alreadyApproved)) {
       
-      // Update voter status in our database
-      voter.status = 'approved';
-      voter.rejectionReason = null;
-      voter.blockchainRegistered = true;
+      console.log(`Voter ${user.walletAddress} was already approved on blockchain for election ${election.blockchainElectionId}`);
       
-      await voter.save();
+      // Check if we already have an approval record for this election
+      let voterElection = await VoterElection.findOne({
+        voter: voter._id,
+        election: electionId
+      });
       
-      console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
+      if (!voterElection) {
+        // Create a new approval record for this election
+        voterElection = new VoterElection({
+          voter: voter._id,
+          election: electionId,
+          status: 'approved',
+          blockchainRegistered: true
+        });
+        
+        await voterElection.save();
+        console.log(`Created new voter-election record for voter ${voterId} and election ${electionId}`);
+      } else if (voterElection.status !== 'approved') {
+        // Update existing record
+        voterElection.status = 'approved';
+        voterElection.rejectionReason = null;
+        voterElection.blockchainRegistered = true;
+        
+        await voterElection.save();
+        console.log(`Updated voter-election record for voter ${voterId} and election ${electionId} to approved`);
+      }
+      
+      // Also update the voter's overall status if needed
+      if (voter.status !== 'approved') {
+        voter.status = 'approved';
+        voter.rejectionReason = null;
+        voter.blockchainRegistered = true;
+        
+        await voter.save();
+        console.log(`Updated voter ${voterId} status to approved (to match blockchain)`);
+      }
       
       return res.json({
-        message: 'Voter was already approved on blockchain, database updated',
+        message: 'Voter was already approved on blockchain for this election, database updated',
         voter: {
           id: voter._id,
           firstName: voter.firstName,
           lastName: voter.lastName,
           status: voter.status
+        },
+        election: {
+          id: election._id,
+          title: election.title
         }
       });
     }
     
     // Handle other blockchain errors
     if (!blockchainResult.success) {
-      console.error(`Failed to approve voter ${voterId} on blockchain:`, blockchainResult.error);
+      console.error(`Failed to approve voter ${voterId} on blockchain for election ${electionId}:`, blockchainResult.error);
       return res.status(500).json({ 
         message: 'Failed to approve voter on blockchain',
         error: blockchainResult.error,
@@ -313,7 +408,36 @@ exports.approveVoter = async (req, res) => {
       });
     }
     
-    // Update voter status
+    // Check if we already have an approval record for this election
+    let voterElection = await VoterElection.findOne({
+      voter: voter._id,
+      election: electionId
+    });
+    
+    if (!voterElection) {
+      // Create a new approval record for this election
+      voterElection = new VoterElection({
+        voter: voter._id,
+        election: electionId,
+        status: 'approved',
+        blockchainRegistered: true,
+        blockchainTxHash: blockchainResult.txHash
+      });
+      
+      await voterElection.save();
+      console.log(`Created new voter-election record for voter ${voterId} and election ${electionId} with tx hash ${blockchainResult.txHash}`);
+    } else {
+      // Update existing record
+      voterElection.status = 'approved';
+      voterElection.rejectionReason = null;
+      voterElection.blockchainRegistered = true;
+      voterElection.blockchainTxHash = blockchainResult.txHash;
+      
+      await voterElection.save();
+      console.log(`Updated voter-election record for voter ${voterId} and election ${electionId} to approved with tx hash ${blockchainResult.txHash}`);
+    }
+    
+    // Also update the voter's overall status
     voter.status = 'approved';
     voter.rejectionReason = null;
     voter.blockchainRegistered = true;
@@ -321,14 +445,14 @@ exports.approveVoter = async (req, res) => {
     
     await voter.save();
     
-    console.log(`Voter ${voterId} status updated to approved`);
+    console.log(`Voter ${voterId} status updated to approved for election ${electionId}`);
     
     // Send approval email
     const userEmail = user.email || voter.email;
     try {
       if (userEmail) {
         console.log(`Attempting to send approval email to ${userEmail} using Brevo API`);
-        const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName);
+        const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName, election.title);
         console.log(`Approval email sent to ${userEmail}, result:`, emailResult);
       } else {
         console.log(`No email available for voter ${voterId}, skipping notification`);
@@ -346,6 +470,10 @@ exports.approveVoter = async (req, res) => {
         lastName: voter.lastName,
         status: voter.status,
         blockchainTxHash: blockchainResult.txHash
+      },
+      election: {
+        id: election._id,
+        title: election.title
       }
     });
   } catch (error) {

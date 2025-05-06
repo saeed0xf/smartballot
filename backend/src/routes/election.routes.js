@@ -17,8 +17,10 @@ router.delete('/election/:id', verifyToken, isAdmin, electionController.deleteEl
 // Election actions
 router.post('/election/start', verifyToken, isAdmin, electionController.startElection);
 router.post('/elections/start', verifyToken, isAdmin, electionController.startElection); // Alias
+router.post('/election/start/complete', verifyToken, isAdmin, electionController.completeElectionStart);
 router.post('/election/end', verifyToken, isAdmin, electionController.endElection);
 router.post('/elections/end', verifyToken, isAdmin, electionController.endElection); // Alias
+router.post('/election/end/complete', verifyToken, isAdmin, electionController.completeElectionEnd);
 
 // Get active elections
 router.get('/elections/active', electionController.getActiveElections);
@@ -27,6 +29,10 @@ router.get('/elections/active', electionController.getActiveElections);
 router.get('/status', electionController.getElectionStatus);
 router.get('/election/status', electionController.getElectionStatus);
 router.get('/election/status/:electionId', electionController.getElectionStatus);
+
+// Blockchain specific routes
+router.get('/blockchain/election/:electionId', electionController.getElectionDetailsFromBlockchain);
+router.get('/blockchain/candidate/:candidateId', electionController.getCandidateDetailsFromBlockchain);
 
 // Get all candidates (public route)
 router.get('/candidates', electionController.getAllCandidates);

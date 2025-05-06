@@ -1,6 +1,7 @@
 const Candidate = require('../models/candidate.model');
 const Election = require('../models/election.model');
 const mongoose = require('mongoose');
+const { addCandidateToBlockchain } = require('../utils/blockchain.util');
 
 // Create a new candidate
 exports.createCandidate = async (req, res) => {
@@ -105,6 +106,45 @@ exports.createCandidate = async (req, res) => {
       }
     }
     
+    // Check for blockchain election ID
+    if (!election.blockchainElectionId) {
+      console.warn(`Election ${electionId} has no blockchain ID. Cannot add candidate to blockchain.`);
+    }
+    
+    // Try to add the candidate to the blockchain first
+    let blockchainCandidateId = null;
+    let blockchainTxHash = null;
+    let blockchainError = null;
+    let blockchainSuccess = false;
+    
+    // Only try to add to blockchain if the election has a blockchain ID
+    if (election.blockchainElectionId) {
+      try {
+        console.log(`Adding candidate to blockchain for election ${election.blockchainElectionId}`);
+        const fullName = `${firstName} ${req.body.middleName ? req.body.middleName + ' ' : ''}${lastName}`;
+        
+        const blockchainResult = await addCandidateToBlockchain(
+          fullName,
+          partyName,
+          partySymbol || partyName, // Use party name as symbol if none provided
+          election.blockchainElectionId
+        );
+        
+        if (blockchainResult.success) {
+          blockchainSuccess = true;
+          blockchainTxHash = blockchainResult.txHash;
+          blockchainCandidateId = blockchainResult.candidateId;
+          console.log(`Candidate added to blockchain with ID: ${blockchainCandidateId}, tx hash: ${blockchainTxHash}`);
+        } else {
+          blockchainError = blockchainResult.error;
+          console.error('Failed to add candidate to blockchain:', blockchainError);
+        }
+      } catch (blockchainErr) {
+        blockchainError = blockchainErr.message || 'Unknown blockchain error';
+        console.error('Exception adding candidate to blockchain:', blockchainErr);
+      }
+    }
+    
     // Create new candidate object
     const newCandidate = new Candidate({
       firstName,
@@ -124,7 +164,9 @@ exports.createCandidate = async (req, res) => {
       criminalRecord: req.body.criminalRecord || 'None',
       email: req.body.email,
       election: electionId, // Associate with the election
-      inActiveElection: election.isActive // Set based on election status
+      inActiveElection: election.isActive, // Set based on election status
+      blockchainId: blockchainCandidateId, // Set blockchain ID if available
+      blockchainTxHash: blockchainTxHash  // Set blockchain transaction hash if available
     });
     
     console.log('Attempting to save candidate to MongoDB:', {
@@ -138,7 +180,13 @@ exports.createCandidate = async (req, res) => {
     // Return success response
     res.status(201).json({
       message: 'Candidate created successfully',
-      candidate: savedCandidate
+      candidate: savedCandidate,
+      blockchain: {
+        success: blockchainSuccess,
+        candidateId: blockchainCandidateId,
+        txHash: blockchainTxHash,
+        error: blockchainError
+      }
     });
   } catch (error) {
     console.error('Error creating candidate:', error);

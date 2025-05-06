@@ -11,6 +11,7 @@ VoteSure is a comprehensive electronic voting system that leverages blockchain t
 - **Candidate Management**: Register and manage election candidates with profile information
 - **Real-time Results**: View election results with blockchain verification
 - **Mobile-responsive Interface**: User-friendly design accessible from any device
+- **Multi-Election Support**: Run multiple elections simultaneously with blockchain verification for each
 
 ## Technology Stack
 - **Frontend**: React.js with Bootstrap
@@ -20,8 +21,27 @@ VoteSure is a comprehensive electronic voting system that leverages blockchain t
 - **Authentication**: JWT-based authentication with role management
 - **File Storage**: Local file system with secure access controls
 
+## Blockchain Architecture
+VoteSure uses Ethereum smart contracts to ensure the integrity of the voting process. The system is designed to store all critical election data on the blockchain, providing a transparent and immutable record of votes.
+
+### Key Blockchain Components
+
+- **VoteSureV2 Smart Contract**: Our upgraded contract with multi-election support.
+- **Election Management**: Each election has its own unique blockchain ID.
+- **Voter Registration**: Voters must be registered and approved for specific elections.
+- **Candidate Registration**: Candidates are added to specific elections.
+- **Vote Casting**: Votes are recorded on the blockchain with reference to both election and candidate.
+- **Result Tabulation**: Results are read directly from the blockchain for verification.
+
+### Data Structure
+
+- **Elections**: Each election has an ID, title, description, type, region, pincode, start time, end time, active status, and list of candidates.
+- **Voters**: Voters are registered with their wallet addresses and must be approved for specific elections.
+- **Candidates**: Candidates are registered for specific elections with their information.
+- **Votes**: Each vote links a voter to their chosen candidate in a specific election.
+
 ## Smart Contract Management
-The VoteSure system uses a Solidity smart contract (`VoteSure.sol`) to handle blockchain operations. Below are instructions for compiling and deploying the smart contract.
+The VoteSure system uses a Solidity smart contract (`VoteSureV2.sol`) to handle blockchain operations. Below are instructions for compiling and deploying the smart contract.
 
 ### Compiling the Smart Contract
 
@@ -58,7 +78,7 @@ The VoteSure system uses a Solidity smart contract (`VoteSure.sol`) to handle bl
    ```
    ls -la build/contracts
    ```
-   You should see `VoteSure.json` among the files.
+   You should see `VoteSureV2.json` among the files.
 
 ### Deploying the Smart Contract
 
@@ -120,6 +140,37 @@ If you modify the smart contract:
 3. Update the `.env` file with the new contract address.
 
 4. The system automatically detects contract address changes when you restart or make API calls.
+
+## Blockchain Data Flow
+
+### Creating a New Election
+1. Admin creates an election in the UI.
+2. Backend creates the election in both MongoDB and on the blockchain.
+3. The blockchain returns an election ID and transaction hash.
+4. These are stored in the MongoDB record for future reference.
+
+### Registering Candidates
+1. Admin adds a candidate to an election.
+2. Backend adds the candidate to both MongoDB and the blockchain.
+3. The blockchain returns a candidate ID and transaction hash.
+4. These are stored in the MongoDB record for future reference.
+
+### Registering Voters
+1. Voters register by providing required information.
+2. Admins approve voters for specific elections.
+3. Upon approval, the voter is registered on the blockchain for the specific election.
+4. Transaction hash is stored in the MongoDB record.
+
+### Casting Votes
+1. Voter authenticates and selects a candidate.
+2. Backend calls blockchain to record the vote.
+3. Vote is recorded in both MongoDB and blockchain.
+4. Blockchain transaction hash is stored with the vote record.
+
+### Viewing Results
+1. Results page pulls data from both MongoDB and blockchain.
+2. The system verifies that both sources match to ensure integrity.
+3. If there's a discrepancy, the blockchain record is considered authoritative.
 
 ## Error Handling in Blockchain Transactions
 
@@ -186,13 +237,25 @@ The system has been designed to handle various blockchain-related errors gracefu
 
 ## Recent Updates
 
-### 1. MongoDB Integration for Candidate Management
+### 1. VoteSureV2 Smart Contract
+- Upgraded to a multi-election contract architecture
+- Each election has its own unique ID on the blockchain
+- Support for multiple simultaneous elections
+- Enhanced data structure to track voters, candidates, and votes by election
+
+### 2. Blockchain Integration
+- All election data is mirrored on the blockchain
+- Enhanced voter registration with per-election approval
+- Improved candidate management with blockchain IDs
+- Vote verification cross-checked with blockchain records
+
+### 3. MongoDB Integration for Candidate Management
 - Candidates are now stored in MongoDB when added through the admin interface
 - Complete candidate profile with comprehensive details (personal info, party affiliation, etc.)
 - Images are stored using multer (candidate photos and party symbols)
 - When an election starts, candidate data is recorded on the blockchain
 
-### 2. Archived Elections Feature
+### 4. Archived Elections Feature
 - New section "Archived Elections" in the admin navbar
 - Stores data about ended elections, including:
   - Election details (type, region, dates)
@@ -200,12 +263,12 @@ The system has been designed to handle various blockchain-related errors gracefu
   - Vote counts and percentages
   - Ability to download results as CSV
 
-### 3. Footer Improvements
+### 5. Footer Improvements
 - "Register as Voter" link is now hidden when logged in with admin or officer wallet
 - "Connect Wallet" button is hidden when any wallet is already connected
 - Improved text visibility with updated color scheme
 
-### 4. Candidate Registration Form Enhancement
+### 6. Candidate Registration Form Enhancement
 - Date of Birth field is now optional
 - Added required Age field for better data collection
 - Improved form validation and user feedback
@@ -251,8 +314,13 @@ votesure/
 │   │   ├── routes/
 │   │   └── utils/
 │   └── uploads/
-└── contracts/
-    └── [blockchain contracts]
+├── blockchain/
+│   ├── contracts/
+│   │   ├── VoteSure.sol
+│   │   └── VoteSureV2.sol
+│   ├── migrations/
+│   └── scripts/
+└── README.md
 ```
 
 ## License

@@ -6,6 +6,7 @@ import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
 import { formatImageUrl } from '../../utils/imageUtils';
 import { Link } from 'react-router-dom';
+import { ethers } from 'ethers';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -29,6 +30,50 @@ const ManageElection = () => {
   const [editingElection, setEditingElection] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Check for MetaMask/Web3 availability
+  useEffect(() => {
+    const checkWeb3 = async () => {
+      if (window.ethereum) {
+        console.log('MetaMask is installed!');
+        
+        try {
+          // Initialize ethers provider
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
+          
+          // Get network information
+          const network = await provider.getNetwork();
+          console.log('Connected to network:', network.name, `(chainId: ${network.chainId})`);
+          
+          // Listen for account changes
+          window.ethereum.on('accountsChanged', (accounts) => {
+            console.log('MetaMask account changed:', accounts[0]);
+            if (accounts.length === 0) {
+              console.log('User disconnected from MetaMask');
+              setError('Please connect to MetaMask to use blockchain features');
+            } else {
+              setError(null); // Clear any previous connection errors
+            }
+          });
+          
+          // Listen for chain changes
+          window.ethereum.on('chainChanged', (chainId) => {
+            console.log('MetaMask chain changed:', chainId);
+            // Recommended to reload the page on chain change
+            window.location.reload();
+          });
+        } catch (error) {
+          console.error('Error initializing ethers provider:', error);
+          setError('Error connecting to MetaMask: ' + error.message);
+        }
+      } else {
+        console.warn('MetaMask is not installed. Please install MetaMask to use blockchain features.');
+        setError('MetaMask is not installed. Please install MetaMask to use blockchain features.');
+      }
+    };
+    
+    checkWeb3();
+  }, []);
   
   // Election form state
   const [newElection, setNewElection] = useState({
@@ -655,45 +700,127 @@ const ManageElection = () => {
           
       console.log('Start election response:', response.data);
       
-      // Check blockchain status in response
-      if (response.data && response.data.blockchain) {
-        const { blockchain } = response.data;
+      // Check if we need to use MetaMask for this transaction
+      if (response.data.useMetaMask && response.data.contractDetails) {
+        console.log('MetaMask transaction required. Preparing transaction...');
         
-        if (blockchain.success) {
-          if (blockchain.txHash) {
-            console.log('Transaction successful with hash:', blockchain.txHash);
-            setSuccessMessage(`Election started successfully! Transaction hash: ${blockchain.txHash.slice(0, 10)}...`);
-          } else if (blockchain.message && blockchain.message.includes('already started')) {
-            // Election was already started on blockchain
-            console.log('Election already started on blockchain');
-            setSuccessMessage('Election started successfully! (It was already active on the blockchain)');
-          } else {
-            // Generic success
-            setSuccessMessage('Election started successfully!');
+        const { address, method, params } = response.data.contractDetails;
+        
+        // Create ethers provider using the window.ethereum provider
+        if (!window.ethereum) {
+          throw new Error('MetaMask not found. Please make sure MetaMask is installed.');
+        }
+        
+        // Connect to provider
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        
+        // Load contract ABI
+        // This is a simplified ABI with just the method we need
+        const abi = [
+          {
+            "inputs": [
+              {
+                "internalType": "uint256",
+                "name": "_electionId",
+                "type": "uint256"
+              }
+            ],
+            "name": "startElection",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
           }
-        } else if (blockchain.error) {
-          // Handle blockchain errors
-          console.warn('Blockchain error:', blockchain.error);
+        ];
+        
+        // Create contract instance
+        const contract = new ethers.Contract(address, abi, signer);
+        
+        try {
+          console.log('Sending transaction to MetaMask...');
+          console.log('Contract address:', address);
+          console.log('Method:', method);
+          console.log('Params:', params);
           
-          // Check for specific error messages
-          if (blockchain.error.includes('already started')) {
-            setSuccessMessage('Election started successfully! (It was already active on the blockchain)');
+          // Call the contract method with the provided parameters
+          const tx = await contract.startElection(...params);
+          console.log('Transaction sent:', tx.hash);
+          
+          // Wait for transaction to be mined
+          setSuccessMessage(`Transaction submitted. Waiting for confirmation...`);
+          
+          // Wait for the transaction to be mined
+          const receipt = await tx.wait();
+          console.log('Transaction confirmed in block:', receipt.blockNumber);
+          
+          // Call the completion endpoint to update the backend
+          const completionResponse = await axios.post(`${API_URL}/election/start/complete`, {
+            electionId: response.data.election.id,
+            txHash: receipt.transactionHash || tx.hash
+          }, { headers });
+          
+          console.log('Completion response:', completionResponse.data);
+          
+          // Update election in UI
+          setElections(prev => prev.map(e => 
+            (e._id === electionId || e.id === electionId) 
+              ? { ...e, isActive: true }
+              : e
+          ));
+          
+          setSuccessMessage(`Election started successfully! Transaction hash: ${receipt.transactionHash?.slice(0, 10) || tx.hash.slice(0, 10)}...`);
+        } catch (txError) {
+          console.error('MetaMask transaction failed:', txError);
+          
+          // Handle user rejection separately
+          if (txError.code === 4001 || txError.code === 'ACTION_REJECTED') { // MetaMask error code for user rejection
+            setError('Transaction was rejected in MetaMask. Election not started.');
           } else {
-            setSuccessMessage("Election started in database, but blockchain transaction encountered an issue.");
-            setError(`Blockchain warning: ${blockchain.error.slice(0, 100)}${blockchain.error.length > 100 ? '...' : ''}`);
+            setError(`MetaMask transaction failed: ${txError.message || 'Unknown error'}`);
           }
         }
       } else {
-        // Generic success if no blockchain info
-        setSuccessMessage("Election started successfully!");
+        // Original non-MetaMask flow
+        // Check blockchain status in response
+        if (response.data && response.data.blockchain) {
+          const { blockchain } = response.data;
+          
+          if (blockchain.success) {
+            if (blockchain.txHash) {
+              console.log('Transaction successful with hash:', blockchain.txHash);
+              setSuccessMessage(`Election started successfully! Transaction hash: ${blockchain.txHash.slice(0, 10)}...`);
+            } else if (blockchain.message && blockchain.message.includes('already started')) {
+              // Election was already started on blockchain
+              console.log('Election already started on blockchain');
+              setSuccessMessage('Election started successfully! (It was already active on the blockchain)');
+            } else {
+              // Generic success
+              setSuccessMessage('Election started successfully!');
+            }
+          } else if (blockchain.error) {
+            // Handle blockchain errors
+            console.warn('Blockchain error:', blockchain.error);
+            
+            // Check for specific error messages
+            if (blockchain.error.includes('already started')) {
+              setSuccessMessage('Election started successfully! (It was already active on the blockchain)');
+            } else {
+              setSuccessMessage("Election started in database, but blockchain transaction encountered an issue.");
+              setError(`Blockchain warning: ${blockchain.error.slice(0, 100)}${blockchain.error.length > 100 ? '...' : ''}`);
+            }
+          }
+        } else {
+          // Generic success if no blockchain info
+          setSuccessMessage("Election started successfully!");
+        }
+        
+        // Update elections in the UI
+        setElections(prev => prev.map(e => 
+          (e._id === electionId || e.id === electionId) 
+            ? { ...e, isActive: true }
+            : e
+        ));
       }
-      
-      // Update elections in the UI
-      setElections(prev => prev.map(e => 
-        (e._id === electionId || e.id === electionId) 
-          ? { ...e, isActive: true }
-          : e
-      ));
       
       setShowStartModal(false);
       setActionElection(null);
@@ -767,45 +894,127 @@ const ManageElection = () => {
           
           console.log('Election stop response:', response.data);
       
-      // Check blockchain status in response
-      if (response.data && response.data.blockchain) {
-        const { blockchain } = response.data;
+      // Check if we need to use MetaMask for this transaction
+      if (response.data.useMetaMask && response.data.contractDetails) {
+        console.log('MetaMask transaction required for stopping election. Preparing transaction...');
         
-        if (blockchain.success) {
-          if (blockchain.txHash) {
-            console.log('Transaction successful with hash:', blockchain.txHash);
-            setSuccessMessage(`Election stopped successfully! Transaction hash: ${blockchain.txHash.slice(0, 10)}...`);
-          } else if (blockchain.message && blockchain.message.includes('already ended')) {
-            // Election was already ended on blockchain
-            console.log('Election already ended on blockchain');
-            setSuccessMessage('Election stopped successfully! (It was already inactive on the blockchain)');
-          } else {
-            // Generic success
-            setSuccessMessage('Election stopped successfully!');
+        const { address, method, params } = response.data.contractDetails;
+        
+        // Create ethers provider using the window.ethereum provider
+        if (!window.ethereum) {
+          throw new Error('MetaMask not found. Please make sure MetaMask is installed.');
+        }
+        
+        // Connect to provider
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        
+        // Load contract ABI
+        // This is a simplified ABI with just the method we need
+        const abi = [
+          {
+            "inputs": [
+              {
+                "internalType": "uint256",
+                "name": "_electionId",
+                "type": "uint256"
+              }
+            ],
+            "name": "endElection",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
           }
-        } else if (blockchain.error) {
-          // Handle blockchain errors
-          console.warn('Blockchain error:', blockchain.error);
+        ];
+        
+        // Create contract instance
+        const contract = new ethers.Contract(address, abi, signer);
+        
+        try {
+          console.log('Sending transaction to MetaMask...');
+          console.log('Contract address:', address);
+          console.log('Method:', method);
+          console.log('Params:', params);
           
-          // Check for specific error messages
-          if (blockchain.error.includes('already ended') || blockchain.error.includes('not started')) {
-            setSuccessMessage('Election stopped successfully! (It was already inactive on the blockchain)');
+          // Call the contract method with the provided parameters
+          const tx = await contract.endElection(...params);
+          console.log('Transaction sent:', tx.hash);
+          
+          // Wait for transaction to be mined
+          setSuccessMessage(`Transaction submitted. Waiting for confirmation...`);
+          
+          // Wait for the transaction to be mined
+          const receipt = await tx.wait();
+          console.log('Transaction confirmed in block:', receipt.blockNumber);
+          
+          // Call the completion endpoint to update the backend
+          const completionResponse = await axios.post(`${API_URL}/election/end/complete`, {
+            electionId: response.data.election.id,
+            txHash: receipt.transactionHash || tx.hash
+          }, { headers });
+          
+          console.log('Completion response:', completionResponse.data);
+          
+          // Update election in UI
+          setElections(prev => prev.map(e => 
+            (e._id === electionId || e.id === electionId) 
+              ? { ...e, isActive: false }
+              : e
+          ));
+          
+          setSuccessMessage(`Election stopped successfully! Transaction hash: ${receipt.transactionHash?.slice(0, 10) || tx.hash.slice(0, 10)}...`);
+        } catch (txError) {
+          console.error('MetaMask transaction failed:', txError);
+          
+          // Handle user rejection separately
+          if (txError.code === 4001 || txError.code === 'ACTION_REJECTED') { // MetaMask error code for user rejection
+            setError('Transaction was rejected in MetaMask. Election not stopped.');
           } else {
-            setSuccessMessage("Election stopped in database, but blockchain transaction encountered an issue.");
-            setError(`Blockchain warning: ${blockchain.error.slice(0, 100)}${blockchain.error.length > 100 ? '...' : ''}`);
+            setError(`MetaMask transaction failed: ${txError.message || 'Unknown error'}`);
           }
         }
       } else {
-        // Generic success if no blockchain info
-        setSuccessMessage("Election stopped successfully!");
+        // Original non-MetaMask flow
+        // Check blockchain status in response
+        if (response.data && response.data.blockchain) {
+          const { blockchain } = response.data;
+          
+          if (blockchain.success) {
+            if (blockchain.txHash) {
+              console.log('Transaction successful with hash:', blockchain.txHash);
+              setSuccessMessage(`Election stopped successfully! Transaction hash: ${blockchain.txHash.slice(0, 10)}...`);
+            } else if (blockchain.message && blockchain.message.includes('already ended')) {
+              // Election was already ended on blockchain
+              console.log('Election already ended on blockchain');
+              setSuccessMessage('Election stopped successfully! (It was already inactive on the blockchain)');
+            } else {
+              // Generic success
+              setSuccessMessage('Election stopped successfully!');
+            }
+          } else if (blockchain.error) {
+            // Handle blockchain errors
+            console.warn('Blockchain error:', blockchain.error);
+            
+            // Check for specific error messages
+            if (blockchain.error.includes('already ended') || blockchain.error.includes('not started')) {
+              setSuccessMessage('Election stopped successfully! (It was already inactive on the blockchain)');
+            } else {
+              setSuccessMessage("Election stopped in database, but blockchain transaction encountered an issue.");
+              setError(`Blockchain warning: ${blockchain.error.slice(0, 100)}${blockchain.error.length > 100 ? '...' : ''}`);
+            }
+          }
+        } else {
+          // Generic success if no blockchain info
+          setSuccessMessage("Election stopped successfully!");
+        }
+        
+        // Update the election status in the UI
+        setElections(prev => prev.map(e => 
+          (e._id === electionId || e.id === electionId) 
+            ? { ...e, isActive: false }
+            : e
+        ));
       }
-      
-      // Update the election status in the UI
-      setElections(prev => prev.map(e => 
-        (e._id === electionId || e.id === electionId) 
-          ? { ...e, isActive: false }
-          : e
-      ));
       
       setShowStopModal(false);
       setActionElection(null);

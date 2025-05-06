@@ -9,7 +9,13 @@ const {
   getCandidateFromBlockchain,
   getElectionStatusFromBlockchain,
   startElectionOnBlockchain,
-  endElectionOnBlockchain
+  endElectionOnBlockchain,
+  createElectionOnBlockchain,
+  addCandidateToBlockchain,
+  getElectionFromBlockchain,
+  getElectionResultsFromBlockchain,
+  archiveElectionOnBlockchain,
+  getAllElectionsFromBlockchain
 } = require('../utils/blockchain.util');
 const mongoose = require('mongoose');
 
@@ -100,23 +106,67 @@ exports.createElection = async (req, res) => {
       });
     }
     
-    // Create new election
+    // First create the election on the blockchain
+    let blockchainElectionId = null;
+    let blockchainTxHash = null;
+    let blockchainSuccess = false;
+    let blockchainError = null;
+    
+    try {
+      console.log('Creating election on blockchain first...');
+      const blockchainResult = await createElectionOnBlockchain(
+        electionTitle,
+        description,
+        electionType,
+        region,
+        pincode,
+        new Date(startDate),
+        new Date(endDate)
+      );
+      
+      if (blockchainResult.success) {
+        blockchainSuccess = true;
+        blockchainTxHash = blockchainResult.txHash;
+        blockchainElectionId = blockchainResult.electionId;
+        console.log(`Election created on blockchain with ID: ${blockchainElectionId}, tx hash: ${blockchainTxHash}`);
+      } else {
+        blockchainError = blockchainResult.error;
+        console.error('Failed to create election on blockchain:', blockchainError);
+      }
+    } catch (blockchainErr) {
+      blockchainError = blockchainErr.message || 'Unknown blockchain error';
+      console.error('Exception creating election on blockchain:', blockchainErr);
+    }
+    
+    // Create new election in database
     const newElection = new Election({
-      title: electionTitle, // Use the electionTitle variable
-      type: electionType,   // Use the electionType variable
+      title: electionTitle,
+      type: electionType,
       description,
       region,
       pincode,
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       isActive: false,
-      createdBy: req.userId // Set by auth middleware
+      createdBy: req.userId, // Set by auth middleware
+      blockchainElectionId: blockchainElectionId, // Store the blockchain ID
+      blockchainCreateTxHash: blockchainTxHash // Store the transaction hash
     });
     
     try {
       const savedElection = await newElection.save();
-      console.log('Election created successfully:', savedElection);
-      res.status(201).json(savedElection);
+      console.log('Election created successfully in database:', savedElection);
+      
+      // Return with blockchain status
+      res.status(201).json({
+        ...savedElection.toObject(),
+        blockchain: {
+          success: blockchainSuccess,
+          electionId: blockchainElectionId,
+          txHash: blockchainTxHash,
+          error: blockchainError
+        }
+      });
     } catch (dbError) {
       console.error('Error saving election to database:', dbError);
       // Return a more detailed error message
@@ -126,7 +176,13 @@ exports.createElection = async (req, res) => {
         details: dbError.errors ? Object.keys(dbError.errors).map(key => ({
           field: key,
           message: dbError.errors[key].message
-        })) : null
+        })) : null,
+        blockchain: {
+          success: blockchainSuccess,
+          electionId: blockchainElectionId,
+          txHash: blockchainTxHash,
+          error: blockchainError
+        }
       });
     }
   } catch (error) {
@@ -458,41 +514,74 @@ exports.startElection = async (req, res) => {
       let blockchainMessage = null;
       let blockchainSuccess = false;
       let alreadyStartedOnBlockchain = false;
+      let useMetaMask = false;
+      let contractDetails = null;
       
       try {
-        // Prepare candidate data for blockchain
-        const candidateIds = candidates.map(c => c.blockchainId || c._id.toString());
-        const candidateNames = candidates.map(c => `${c.firstName} ${c.lastName}`);
-        
-        console.log('Starting election on blockchain with candidates:', candidateNames);
-        
-        // Call blockchain integration with MetaMask info if available
-        const blockchainResult = await startElectionOnBlockchain(
-          election._id.toString(),
-          election.title || election.name,
-          candidateIds,
-          candidateNames,
-          signer // Pass signer object to blockchain utility
-        );
-        
-        if (blockchainResult && blockchainResult.success) {
-          blockchainSuccess = true;
-          if (blockchainResult.alreadyStarted) {
-            alreadyStartedOnBlockchain = true;
-            blockchainMessage = blockchainResult.message || 'Election was already started on blockchain';
-            console.log(blockchainMessage);
-          } else {
-            blockchainTxHash = blockchainResult.txHash;
-            console.log(`Election started on blockchain with transaction hash: ${blockchainTxHash}`);
-          }
+        // Ensure we have a blockchain election ID
+        if (!election.blockchainElectionId) {
+          console.warn('No blockchain election ID found in database, cannot start on blockchain');
+          blockchainError = 'No blockchain election ID available';
         } else {
-          blockchainError = blockchainResult?.error || 'Unknown blockchain error';
-          console.warn('Blockchain integration failed or returned no transaction hash');
-          console.warn(blockchainError);
+          console.log(`Starting election on blockchain with ID: ${election.blockchainElectionId}`);
+        
+          // Call blockchain integration with MetaMask info if available
+          const blockchainResult = await startElectionOnBlockchain(
+            election.blockchainElectionId,
+            signer // Pass signer object to blockchain utility
+          );
+          
+          if (blockchainResult && blockchainResult.success) {
+            blockchainSuccess = true;
+            
+            // Check if this is a MetaMask transaction that needs approval
+            if (blockchainResult.useMetaMask) {
+              useMetaMask = true;
+              contractDetails = {
+                address: blockchainResult.contractAddress,
+                method: blockchainResult.methodName,
+                params: blockchainResult.params
+              };
+              blockchainMessage = blockchainResult.message || 'Please approve the transaction in MetaMask';
+              console.log('Returning MetaMask transaction details to frontend');
+            } else if (blockchainResult.alreadyStarted) {
+              alreadyStartedOnBlockchain = true;
+              blockchainMessage = blockchainResult.message || 'Election was already started on blockchain';
+              console.log(blockchainMessage);
+            } else {
+              blockchainTxHash = blockchainResult.txHash;
+              console.log(`Election started on blockchain with transaction hash: ${blockchainTxHash}`);
+            }
+          } else {
+            blockchainError = blockchainResult?.error || 'Unknown blockchain error';
+            console.warn('Blockchain integration failed or returned no transaction hash');
+            console.warn(blockchainError);
+          }
         }
-      } catch (blockchainError) {
-        console.error('Error starting election on blockchain:', blockchainError);
+      } catch (blockchainErr) {
+        blockchainError = blockchainErr.message || 'Unknown blockchain error';
+        console.error('Error starting election on blockchain:', blockchainErr);
         // We'll still continue with database update even if blockchain fails
+      }
+      
+      // If this is a MetaMask transaction, don't update the database yet
+      // The frontend will call a separate endpoint after the transaction completes
+      if (useMetaMask) {
+        return res.status(200).json({
+          message: 'Please approve the MetaMask transaction to start the election',
+          election: {
+            id: election._id,
+            title: election.title
+          },
+          useMetaMask: true,
+          contractDetails,
+          candidatesCount: candidates.length,
+          blockchain: {
+            success: blockchainSuccess,
+            useMetaMask: true,
+            message: blockchainMessage
+          }
+        });
       }
       
       // Save blockchain transaction hash if we got one
@@ -585,6 +674,14 @@ exports.endElection = async (req, res) => {
       console.log('Election is already inactive in the database');
     }
     
+    // Check if election is archived
+    if (election.isArchived) {
+      return res.status(403).json({ 
+        message: 'Cannot end an archived election',
+        details: 'Archived elections are read-only for historical record purposes'
+      });
+    }
+    
     // Prepare signer object for MetaMask if address is provided
     let signer = null;
     if (metaMaskAddress && typeof metaMaskAddress === 'string' && metaMaskAddress.startsWith('0x')) {
@@ -593,7 +690,7 @@ exports.endElection = async (req, res) => {
     }
     
     try {
-      // End the election in the database
+      // Mark the election as inactive in the database
       election.isActive = false;
       election.endedAt = Date.now();
       
@@ -607,29 +704,91 @@ exports.endElection = async (req, res) => {
       let blockchainMessage = null;
       let blockchainSuccess = false;
       let alreadyEndedOnBlockchain = false;
+      let useMetaMask = false;
+      let contractDetails = null;
       
       try {
-        // Call blockchain integration with MetaMask info if available
-        const blockchainResult = await endElectionOnBlockchain(signer);
-        
-        if (blockchainResult && blockchainResult.success) {
-          blockchainSuccess = true;
-          if (blockchainResult.alreadyEnded) {
-            alreadyEndedOnBlockchain = true;
-            blockchainMessage = blockchainResult.message || 'Election was already ended on blockchain';
-            console.log(blockchainMessage);
-          } else {
-            blockchainTxHash = blockchainResult.txHash;
-            console.log(`Election ended on blockchain with transaction hash: ${blockchainTxHash}`);
-          }
+        // Ensure we have a blockchain election ID
+        if (!election.blockchainElectionId) {
+          console.warn('No blockchain election ID found in database, cannot end on blockchain');
+          blockchainError = 'No blockchain election ID available';
         } else {
-          blockchainError = blockchainResult?.error || 'Unknown blockchain error';
-          console.warn('Blockchain integration failed or returned no transaction hash');
-          console.warn(blockchainError);
+          console.log(`Ending election on blockchain with ID: ${election.blockchainElectionId}`);
+          
+          // Call blockchain integration with MetaMask info if available
+          const blockchainResult = await endElectionOnBlockchain(
+            election.blockchainElectionId,
+            signer
+          );
+          
+          if (blockchainResult && blockchainResult.success) {
+            blockchainSuccess = true;
+            
+            // Check if this is a MetaMask transaction that needs approval
+            if (blockchainResult.useMetaMask) {
+              useMetaMask = true;
+              contractDetails = {
+                address: blockchainResult.contractAddress,
+                method: blockchainResult.methodName,
+                params: blockchainResult.params
+              };
+              blockchainMessage = blockchainResult.message || 'Please approve the transaction in MetaMask';
+              console.log('Returning MetaMask transaction details to frontend');
+            } else if (blockchainResult.alreadyEnded) {
+              alreadyEndedOnBlockchain = true;
+              blockchainMessage = blockchainResult.message || 'Election was already ended on blockchain';
+              console.log(blockchainMessage);
+            } else {
+              blockchainTxHash = blockchainResult.txHash;
+              console.log(`Election ended on blockchain with transaction hash: ${blockchainTxHash}`);
+            }
+            
+            // Now archive the election on blockchain
+            if (!useMetaMask) {
+              try {
+                console.log(`Archiving election on blockchain with ID: ${election.blockchainElectionId}`);
+                const archiveResult = await archiveElectionOnBlockchain(election.blockchainElectionId);
+                
+                if (archiveResult && archiveResult.success) {
+                  console.log(`Election archived on blockchain with transaction hash: ${archiveResult.txHash}`);
+                  election.blockchainArchiveTxHash = archiveResult.txHash;
+                } else {
+                  console.warn('Blockchain archiving failed:', archiveResult?.error);
+                }
+              } catch (archiveError) {
+                console.error('Error archiving election on blockchain:', archiveError);
+                // Continue anyway, the election is still marked as ended which is the primary function
+              }
+            }
+          } else {
+            blockchainError = blockchainResult?.error || 'Unknown blockchain error';
+            console.warn('Blockchain integration failed or returned no transaction hash');
+            console.warn(blockchainError);
+          }
         }
-      } catch (blockchainError) {
-        console.error('Error ending election on blockchain:', blockchainError);
+      } catch (blockchainErr) {
+        blockchainError = blockchainErr.message || 'Unknown blockchain error';
+        console.error('Error ending election on blockchain:', blockchainErr);
         // We'll still continue with database update even if blockchain fails
+      }
+      
+      // If this is a MetaMask transaction, don't update the database yet
+      // The frontend will call a separate endpoint after the transaction completes
+      if (useMetaMask) {
+        return res.status(200).json({
+          message: 'Please approve the MetaMask transaction to end the election',
+          election: {
+            id: election._id,
+            title: election.title
+          },
+          useMetaMask: true,
+          contractDetails,
+          blockchain: {
+            success: blockchainSuccess,
+            useMetaMask: true,
+            message: blockchainMessage
+          }
+        });
       }
       
       // Save blockchain transaction hash if we got one
@@ -1022,7 +1181,7 @@ exports.getCandidateDetails = async (req, res) => {
     
     // Convert to a clean response object
     const response = {
-      id: candidate._id,
+        id: candidate._id,
       _id: candidate._id,
       firstName: candidate.firstName,
       lastName: candidate.lastName,
@@ -1039,9 +1198,9 @@ exports.getCandidateDetails = async (req, res) => {
       education: candidate.education,
       experience: candidate.experience,
       biography: candidate.biography,
-      slogan: candidate.slogan,
+        slogan: candidate.slogan,
       email: candidate.email,
-      blockchainId: candidate.blockchainId,
+        blockchainId: candidate.blockchainId,
       voteCount: blockchainData.success ? blockchainData.data?.voteCount : (candidate.voteCount || 0),
       election: candidate.election ? {
         id: candidate.election._id,
@@ -1066,17 +1225,70 @@ exports.getCandidateDetails = async (req, res) => {
 exports.castVote = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { candidateId, privateKey } = req.body;
+    const { candidateId, privateKey, electionId } = req.body;
     
     // Validate required fields
     if (!candidateId || !privateKey) {
       return res.status(400).json({ message: 'Candidate ID and private key are required' });
     }
     
-    // Find active election
-    const election = await Election.findOne({ isActive: true });
+    // Find election - either from the provided ID or get the active one
+    let election;
+    if (electionId && mongoose.Types.ObjectId.isValid(electionId)) {
+      election = await Election.findById(electionId);
+      if (!election) {
+        return res.status(404).json({ message: 'Election not found' });
+      }
+      
+      // Check if this election is active
+      if (!election.isActive) {
+        return res.status(400).json({ 
+          message: 'This election is not active',
+          details: 'Votes can only be cast during active elections'
+        });
+      }
+    } else {
+      // Find active election if no specific election ID was provided
+      election = await Election.findOne({ isActive: true });
     if (!election) {
       return res.status(400).json({ message: 'No active election found' });
+      }
+    }
+    
+    // Verify the election is still active and not recently ended
+    const electionStatus = await getElectionStatusFromBlockchain(election.blockchainElectionId);
+    if (electionStatus.success && electionStatus.data) {
+      if (electionStatus.data.ended) {
+        console.log('Blockchain indicates the election has already ended');
+        return res.status(400).json({ 
+          message: 'The election has already ended',
+          details: 'Voting period for this election has closed and votes are no longer being accepted'
+        });
+      }
+      
+      if (!electionStatus.data.started) {
+        console.log('Blockchain indicates the election has not started');
+        return res.status(400).json({ 
+          message: 'The election has not started yet',
+          details: 'Voting period for this election has not begun'
+        });
+      }
+    } else {
+      console.warn('Could not verify election status on blockchain, proceeding with database check');
+    }
+    
+    // Additional check against database end date
+    if (election.endDate && new Date(election.endDate) < new Date()) {
+      console.log('Election end date has passed:', election.endDate);
+      
+      // Also update the database to mark the election as inactive
+      election.isActive = false;
+      await election.save();
+      
+      return res.status(400).json({ 
+        message: 'The election has ended',
+        details: 'The voting period for this election ended on ' + new Date(election.endDate).toLocaleString()
+      });
     }
     
     // Find voter
@@ -1096,19 +1308,94 @@ exports.castVote = async (req, res) => {
       return res.status(404).json({ message: 'Candidate not found' });
     }
     
+    // Ensure candidate has a valid blockchainId
+    if (!candidate.blockchainId) {
+      console.log('Candidate does not have a blockchain ID in the database, checking if we can derive one');
+      
+      // If not available, check if we can derive a blockchainId
+      // For example, we might be able to use the candidate's position in the list of candidates
+      try {
+        const allCandidates = await Candidate.find({ election: election._id }).sort({ _id: 1 });
+        const index = allCandidates.findIndex(c => c._id.toString() === candidate._id.toString());
+        
+        if (index !== -1) {
+          // Use index + 1 as blockchain ID (assuming blockchain candidates are 1-indexed)
+          console.log(`Derived blockchain ID for candidate: ${index + 1} (based on position in candidates list)`);
+          candidate.blockchainId = index + 1;
+          
+          // Save the derived ID back to the database for future use
+          await candidate.save();
+        } else {
+          return res.status(400).json({ 
+            message: 'Invalid candidate blockchain ID',
+            details: 'This candidate does not have a valid blockchain ID configured and one could not be derived'
+          });
+        }
+      } catch (error) {
+        console.error('Error deriving candidate blockchain ID:', error);
+        return res.status(400).json({ 
+          message: 'Invalid candidate blockchain ID',
+          details: 'This candidate does not have a valid blockchain ID configured'
+        });
+      }
+    }
+    
+    // Convert the blockchainId to a proper numeric value
+    const candidateBlockchainId = parseInt(candidate.blockchainId);
+    if (isNaN(candidateBlockchainId)) {
+      return res.status(400).json({ 
+        message: 'Invalid candidate blockchain ID format',
+        details: 'The candidate\'s blockchain ID is not a valid number'
+      });
+    }
+    
+    console.log(`Using blockchain ID ${candidateBlockchainId} for candidate ${candidate.firstName} ${candidate.lastName}`);
+    
     // Check if voter has already voted
     const existingVote = await Vote.findOne({ voter: voter._id, election: election._id });
     if (existingVote) {
       return res.status(400).json({ message: 'Voter has already cast a vote in this election' });
     }
     
-    // Cast vote on blockchain
-    console.log(`Attempting to cast vote for candidate ID: ${candidateId} and blockchain ID: ${candidate.blockchainId || 'not set'}`);
-    const blockchainResult = await castVoteOnBlockchain(privateKey, candidate.blockchainId);
-    
     let blockchainSuccess = false;
     let blockchainError = null;
     let blockchainTxHash = null;
+    
+    // Check if the privateKey is a MetaMask signature (starts with 0x and is longer than a standard private key)
+    const isMetaMaskSignature = privateKey.startsWith('0x') && privateKey.length > 100;
+    
+    if (isMetaMaskSignature) {
+      console.log('Detected MetaMask signature, need to record vote on blockchain');
+      
+      try {
+        // Get the user's wallet address
+        const user = await User.findById(userId);
+        if (!user || !user.walletAddress) {
+          return res.status(400).json({ 
+            message: 'Wallet address not found for this voter',
+            details: 'Your account is not properly linked to a blockchain wallet address'
+          });
+        }
+        
+        console.log(`Using wallet address ${user.walletAddress} for MetaMask transaction`);
+        
+        // Since we don't have a private key but just a signature, we'll need to use a server-side wallet
+        // to submit the transaction on behalf of the user, based on their signature authorization
+        const serverPrivateKey = process.env.ADMIN_PRIVATE_KEY;
+        if (!serverPrivateKey) {
+          console.error('ADMIN_PRIVATE_KEY environment variable is not set');
+          
+          // Record the vote in the database without blockchain confirmation
+          console.log('Proceeding without blockchain confirmation due to missing ADMIN_PRIVATE_KEY');
+          
+          blockchainTxHash = `metamask-signature-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+          
+          // Add warning to response
+          res.locals.blockchainWarning = 'Vote recorded in database, but not on blockchain due to server configuration issue';
+        } else {
+          // Use the server private key to submit the transaction on behalf of the signed user
+          console.log(`Attempting to cast vote for election ID: ${election.blockchainElectionId}, candidate ID: ${candidateBlockchainId}`);
+          const blockchainResult = await castVoteOnBlockchain(serverPrivateKey, election.blockchainElectionId, candidateBlockchainId);
     
     if (blockchainResult.success) {
       blockchainSuccess = true;
@@ -1116,7 +1403,7 @@ exports.castVote = async (req, res) => {
       console.log(`Vote cast successfully on blockchain with transaction hash: ${blockchainTxHash}`);
     } else {
       blockchainError = blockchainResult.error;
-      console.error('Failed to cast vote on blockchain:', blockchainError);
+            console.error('Failed to cast vote on blockchain using server key:', blockchainError);
       
       // Check if error indicates voter has already voted on blockchain
       if (blockchainError && 
@@ -1129,72 +1416,124 @@ exports.castVote = async (req, res) => {
         });
       }
       
-      // If it's another blockchain error, we'll still store the vote in our database
-      console.log('Continuing with database vote storage despite blockchain error');
+            // Check if error indicates election has ended
+            if (blockchainError && 
+                (blockchainError.includes("Election has already ended") || 
+                 blockchainError.includes("Election has ended") ||
+                 blockchainError.toLowerCase().includes("election") && 
+                 blockchainError.toLowerCase().includes("ended"))) {
+              return res.status(400).json({
+                message: 'The election has already ended',
+                details: 'Voting period for this election has closed and votes are no longer being accepted',
+                error: blockchainError
+              });
+            }
+            
+            // Return error if we couldn't record on blockchain - this is critical for verification
+            return res.status(500).json({ 
+              message: 'Failed to record vote on blockchain',
+              error: blockchainError,
+              details: 'Your vote could not be recorded on the blockchain for verification',
+              candidateId: candidateBlockchainId,
+              electionId: election.blockchainElectionId
+            });
+          }
+        }
+      } catch (metaMaskError) {
+        console.error('Error processing MetaMask transaction:', metaMaskError);
+        blockchainError = metaMaskError.message;
+        
+        // Still allow vote to be recorded in database, but note the error
+        res.locals.blockchainWarning = 'Vote recorded in database, but blockchain verification failed: ' + blockchainError;
+        
+        blockchainTxHash = `error-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      }
+    } else {
+      // Private key provided directly (not through MetaMask)
+      console.log('Regular private key provided, attempting to cast vote directly on blockchain');
+      
+      try {
+        // Call the blockchain directly
+        console.log(`Attempting to cast vote for election ID: ${election.blockchainElectionId}, candidate ID: ${candidateBlockchainId}`);
+        const blockchainResult = await castVoteOnBlockchain(privateKey, election.blockchainElectionId, candidateBlockchainId);
+        
+        if (blockchainResult.success) {
+          blockchainSuccess = true;
+          blockchainTxHash = blockchainResult.txHash;
+          console.log(`Vote cast successfully on blockchain with transaction hash: ${blockchainTxHash}`);
+        } else {
+          blockchainError = blockchainResult.error;
+          console.error('Failed to cast vote on blockchain with provided private key:', blockchainError);
+          
+          // Check if this is a critical blockchain error
+          const criticalError = 
+            (blockchainError && blockchainError.includes("Voter has already voted")) ||
+            (blockchainError && blockchainError.includes("Election has ended"));
+          
+          if (criticalError) {
+            return res.status(400).json({
+              message: 'Failed to cast vote on blockchain',
+              error: blockchainError,
+              details: blockchainError.includes("already voted") 
+                ? 'You have already voted in this election according to the blockchain records' 
+                : 'The election has ended and votes are no longer being accepted'
+            });
+          }
+        }
+      } catch (blockchainErr) {
+        blockchainError = blockchainErr.message;
+        console.error('Exception casting vote on blockchain:', blockchainErr);
+        
+        // Allow vote to be recorded in database, but note the error
+        res.locals.blockchainWarning = 'Vote recorded in database, but blockchain verification failed: ' + blockchainError;
+        
+        blockchainTxHash = `error-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      }
     }
     
-    // Create vote record in our database
+    // Record the vote in the database
     const vote = new Vote({
       voter: voter._id,
       candidate: candidate._id,
       election: election._id,
-      blockchainTxHash,
-      blockchainError: blockchainSuccess ? null : blockchainError
+      blockchainTxHash
     });
     
     await vote.save();
-    console.log(`Vote saved to database with ID: ${vote._id}`);
     
-    // Update candidate vote count in our database
+    // Update candidate's vote count
     candidate.voteCount = (candidate.voteCount || 0) + 1;
     await candidate.save();
-    console.log(`Candidate vote count updated to: ${candidate.voteCount}`);
     
-    // Update election total votes
-    election.totalVotes = (election.totalVotes || 0) + 1;
-    await election.save();
-    console.log(`Election total votes updated to: ${election.totalVotes}`);
+    // Generate response with appropriate message and blockchain status
+    let message = 'Vote cast successfully';
+    if (res.locals.blockchainWarning) {
+      message += ' (with warning)';
+    }
     
-    res.json({
-      message: blockchainSuccess 
-        ? 'Vote cast successfully and recorded on blockchain' 
-        : 'Vote recorded in database, but blockchain transaction failed',
-      vote: {
-        id: vote._id,
-        timestamp: vote.createdAt,
+    res.status(201).json({
+      message,
         candidate: {
           id: candidate._id,
-          name: `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`,
+        name: `${candidate.firstName} ${candidate.lastName}`,
           party: candidate.partyName
         },
+      election: {
+        id: election._id,
+        title: election.title
+      },
         blockchain: {
           success: blockchainSuccess,
           txHash: blockchainTxHash,
-          error: blockchainError
-        }
+        error: blockchainError,
+        warning: res.locals.blockchainWarning
       }
     });
   } catch (error) {
-    console.error('Cast vote error:', error);
-    
-    // Provide more specific error messages
-    let errorMessage = 'Server error while casting vote';
-    if (error.message) {
-      if (error.message.includes('private key') || error.message.includes('privateKey')) {
-        errorMessage = 'Invalid private key format or encryption error';
-      } else if (error.message.includes('gas') || error.message.includes('Gas')) {
-        errorMessage = 'Blockchain transaction error: insufficient gas or gas estimation failed';
-      } else if (error.message.includes('reverted') || error.message.includes('revert')) {
-        errorMessage = 'Blockchain transaction was reverted. You may have already voted or the election has ended';
-      } else {
-        errorMessage = `Transaction error: ${error.message}`;
-      }
-    }
-    
+    console.error('Error casting vote:', error);
     res.status(500).json({ 
-      message: errorMessage,
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: 'Failed to cast vote', 
+      error: error.message
     });
   }
 };
@@ -1217,7 +1556,7 @@ exports.verifyVote = async (req, res) => {
     }
     
     // Find vote
-    const vote = await Vote.findOne({ voter: voter._id, election: election._id }).populate('candidate');
+    const vote = await Vote.findOne({ voter: voter._id, election: election._id }).populate('candidate election');
     if (!vote) {
       return res.status(404).json({ message: 'No vote found for this election' });
     }
@@ -1225,25 +1564,112 @@ exports.verifyVote = async (req, res) => {
     // Get user for wallet address
     const user = await User.findById(userId);
     
-    // Get blockchain status
+    // Get blockchain verification status
     let blockchainStatus = null;
-    if (user.walletAddress) {
+    let blockchainVerification = "Unknown";
+    let verificationDetails = null;
+    
+    if (user && user.walletAddress) {
+      try {
+        console.log(`Getting blockchain voter status for wallet: ${user.walletAddress}`);
       blockchainStatus = await getVoterStatusFromBlockchain(user.walletAddress);
+        
+        if (blockchainStatus && blockchainStatus.success) {
+          if (blockchainStatus.data.hasVoted) {
+            const votedCandidateId = blockchainStatus.data.votedCandidateId;
+            
+            // Check if blockchain candidateId matches our database record
+            // Note: We might need to compare string representations or normalized values
+            if (vote.candidate && vote.candidate.blockchainId) {
+              const databaseBlockchainId = Number(vote.candidate.blockchainId);
+              
+              if (databaseBlockchainId === votedCandidateId) {
+                blockchainVerification = "Verified";
+                verificationDetails = {
+                  message: "Your vote has been successfully verified on the blockchain",
+                  matchStatus: "Matched",
+                  blockchainCandidateId: votedCandidateId,
+                  databaseCandidateId: vote.candidate.blockchainId
+                };
+              } else {
+                blockchainVerification = "Mismatch";
+                verificationDetails = {
+                  message: "Your vote record doesn't match the blockchain record",
+                  matchStatus: "Mismatch",
+                  blockchainCandidateId: votedCandidateId,
+                  databaseCandidateId: vote.candidate.blockchainId
+                };
+              }
+            } else {
+              blockchainVerification = "Incomplete";
+              verificationDetails = {
+                message: "Blockchain shows you voted, but candidate blockchain ID is missing in database",
+                matchStatus: "Incomplete",
+                blockchainCandidateId: votedCandidateId
+              };
+            }
+          } else {
+            blockchainVerification = "Not Found";
+            verificationDetails = {
+              message: "No vote record found on the blockchain for your address",
+              matchStatus: "Not Found"
+            };
+          }
+        }
+      } catch (blockchainError) {
+        console.error("Error verifying vote on blockchain:", blockchainError);
+        blockchainVerification = "Error";
+        verificationDetails = {
+          message: "Error verifying your vote on the blockchain",
+          error: blockchainError.message
+        };
+      }
+    } else {
+      blockchainVerification = "Not Linked";
+      verificationDetails = {
+        message: "No wallet address linked to your account for blockchain verification"
+      };
     }
+    
+    // Format the candidate information
+    const candidateInfo = vote.candidate ? {
+      id: vote.candidate._id,
+      name: `${vote.candidate.firstName} ${vote.candidate.middleName ? vote.candidate.middleName + ' ' : ''}${vote.candidate.lastName}`,
+      party: vote.candidate.partyName,
+      partySymbol: vote.candidate.partySymbol,
+      photoUrl: vote.candidate.photoUrl,
+      blockchainId: vote.candidate.blockchainId
+    } : {
+      id: null,
+      name: "Unknown Candidate",
+      party: "Unknown Party"
+    };
+    
+    // Format the election information
+    const electionInfo = vote.election ? {
+      id: vote.election._id,
+      title: vote.election.title || vote.election.name,
+      type: vote.election.type,
+      startDate: vote.election.startDate,
+      endDate: vote.election.endDate,
+      isActive: vote.election.isActive
+    } : {
+      id: null,
+      title: "Unknown Election"
+    };
     
     res.json({
       vote: {
         id: vote._id,
-        timestamp: vote.timestamp,
-        candidate: {
-          id: vote.candidate._id,
-          name: vote.candidate.name,
-          party: vote.candidate.party,
-          slogan: vote.candidate.slogan,
-          image: vote.candidate.image
-        },
+        timestamp: vote.timestamp || vote.createdAt,
+        candidate: candidateInfo,
+        election: electionInfo,
         blockchainTxHash: vote.blockchainTxHash,
+        blockchainVerification: blockchainVerification,
+        verificationDetails: verificationDetails,
         blockchainStatus: blockchainStatus?.success ? {
+          isRegistered: blockchainStatus.data.isRegistered,
+          isApproved: blockchainStatus.data.isApproved,
           hasVoted: blockchainStatus.data.hasVoted,
           votedCandidateId: blockchainStatus.data.votedCandidateId
         } : null
@@ -1251,7 +1677,10 @@ exports.verifyVote = async (req, res) => {
     });
   } catch (error) {
     console.error('Verify vote error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Server error during vote verification',
+      error: error.message
+    });
   }
 };
 
@@ -1340,21 +1769,27 @@ exports.checkAndArchiveInactiveElections = async () => {
       if (unlinkedCandidates.length > 0) {
         console.log(`Found ${unlinkedCandidates.length} candidates with matching type but no election reference`);
         
-        // Update these candidates to link them to this election
+        // Link these candidates to this election
         const linkResult = await Candidate.updateMany(
           { 
             electionType: election.type,
-            election: { $exists: false }
+            $or: [
+              { election: { $exists: false } },
+              { election: null }
+            ]
           },
           {
-            election: election._id
+            $set: {
+              election: election._id,
+              inActiveElection: false
+            }
           }
         );
         
         console.log(`Linked ${linkResult.modifiedCount} candidates to election ${election.title}`);
       }
       
-      // Find all candidates associated with this election (either by ID or type)
+      // Step 2: Get all candidates for this election (either by direct reference or type)
       const candidates = await Candidate.find({
         $or: [
           { election: election._id },
@@ -1362,11 +1797,21 @@ exports.checkAndArchiveInactiveElections = async () => {
         ]
       });
       
-      console.log(`Found ${candidates.length} candidates associated with election ${election.title}`);
+      console.log(`Found ${candidates.length} candidates associated with this election to archive`);
       
-      if (candidates.length > 0) {
-        // Update all candidates to mark them as archived while PRESERVING election reference
-        const candidateUpdateResult = await Candidate.updateMany(
+      // Step 3: Calculate total votes for the election
+      const votes = await Vote.find({ election: election._id });
+      const totalVotes = votes.length;
+      
+      // Save total votes to the election
+      election.totalVotes = totalVotes;
+      
+      // Save the election with updated fields
+      await election.save();
+      
+      // Step 4: Update all candidates to mark them as archived and no longer active
+      // Ensure the election reference is preserved for all candidates
+      const updateResult = await Candidate.updateMany(
           { 
             $or: [
               { election: election._id },
@@ -1377,32 +1822,389 @@ exports.checkAndArchiveInactiveElections = async () => {
             $set: {
               inActiveElection: false,
               isArchived: true,
-              election: election._id // Explicitly set the election reference to ensure it's preserved
+            election: election._id // Explicitly ensure election reference is preserved
             }
           }
         );
+      
+      console.log(`Updated ${updateResult.modifiedCount} candidates to archived status`);
+      console.log('Election ended and archived successfully:', election);
         
         totalArchivedCandidates += candidates.length;
-        console.log(`Updated ${candidateUpdateResult.modifiedCount} candidates to archived status while preserving election reference`);
-      }
-      
-      // Calculate and save total votes for the election (helps with reporting)
-      const totalVotes = await Vote.countDocuments({ election: election._id });
-      
-      // Archive the election
-      election.isArchived = true;
-      election.archivedAt = now;
-      election.totalVotes = totalVotes;
-      await election.save();
-      
-      console.log(`Successfully archived election: ${election.title} with ${candidates.length} candidates and ${totalVotes} votes`);
     }
     
-    console.log(`Archive operation completed: ${unarchived.length} elections and ${totalArchivedCandidates} candidates archived`);
+    console.log(`Archived ${totalArchivedCandidates} candidates`);
     
-    return unarchived.length;
+    return totalArchivedCandidates;
   } catch (error) {
-    console.error('Error in archive inactive elections function:', error);
+    console.error('Error in checkAndArchiveInactiveElections:', error);
     return 0;
   }
-}; 
+};
+
+// Complete election start after MetaMask transaction
+exports.completeElectionStart = async (req, res) => {
+  try {
+    const { electionId, txHash } = req.body;
+    console.log(`Completing election start for ID: ${electionId} with transaction hash: ${txHash}`);
+    
+    if (!txHash) {
+      return res.status(400).json({ message: 'Transaction hash is required' });
+    }
+    
+    if (!mongoose.Types.ObjectId.isValid(electionId)) {
+      return res.status(400).json({ message: 'Invalid election ID format' });
+    }
+    
+    // Find the election
+    const election = await Election.findById(electionId);
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    // Update election with transaction hash and set as active
+    election.isActive = true;
+    election.startedAt = Date.now();
+    election.blockchainStartTxHash = txHash;
+    
+    await election.save();
+    
+    // Build candidate query based on election type
+    const candidateQuery = { electionType: election.type };
+    if (election.region) {
+      candidateQuery.region = election.region;
+    }
+    
+    // Get candidates for this election
+    const candidates = await Candidate.find(candidateQuery);
+    console.log(`Updating ${candidates.length} candidates for election`);
+    
+    // Associate candidates with this election and mark them as in an active election
+    const updatePromises = candidates.map(candidate => {
+      return Candidate.findByIdAndUpdate(
+        candidate._id,
+        { 
+          election: election._id,
+          inActiveElection: true
+        },
+        { new: true }
+      );
+    });
+    
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+    
+    console.log('Election start completed in database with blockchain transaction:', txHash);
+    
+    // Return success response
+    res.status(200).json({
+      message: 'Election started successfully with blockchain transaction',
+      election: {
+        id: election._id,
+        title: election.title,
+        isActive: election.isActive,
+        startedAt: election.startedAt,
+        blockchainStartTxHash: election.blockchainStartTxHash
+      },
+      candidatesCount: candidates.length
+    });
+  } catch (error) {
+    console.error('Error completing election start:', error);
+    res.status(500).json({ 
+      message: 'Failed to complete election start process', 
+      error: error.message 
+    });
+  }
+};
+
+// Complete election end after MetaMask transaction
+exports.completeElectionEnd = async (req, res) => {
+  try {
+    const { electionId, txHash } = req.body;
+    console.log(`Completing election end for ID: ${electionId} with transaction hash: ${txHash}`);
+    
+    if (!txHash) {
+      return res.status(400).json({ message: 'Transaction hash is required' });
+    }
+    
+    if (!mongoose.Types.ObjectId.isValid(electionId)) {
+      return res.status(400).json({ message: 'Invalid election ID format' });
+    }
+    
+    // Find the election
+    const election = await Election.findById(electionId);
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    // Update election with transaction hash and set as inactive
+    election.isActive = false;
+    election.endedAt = Date.now();
+    election.isArchived = true;
+    election.archivedAt = Date.now();
+    election.blockchainEndTxHash = txHash;
+    
+    await election.save();
+    
+    // Step 1: Find all unlinked candidates (having election type but no election reference)
+    const unlinkedCandidates = await Candidate.find({
+      electionType: election.type,
+      $or: [
+        { election: { $exists: false } },
+        { election: null }
+      ]
+    });
+    
+    if (unlinkedCandidates.length > 0) {
+      console.log(`Found ${unlinkedCandidates.length} candidates with matching type but no election reference`);
+      
+      // Link these candidates to this election
+      const linkResult = await Candidate.updateMany(
+        { 
+          electionType: election.type,
+          $or: [
+            { election: { $exists: false } },
+            { election: null }
+          ]
+        },
+        {
+          $set: {
+            election: election._id,
+            inActiveElection: false
+          }
+        }
+      );
+      
+      console.log(`Linked ${linkResult.modifiedCount} candidates to election ${election.title}`);
+    }
+    
+    // Step 2: Get all candidates for this election (either by direct reference or type)
+    const candidates = await Candidate.find({ 
+      $or: [
+        { election: election._id },
+        { electionType: election.type }
+      ]
+    });
+    
+    console.log(`Found ${candidates.length} candidates associated with this election to archive`);
+    
+    // Step 3: Calculate total votes for the election
+    const votes = await Vote.find({ election: election._id });
+    const totalVotes = votes.length;
+    
+    // Save total votes to the election
+    election.totalVotes = totalVotes;
+    
+    // Save the election with updated fields
+    await election.save();
+    
+    // Step 4: Update all candidates to mark them as archived and no longer active
+    // Ensure the election reference is preserved for all candidates
+    const updateResult = await Candidate.updateMany(
+      { 
+        $or: [
+          { election: election._id },
+          { electionType: election.type }
+        ]
+      },
+      { 
+        $set: {
+          inActiveElection: false,
+          isArchived: true,
+          election: election._id // Explicitly ensure election reference is preserved
+        }
+      }
+    );
+    
+    console.log(`Updated ${updateResult.modifiedCount} candidates to archived status`);
+    
+    // Try to archive the election on blockchain as well
+    let archiveMessage = null;
+    try {
+      if (election.blockchainElectionId) {
+        console.log(`Archiving election on blockchain with ID: ${election.blockchainElectionId}`);
+        const archiveResult = await archiveElectionOnBlockchain(election.blockchainElectionId);
+        
+        if (archiveResult && archiveResult.success) {
+          console.log(`Election archived on blockchain with transaction hash: ${archiveResult.txHash}`);
+          election.blockchainArchiveTxHash = archiveResult.txHash;
+        }
+      }
+    } catch (archiveError) {
+      console.error('Error archiving election on blockchain:', archiveError);
+      archiveMessage = 'Note: Could not archive the election on blockchain';
+      // Continue anyway, the election ending is the primary function
+    }
+    
+    console.log('Election end completed in database with blockchain transaction:', txHash);
+    
+    // Return success response
+    res.status(200).json({
+      message: 'Election ended and archived successfully with blockchain transaction',
+      election: {
+        id: election._id,
+        title: election.title,
+        isActive: election.isActive,
+        isArchived: election.isArchived,
+        endedAt: election.endedAt,
+        archivedAt: election.archivedAt,
+        blockchainEndTxHash: election.blockchainEndTxHash,
+        blockchainArchiveTxHash: election.blockchainArchiveTxHash
+      },
+      archivedCandidates: candidates.length,
+      totalVotes,
+      archiveMessage
+    });
+  } catch (error) {
+    console.error('Error completing election end:', error);
+    res.status(500).json({ 
+      message: 'Failed to complete election end process', 
+      error: error.message 
+    });
+  }
+};
+
+// Get election details from blockchain
+exports.getElectionDetailsFromBlockchain = async (req, res) => {
+  try {
+    const { electionId } = req.params;
+    console.log(`Getting election details from blockchain for ID: ${electionId}`);
+    
+    if (!electionId) {
+      return res.status(400).json({ message: 'Election ID is required' });
+    }
+    
+    // Find the election in the database to get the blockchain ID
+    let blockchainElectionId = electionId;
+    
+    // If it's a MongoDB ObjectId, we need to get the blockchain ID from the database
+    if (mongoose.Types.ObjectId.isValid(electionId)) {
+      const election = await Election.findById(electionId);
+      if (!election) {
+        return res.status(404).json({ message: 'Election not found in database' });
+      }
+      
+      if (!election.blockchainElectionId) {
+        return res.status(400).json({ 
+          message: 'No blockchain ID available for this election',
+          databaseElection: election
+        });
+      }
+      
+      blockchainElectionId = election.blockchainElectionId;
+    }
+    
+    // Try to get the election from the blockchain
+    const result = await getElectionFromBlockchain(blockchainElectionId);
+    
+    if (!result.success) {
+      return res.status(500).json({
+        message: 'Failed to fetch election details from blockchain',
+        error: result.error
+      });
+    }
+    
+    // Also get candidates for this election
+    let candidatesResult = { data: [] };
+    try {
+      // Get candidate IDs for this election
+      const election = result.data;
+      if (election.candidateIds && election.candidateIds.length > 0) {
+        // Fetch details for each candidate
+        const candidatesPromises = election.candidateIds.map(candidateId => 
+          getCandidateFromBlockchain(candidateId)
+        );
+        
+        const candidatesResponses = await Promise.all(candidatesPromises);
+        const candidates = candidatesResponses
+          .filter(response => response.success)
+          .map(response => response.data);
+        
+        candidatesResult.data = candidates;
+      }
+    } catch (candidatesError) {
+      console.error('Error fetching candidates from blockchain:', candidatesError);
+      // Continue with the election data even if candidates fetch fails
+    }
+    
+    // Get election status
+    let statusResult = { data: { isActive: false } };
+    try {
+      statusResult = await getElectionStatusFromBlockchain(blockchainElectionId);
+    } catch (statusError) {
+      console.error('Error fetching election status from blockchain:', statusError);
+      // Continue without status if it fails
+    }
+    
+    // Return the combined data
+    res.status(200).json({
+      message: 'Election details fetched from blockchain successfully',
+      election: result.data,
+      candidates: candidatesResult.data,
+      status: statusResult.success ? statusResult.data : { isActive: false },
+      blockchainElectionId
+    });
+  } catch (error) {
+    console.error('Error getting election details from blockchain:', error);
+    res.status(500).json({
+      message: 'Server error fetching election details from blockchain',
+      error: error.message
+    });
+  }
+};
+
+// Get candidate details from blockchain
+exports.getCandidateDetailsFromBlockchain = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+    console.log(`Getting candidate details from blockchain for ID: ${candidateId}`);
+    
+    if (!candidateId) {
+      return res.status(400).json({ message: 'Candidate ID is required' });
+    }
+    
+    // Find the candidate in the database to get the blockchain ID
+    let blockchainCandidateId = candidateId;
+    
+    // If it's a MongoDB ObjectId, we need to get the blockchain ID from the database
+    if (mongoose.Types.ObjectId.isValid(candidateId)) {
+      const candidate = await Candidate.findById(candidateId);
+      if (!candidate) {
+        return res.status(404).json({ message: 'Candidate not found in database' });
+      }
+      
+      if (!candidate.blockchainId) {
+        return res.status(400).json({ 
+          message: 'No blockchain ID available for this candidate',
+          databaseCandidate: candidate
+        });
+      }
+      
+      blockchainCandidateId = candidate.blockchainId;
+    }
+    
+    // Try to get the candidate from the blockchain
+    const result = await getCandidateFromBlockchain(blockchainCandidateId);
+    
+    if (!result.success) {
+      return res.status(500).json({
+        message: 'Failed to fetch candidate details from blockchain',
+        error: result.error
+      });
+    }
+    
+    // Return the blockchain data
+    res.status(200).json({
+      message: 'Candidate details fetched from blockchain successfully',
+      candidate: result.data,
+      blockchainCandidateId
+    });
+  } catch (error) {
+    console.error('Error getting candidate details from blockchain:', error);
+    res.status(500).json({
+      message: 'Server error fetching candidate details from blockchain',
+      error: error.message
+    });
+  }
+};
+ 

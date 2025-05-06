@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Container, Row, Col, Card, Button, Alert, Modal, Form, Spinner, Badge } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { toast } from 'react-toastify';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import Layout from '../../components/Layout';
 import { FaUser, FaCheckCircle, FaTimes, FaVideo, FaVideoSlash } from 'react-icons/fa';
 import { useReactMediaRecorder } from 'react-media-recorder';
@@ -386,6 +387,26 @@ const CastVote = () => {
           toast.info('You have already cast your vote in this election.');
           navigate('/voter/verify');
           return;
+        }
+        
+        // Fetch election status to verify it's still active
+        try {
+          const electionStatusResponse = await axios.get(`${API_URL}/elections/status`, { headers });
+          console.log('Election status response:', electionStatusResponse.data);
+          
+          // If the election is not active, show a message and redirect
+          if (electionStatusResponse.data && 
+              (!electionStatusResponse.data.active || electionStatusResponse.data.ended)) {
+            console.log('Election is not active or has already ended');
+            toast.error('The election has ended or is no longer active. Voting is not available at this time.');
+            setTimeout(() => {
+              navigate('/voter/dashboard');
+            }, 3000);
+            return;
+          }
+        } catch (statusError) {
+          console.warn('Could not check election status:', statusError);
+          // Continue anyway, we'll handle any issues when trying to vote
         }
         
         // Fetch active elections with candidates using the correct API per documentation
@@ -879,6 +900,33 @@ const CastVote = () => {
       return;
     }
     
+    // Do a quick check to verify the election is still active
+    const verifyElectionActive = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        
+        const electionStatusResponse = await axios.get(`${API_URL}/elections/status`, { headers });
+        console.log('Election status check before voting:', electionStatusResponse.data);
+        
+        if (electionStatusResponse.data && 
+            (!electionStatusResponse.data.active || electionStatusResponse.data.ended)) {
+          console.log('Election is not active or has already ended');
+          toast.error('The election has ended or is no longer active. Voting is not available at this time.');
+          setTimeout(() => {
+            navigate('/voter/dashboard');
+          }, 3000);
+          return false;
+        }
+        
+        return true;
+      } catch (error) {
+        console.warn('Could not verify election status before voting:', error);
+        // Continue anyway, as we'll check again during the actual vote
+        return true;
+      }
+    };
+    
     // Check recording status - only allow voting if recording is active
     if (!isRecordingActive) {
       if (status === 'acquiring_media') {
@@ -888,25 +936,102 @@ const CastVote = () => {
       } else if (status === 'failed') {
         // Special case: if recording failed but we want to allow voting anyway
         console.log('Recording failed but allowing vote to proceed');
+        verifyElectionActive().then(isActive => {
+          if (isActive) {
     setShowConfirmModal(true);
+          }
+        });
       } else {
         toast.error('Recording must be active to cast your vote');
       }
       return;
     }
-
-    setShowConfirmModal(true);
+    
+    // Verify election is still active before showing the confirmation modal
+    verifyElectionActive().then(isActive => {
+      if (isActive) {
+        setShowConfirmModal(true);
+      }
+    });
   };
 
   const handleConfirmVote = async () => {
     try {
       setSubmitting(true);
       
+      // Verify we have a valid selected candidate
+      if (!selectedCandidate || !selectedCandidate._id) {
+        toast.error('Please select a valid candidate before voting.');
+        setSubmitting(false);
+      return;
+    }
+      
+      // Request user to connect with MetaMask
+      let privateKey = '';
+      
+      try {
+        // Check if MetaMask is installed
+        if (!window.ethereum) {
+          toast.error('MetaMask is not installed. Please install MetaMask to cast your vote.');
+          setSubmitting(false);
+          return;
+        }
+
+        // Request account access
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        if (!accounts || accounts.length === 0) {
+          toast.error('Please connect to MetaMask to continue.');
+          setSubmitting(false);
+          return;
+        }
+        
+        const connectedAddress = accounts[0];
+        console.log(`Connected to MetaMask with address: ${connectedAddress}`);
+        
+        // For security reasons, we'll request the user to sign a message
+        // The signature will act as a proof that the user has access to the private key
+        const candidateName = selectedCandidate.name || 
+                             `${selectedCandidate.firstName} ${selectedCandidate.lastName}`;
+        const message = `VoteSure: Authorizing vote for candidate: ${candidateName}. Timestamp: ${Date.now()}`;
+        
+        toast.info('Please sign the message in MetaMask to authorize your vote', {
+          autoClose: false,
+          toastId: 'metamask-signing'
+        });
+        
+        const signature = await window.ethereum.request({
+          method: 'personal_sign',
+          params: [message, accounts[0]],
+        });
+        
+        toast.dismiss('metamask-signing');
+        console.log('User signed the message, proceeding with vote');
+        
+        // We'll use the signature instead of the actual private key for security
+        privateKey = signature;
+      } catch (error) {
+        console.error('MetaMask error:', error);
+        
+        if (error.code === 4001) {
+          toast.error('You rejected the signature request. Please sign the message to continue.');
+        } else {
+          toast.error(`MetaMask error: ${error.message || 'Unknown error connecting to wallet'}`);
+        }
+        
+        setSubmitting(false);
+        return;
+      }
+      
+      // Let user know we're processing their vote
+      toast.info('Processing your vote on the blockchain. This may take a moment...', {
+        autoClose: false,
+        toastId: 'processing-vote'
+      });
+      
       // Construct the voting payload
       const payload = {
         candidateId: selectedCandidate._id || selectedCandidate.id,
-        electionId: selectedCandidate.electionId,
-        isNoneOption: selectedCandidate.isNoneOption || false
+        privateKey: privateKey // Include the signature as the private key
       };
       
       const token = localStorage.getItem('token');
@@ -915,7 +1040,13 @@ const CastVote = () => {
       // Call the API to cast the vote
       const response = await axios.post(`${API_URL}/vote`, payload, { headers });
       
+      toast.dismiss('processing-vote');
       console.log('Vote cast response:', response.data);
+      
+      // Check for any blockchain warnings in the response
+      if (response.data.blockchainWarning) {
+        toast.warning(response.data.blockchainWarning, { autoClose: 10000 });
+      }
       
       // Stop recording after successful vote
       if (isRecordingActive) {
@@ -933,39 +1064,48 @@ const CastVote = () => {
       
     } catch (err) {
       console.error('Error casting vote:', err);
-      toast.error(err.response?.data?.message || 'Failed to cast vote. Please try again.');
+      
+      // Detailed error handling
+      const errorData = err.response?.data;
+      let errorMessage = 'Failed to cast vote. Please try again.';
+      
+      if (errorData) {
+        if (errorData.message.includes('already voted')) {
+          errorMessage = 'You have already voted in this election.';
+        } else if (errorData.message.includes('election has already ended') || 
+                   errorData.message.includes('election has ended') ||
+                   (errorData.message.toLowerCase().includes('election') && 
+                   errorData.message.toLowerCase().includes('ended'))) {
+          errorMessage = 'The election has already ended. Voting is no longer available.';
+          
+          // Also show alert and redirect to homepage after a delay
+          toast.error(errorMessage, { autoClose: 8000 });
+          setTimeout(() => {
+            navigate('/voter/dashboard');
+          }, 5000);
+          
+          return; // Early return to avoid showing the error toast twice
+        } else if (errorData.message.includes('Candidate ID') && errorData.message.includes('required')) {
+          errorMessage = 'Invalid candidate data. Please try selecting the candidate again.';
+        } else if (errorData.message.includes('blockchain ID')) {
+          errorMessage = 'This candidate does not have a valid blockchain ID. Please contact support.';
+        } else if (errorData.message.includes('Server not properly configured')) {
+          errorMessage = 'The server is not properly configured for blockchain transactions. Please contact support.';
+        } else {
+          errorMessage = errorData.message || errorData.details || errorMessage;
+        }
+        
+        // Log additional details for debugging
+        if (errorData.details) {
+          console.error('Error details:', errorData.details);
+        }
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
     }
   };
-
-  useEffect(() => {
-    // This will only run once when the component mounts
-    console.log('Component mounted, initializing with no selected candidate');
-    setSelectedCandidate(null);
-    
-    // Track that initialization has happened
-    hasInitialized.current = true;
-    
-    return () => {
-      // Reset on unmount for clean re-render if component is remounted
-      hasInitialized.current = false;
-    };
-  }, []);
-  
-  // Add logging to monitor selectedCandidate changes with better lifecycle tracking
-  useEffect(() => {
-    // Skip the first render since the state is already null
-    if (isFirstRender.current) {
-      console.log('Initial render, selectedCandidate is null');
-      isFirstRender.current = false;
-      return;
-    }
-    
-    console.log('Selected candidate updated:', selectedCandidate ? 
-      (selectedCandidate.name || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`) : 
-      'None');
-  }, [selectedCandidate]);
 
   // Handle viewing candidate details without selecting them
   const handleViewCandidateDetails = (candidate, event) => {
@@ -1863,6 +2003,10 @@ const CastVote = () => {
                 {!selectedCandidate.isNoneOption && (
                   <p className="text-muted">{selectedCandidate.partyName}</p>
                 )}
+                
+                <Alert variant="info" className="mt-3">
+                  <strong>MetaMask Required:</strong> You will be prompted to connect your MetaMask wallet and sign a message to confirm your vote. This ensures your vote is securely recorded on the blockchain.
+                </Alert>
                 
                 <Alert variant="warning" className="mt-3">
                   <strong>Important:</strong> This action cannot be undone. Your vote will be permanently recorded on the blockchain.

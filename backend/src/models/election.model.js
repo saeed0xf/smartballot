@@ -81,7 +81,13 @@ const electionSchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
+  },
+  blockchainElectionId: {
+    type: String,
+    description: 'ID of the election on the blockchain'
   }
+}, {
+  timestamps: true
 });
 
 // Update the updatedAt field on save
