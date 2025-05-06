@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="600" height="400" viewBox="0 0 600 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background with slight gradient -->
+  <rect width="600" height="400" rx="10" fill="url(#paint0_linear)"/>
+  
+  <!-- Chrome/browser dialog simulation -->
+  <rect x="100" y="50" width="400" height="300" rx="8" fill="#FFFFFF" stroke="#CCCCCC" stroke-width="1"/>
+  
+  <!-- Dialog header -->
+  <rect x="100" y="50" width="400" height="40" rx="8" fill="#F0F0F0"/>
+  <text x="250" y="75" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#333333">Choose what to share</text>
+  
+  <!-- Options section -->
+  <rect x="120" y="110" width="360" height="40" rx="4" fill="#F6F6F6"/>
+  <text x="140" y="135" font-family="Arial, sans-serif" font-size="14" fill="#333333">Your Entire Screen</text>
+  <circle cx="130" cy="130" r="8" fill="#1A73E8"/>
+  <circle cx="130" cy="130" r="4" fill="#FFFFFF"/>
+  
+  <rect x="120" y="160" width="360" height="40" rx="4" fill="#FFFFFF" stroke="#EEEEEE"/>
+  <text x="140" y="185" font-family="Arial, sans-serif" font-size="14" fill="#333333">Application Window</text>
+  <circle cx="130" cy="180" r="8" fill="#EEEEEE"/>
+  
+  <rect x="120" y="210" width="360" height="40" rx="4" fill="#FFFFFF" stroke="#EEEEEE"/>
+  <text x="140" y="235" font-family="Arial, sans-serif" font-size="14" fill="#333333">Chrome Tab</text>
+  <circle cx="130" cy="230" r="8" fill="#EEEEEE"/>
+  
+  <!-- Screen preview -->
+  <rect x="220" y="260" width="160" height="90" rx="4" fill="#E8F0FE" stroke="#1A73E8" stroke-width="2"/>
+  <rect x="230" y="270" width="140" height="70" rx="2" fill="#1A73E8" opacity="0.2"/>
+  <text x="265" y="310" font-family="Arial, sans-serif" font-size="12" fill="#1A73E8">Entire Screen</text>
+  
+  <!-- Highlight on entire screen option -->
+  <rect x="120" y="110" width="360" height="40" rx="4" stroke="#1A73E8" stroke-width="2" fill="none"/>
+  
+  <!-- Share button -->
+  <rect x="380" y="290" width="100" height="40" rx="4" fill="#1A73E8"/>
+  <text x="415" y="315" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#FFFFFF">Share</text>
+  
+  <!-- Arrow pointing to "Entire Screen" -->
+  <path d="M300 170 L350 130 L360 135" stroke="#FF5722" stroke-width="3" fill="none"/>
+  <circle cx="360" cy="135" r="10" fill="#FF5722"/>
+  <text x="375" y="130" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#FF5722">Select this</text>
+  
+  <!-- Arrow pointing to Share button -->
+  <path d="M440 260 L430 280" stroke="#FF5722" stroke-width="3" fill="none"/>
+  <circle cx="430" cy="280" r="10" fill="#FF5722"/>
+  <text x="450" y="260" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#FF5722">Click Share</text>
+  
+  <!-- Linear gradient definition -->
+  <defs>
+    <linearGradient id="paint0_linear" x1="0" y1="0" x2="600" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5F7FA"/>
+      <stop offset="1" stop-color="#E4E9F2"/>
+    </linearGradient>
+  </defs>
+</svg> 
