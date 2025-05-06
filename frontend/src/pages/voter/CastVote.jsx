@@ -43,8 +43,13 @@ const CastVote = () => {
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   
+  // Add new state for screen selection overlay
+  const [showScreenSelectionModal, setShowScreenSelectionModal] = useState(false);
+  
   // Face capture states
   const [showWebcam, setShowWebcam] = useState(false);
+  const [webcamLoading, setWebcamLoading] = useState(false);
+  const [webcamError, setWebcamError] = useState(null);
   const [faceCaptured, setFaceCaptured] = useState(false);
   const [faceImageData, setFaceImageData] = useState(null);
   const [faceVerified, setFaceVerified] = useState(false);
@@ -60,7 +65,12 @@ const CastVote = () => {
   const screenVideoRef = useRef(null);
   const [isRecordingActive, setIsRecordingActive] = useState(false);
   const faceCamRef = useRef(null);
-  const [faceCamStream, setFaceCamStream] = useState(null);
+  
+  // Convert faceCamStream from state to ref to prevent re-renders when it changes
+  const faceCamStreamRef = useRef(null);
+  
+  // Reference to track if component is mounted
+  const isMountedRef = useRef(true);
   
   // Reference to track if this is first render
   const isFirstRender = useRef(true);
@@ -119,17 +129,26 @@ const CastVote = () => {
   const startFaceCam = async () => {
     try {
       if (faceCamRef.current) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            width: { ideal: 320 },
-            height: { ideal: 240 },
-            facingMode: 'user'
-          },
-          audio: false // We already have audio from the main recording
-        });
-        
-        faceCamRef.current.srcObject = stream;
-        setFaceCamStream(stream);
+        // If we already have a stream, don't create a new one
+        if (faceCamStreamRef.current) {
+          console.log('Reusing existing face cam stream');
+          faceCamRef.current.srcObject = faceCamStreamRef.current;
+        } else {
+          // Create a new stream
+          console.log('Creating new face cam stream');
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              width: { ideal: 320 },
+              height: { ideal: 240 },
+              facingMode: 'user'
+            },
+            audio: false // We already have audio from the main recording
+          });
+          
+          // Store in ref instead of state to prevent re-renders
+          faceCamStreamRef.current = stream;
+          faceCamRef.current.srcObject = stream;
+        }
         
         faceCamRef.current.play().catch(e => {
           console.error('Failed to play face cam:', e);
@@ -146,13 +165,23 @@ const CastVote = () => {
     try {
       console.log('Recording stopped, cleaning up resources');
       
-      // Stop face cam
-      if (faceCamStream) {
+      // Stop face cam - only when recording stops (which happens after vote is cast)
+      if (faceCamStreamRef.current) {
         console.log('Stopping face cam stream');
-        faceCamStream.getTracks().forEach(track => track.stop());
-        setFaceCamStream(null);
+        faceCamStreamRef.current.getTracks().forEach(track => track.stop());
+        faceCamStreamRef.current = null;
         if (faceCamRef.current) {
           faceCamRef.current.srcObject = null;
+        }
+      }
+      
+      // Also stop the main webcam stream if it's still running
+      if (streamRef.current) {
+        console.log('Stopping main webcam stream after vote is cast');
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
         }
       }
       
@@ -279,56 +308,51 @@ const CastVote = () => {
   // Monitor recording status changes and update isRecordingActive properly
   useEffect(() => {
     if (status === 'acquiring_media') {
-      toast.info('Please allow access to your screen and microphone');
+      // Don't show toast here as we'll show it in the screen selection modal
     } else if (status === 'recording') {
       console.log('Recording successfully started');
       setIsRecordingActive(true);
+      // Hide the screen selection modal once recording has started
+      setShowScreenSelectionModal(false);
+      toast.info('Recording started. You can now cast your vote.');
     } else if (status === 'stopped') {
       console.log('Recording stopped successfully');
       setIsRecordingActive(false);
+      // Inform the user they need to refresh the page to restart
+      toast.error('Recording has stopped. Please refresh the page to restart the voting process.');
     } else if (status === 'failed') {
       console.error('Recording failed');
       toast.error('Recording failed, but you can still proceed with voting');
       // Allow voting even if recording fails
       setShowCandidateSection(true);
       setIsRecordingActive(false);
+      // Hide the screen selection modal if recording failed
+      setShowScreenSelectionModal(false);
     }
   }, [status]);
 
-  // Add function to restart recording if needed
-  const handleRestartRecording = () => {
-    try {
-      console.log('Attempting to restart recording');
-      toast.info('Restarting recording...');
-      
-      // Clean up any existing recording first
-      if (status === 'recording') {
-        stopRecording();
-      }
-      
-      // Add a small delay before restarting
-      setTimeout(() => {
-        startRecording();
-      }, 500);
-    } catch (err) {
-      console.error('Error restarting recording:', err);
-      toast.error('Failed to restart recording: ' + err.message);
-    }
-  };
-
-  // Cleanup resources when component unmounts
+  // Replace the cleanup useEffect to only run on component unmount
   useEffect(() => {
+    // Set mounted flag when component mounts
+    isMountedRef.current = true;
+    
+    // This cleanup only runs on component unmount
     return () => {
+      console.log('Component unmounting, cleaning up all resources');
+      isMountedRef.current = false;
+      
+      // Clean up main webcam stream
       if (streamRef.current) {
         console.log('Cleaning up camera stream on component unmount');
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
       
-      // Clean up face cam stream
-      if (faceCamStream) {
-        console.log('Cleaning up face cam stream');
-        faceCamStream.getTracks().forEach(track => track.stop());
+      // Clean up face cam stream - use ref instead of state
+      if (faceCamStreamRef.current) {
+        console.log('Cleaning up face cam stream on component unmount');
+        faceCamStreamRef.current.getTracks().forEach(track => track.stop());
+        faceCamStreamRef.current = null;
       }
       
       // Clear the blob URL if component unmounts
@@ -336,7 +360,7 @@ const CastVote = () => {
         clearBlobUrl();
       }
     };
-  }, [mediaBlobUrl, clearBlobUrl, faceCamStream]);
+  }, []); // Empty dependency array means this only runs on mount/unmount
 
   useEffect(() => {
     const fetchData = async () => {
@@ -495,6 +519,11 @@ const CastVote = () => {
     try {
       console.log('Starting webcam...');
       
+      // Reset any previous webcam errors
+      setWebcamError(null);
+      // Set loading state
+      setWebcamLoading(true);
+      
       // Verify video ref is available
       if (!videoRef.current) {
         console.error('Video element is not available in the DOM');
@@ -542,21 +571,24 @@ const CastVote = () => {
       
       // Provide more specific error messages
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setError('Camera access denied. Please allow camera access in your browser permissions to continue.');
+        setWebcamError('Camera access denied. Please allow camera access in your browser permissions to continue.');
         toast.error('Camera permission denied. Please check your browser settings.');
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setError('No camera found. Please connect a camera and try again.');
+        setWebcamError('No camera found. Please connect a camera and try again.');
         toast.error('No camera detected');
       } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        setError('Could not access your camera. It may be in use by another application.');
+        setWebcamError('Could not access your camera. It may be in use by another application.');
         toast.error('Camera is in use by another application');
       } else {
-        setError('Failed to access webcam. Please make sure your camera is connected and you have given permission to use it.');
+        setWebcamError('Failed to access webcam. Please make sure your camera is connected and you have given permission to use it.');
         toast.error(err.message || 'Camera access failed');
       }
       
       // Rethrow to propagate to the caller
       throw err;
+    } finally {
+      // Always clear loading state
+      setWebcamLoading(false);
     }
   };
 
@@ -564,6 +596,7 @@ const CastVote = () => {
   const stopWebcam = () => {
     console.log('Stopping webcam...');
     if (streamRef.current) {
+      // Stop all tracks to properly release camera resources
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
       
@@ -573,6 +606,9 @@ const CastVote = () => {
       
       setShowWebcam(false);
       console.log('Webcam stopped successfully');
+      
+      // Show a message to let the user know they can restart the camera
+      toast.info('Camera deactivated. Click "Start Camera" again if you want to continue.');
     }
   };
 
@@ -603,8 +639,11 @@ const CastVote = () => {
       setFaceImageData(dataUrl);
       setFaceCaptured(true);
       
-      // Stop webcam after capturing
-      stopWebcam();
+      // Don't stop the webcam, just hide the video element visually
+      // but keep stream active for easy retakes
+      if (videoRef.current) {
+        videoRef.current.style.display = 'none';
+      }
       
       toast.success('Photo captured successfully!');
       
@@ -711,9 +750,36 @@ const CastVote = () => {
 
   // Retry capture
   const retryCapture = () => {
+    // Reset the captured image and verification states
     setFaceCaptured(false);
     setFaceVerified(false);
     setFaceImageData(null);
+    
+    // Reset video element display if hidden
+    if (videoRef.current) {
+      videoRef.current.style.display = '';
+    }
+    
+    // Restart the webcam with a slight delay to ensure state updates first
+    setTimeout(() => {
+      // Show the webcam UI
+      setShowWebcam(true);
+      
+      // Start webcam only if not already running
+      if (!streamRef.current) {
+        startWebcam().catch(err => {
+          console.error('Error restarting webcam:', err);
+          toast.error('Failed to restart camera. Please refresh the page and try again.');
+          setShowWebcam(false);
+        });
+      } else if (videoRef.current) {
+        // If stream exists but video element needs reconnection
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(e => {
+          console.error('Failed to play video on retry:', e);
+        });
+      }
+    }, 100);
   };
 
   // Continue to voting after verification
@@ -728,20 +794,33 @@ const CastVote = () => {
     // Reset selected candidate explicitly when showing candidate section
     setSelectedCandidate(null);
     
-    // Hide the verification section and show candidate section
+    // Show screen selection instruction modal
+    setShowScreenSelectionModal(true);
+    
+    // Hide the verification section but don't show candidate section yet
+    // (We'll show it after recording starts)
     setShowVerificationSection(false);
-    setShowCandidateSection(true);
+  };
+
+  // Add new function to start recording after screen selection instructions
+  const startRecordingAfterInstructions = () => {
+    console.log('Starting recording after screen selection instructions');
     
     // Start recording with react-media-recorder
     try {
       console.log('Starting recording with react-media-recorder');
       startRecording();
       
+      // Show candidate section - recording status effect will hide the modal once recording starts
+      setShowCandidateSection(true);
+      
       // If recording doesn't start within 5 seconds, show an error and let user proceed
       setTimeout(() => {
         if (status !== 'recording') {
           console.warn('Recording did not start within timeout period');
           toast.warning('Recording setup is taking longer than expected. You can proceed with voting.');
+          setShowScreenSelectionModal(false);
+          setShowCandidateSection(true);
         }
       }, 5000);
     } catch (err) {
@@ -750,11 +829,28 @@ const CastVote = () => {
       
       // Still allow voting even if recording fails
       setIsRecordingActive(false);
+      setShowScreenSelectionModal(false);
+      setShowCandidateSection(true);
     }
   };
 
-  const handleSelectCandidate = (candidate) => {
+  const handleSelectCandidate = (candidate, event) => {
+    // If event is provided, prevent default behavior & propagation
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     console.log('handleSelectCandidate called with:', candidate.name || `${candidate.firstName} ${candidate.lastName}`);
+    
+    // Check if the candidate is already selected, if so, deselect it
+    if (selectedCandidate && 
+        ((selectedCandidate._id && candidate._id && selectedCandidate._id === candidate._id) || 
+         (selectedCandidate.id && candidate.id && selectedCandidate.id === candidate.id))) {
+      console.log('Deselecting candidate');
+      setSelectedCandidate(null);
+      return;
+    }
     
     // Format the candidate with proper image URLs before setting it as the selected candidate
     const formattedCandidate = {
@@ -872,7 +968,15 @@ const CastVote = () => {
   }, [selectedCandidate]);
 
   // Handle viewing candidate details without selecting them
-  const handleViewCandidateDetails = (candidate) => {
+  const handleViewCandidateDetails = (candidate, event) => {
+    // If event is provided, prevent default behavior & propagation
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    ensureWebcamActive();
+    
     if (!candidate) {
       console.error('No candidate provided to view details');
       return;
@@ -972,7 +1076,80 @@ const CastVote = () => {
   const handleCloseCandidateDetails = () => {
     setShowCandidateDetailsModal(false);
     setViewingCandidate(null);
+    
+    // Make sure webcam is still active after modal closes
+    setTimeout(ensureWebcamActive, 100);
   };
+
+  // Update the utility function to use ref instead of state
+  const ensureWebcamActive = () => {
+    // Only run if component is still mounted
+    if (!isMountedRef.current) return;
+    
+    // Check if face cam is disconnected but stream exists
+    if (faceCamStreamRef.current && faceCamRef.current && !faceCamRef.current.srcObject) {
+      console.log('Restoring face cam connection');
+      faceCamRef.current.srcObject = faceCamStreamRef.current;
+      faceCamRef.current.play().catch(e => {
+        console.error('Failed to play face cam:', e);
+      });
+    }
+    
+    // Check if main webcam is disconnected but stream exists
+    if (streamRef.current && videoRef.current && !videoRef.current.srcObject) {
+      console.log('Restoring main webcam connection');
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(e => {
+        console.error('Failed to play main webcam:', e);
+      });
+    }
+  };
+
+  // Add a continuous webcam monitoring effect that is completely independent from other state
+  useEffect(() => {
+    // Skip if not showing candidate section or recording
+    if (!showCandidateSection) return;
+    
+    console.log('Setting up continuous webcam monitoring');
+    
+    // Helper function to ensure the webcam is preserved through any React updates
+    const monitorWebcams = () => {
+      // Only run if component is mounted
+      if (!isMountedRef.current) return;
+      
+      try {
+        // Make sure face cam is active if we have a stream
+        if (faceCamStreamRef.current && faceCamRef.current && !faceCamRef.current.srcObject) {
+          console.log('Automatic face cam reconnection');
+          faceCamRef.current.srcObject = faceCamStreamRef.current;
+          faceCamRef.current.play().catch(e => {
+            console.error('Failed to play face cam in monitor:', e);
+          });
+        }
+        
+        // Make sure main webcam is active if we have a stream and need it
+        if (streamRef.current && videoRef.current && !videoRef.current.srcObject && showWebcam) {
+          console.log('Automatic main webcam reconnection');
+          videoRef.current.srcObject = streamRef.current;
+          videoRef.current.play().catch(e => {
+            console.error('Failed to play main webcam in monitor:', e);
+          });
+        }
+      } catch (err) {
+        console.error('Error in webcam monitoring:', err);
+      }
+    };
+    
+    // Run immediately
+    monitorWebcams();
+    
+    // Set up interval to check periodically
+    const interval = setInterval(monitorWebcams, 500);
+    
+    return () => {
+      clearInterval(interval);
+    };
+  }, [showCandidateSection, showWebcam]);
 
   if (loading) {
     return (
@@ -1105,6 +1282,34 @@ const CastVote = () => {
                   ) : (
                     <div className="mb-3">
                       <div className="position-relative d-inline-block">
+                        {webcamLoading && (
+                          <div className="position-absolute w-100 h-100 d-flex justify-content-center align-items-center" 
+                            style={{ zIndex: 5, background: 'rgba(0,0,0,0.5)', borderRadius: '8px' }}>
+                            <Spinner animation="border" variant="light" />
+                            <span className="text-white ms-2">Starting camera...</span>
+                          </div>
+                        )}
+                        
+                        {webcamError && (
+                          <Alert variant="danger" className="mt-2 mb-2">
+                            {webcamError}
+                            <div className="mt-2">
+                              <Button 
+                                variant="outline-primary" 
+                                size="sm"
+                                onClick={() => {
+                                  setWebcamError(null);
+                                  startWebcam().catch(err => {
+                                    console.error('Error restarting webcam:', err);
+                                  });
+                                }}
+                              >
+                                Try Again
+                              </Button>
+                            </div>
+                          </Alert>
+                        )}
+                        
                         <video
                           ref={videoRef}
                           autoPlay
@@ -1153,6 +1358,7 @@ const CastVote = () => {
                         <Button
                           variant="success"
                           onClick={capturePhoto}
+                          disabled={webcamLoading || webcamError}
                         >
                           Capture Photo
                         </Button>
@@ -1385,23 +1591,19 @@ const CastVote = () => {
                     <small>
                       {isRecordingActive ? <FaVideo className="me-1" /> : <FaVideoSlash className="me-1" />}
                       {status === 'recording' ? 'Recording in progress...' : 
-                       status === 'stopped' ? 'Recording finished' : 
+                       status === 'stopped' ? 'Recording stopped. Please refresh the page to restart the voting process.' : 
                        status === 'failed' ? 'Recording failed, but you can still vote' :
                        'Recording status: ' + status}
                     </small>
                   </p>
                 </div>
 
-                {/* Add restart recording button if recording has stopped */}
+                {/* Remove the "Restart Recording" button and replace with instructions if recording is stopped */}
                 {status === 'stopped' && (
                   <div className="mt-2">
-                    <Button 
-                      variant="outline-danger" 
-                      size="sm"
-                      onClick={handleRestartRecording}
-                    >
-                      Restart Recording
-                    </Button>
+                    <Alert variant="warning">
+                      <strong>Recording has stopped!</strong> Please refresh the page to restart the voting process.
+                    </Alert>
                   </div>
                 )}
               </div>
@@ -1431,7 +1633,14 @@ const CastVote = () => {
                            (selectedCandidate.id && candidate.id && selectedCandidate.id === candidate.id)) 
                           ? 'border-primary' : ''
                         }`}
-                        onClick={() => handleSelectCandidate(candidate)}
+                        onClick={(e) => {
+                          // Stop event propagation
+                          e.stopPropagation();
+                          // Call handler with event to prevent default behavior
+                          handleSelectCandidate(candidate, e);
+                          // Ensure webcam stays active
+                          setTimeout(ensureWebcamActive, 100);
+                        }}
                       style={{ 
                           cursor: 'pointer',
                           backgroundColor: candidate.isNoneOption ? '#f8f9fa' : 'white',
@@ -1483,7 +1692,7 @@ const CastVote = () => {
                         
                         <Card.Body className="text-center">
                           <Card.Title>
-                            {candidate.name || `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`}
+                            {candidate.name || `${candidate.firstName} ${candidate.lastName}`}
                           </Card.Title>
                           
                           {!candidate.isNoneOption ? (
@@ -1534,8 +1743,11 @@ const CastVote = () => {
                                 size="sm" 
                                 className="w-100"
                                 onClick={(e) => {
-                                  e.stopPropagation(); // Prevent double-click issues
-                                  handleSelectCandidate(candidate);
+                                  // Stop event propagation to prevent any issues with webcam
+                                  e.stopPropagation();
+                                  handleSelectCandidate(candidate, e);
+                                  // Ensure webcam stays active
+                                  setTimeout(ensureWebcamActive, 100);
                                 }}
                               >
                                 Select
@@ -1548,8 +1760,11 @@ const CastVote = () => {
                                 size="sm" 
                                 className="w-100"
                                 onClick={(e) => {
-                                  e.stopPropagation(); // Prevent double-click issues
-                                  handleViewCandidateDetails(candidate);
+                                  // Stop event propagation to prevent any issues with webcam
+                                  e.stopPropagation();
+                                  handleViewCandidateDetails(candidate, e);
+                                  // Ensure webcam stays active
+                                  setTimeout(ensureWebcamActive, 100);
                                 }}
                               >
                                 View Details
@@ -1591,6 +1806,49 @@ const CastVote = () => {
               </div>
         </div>
         )}
+        
+        {/* Screen Selection Instruction Modal */}
+        <Modal 
+          show={showScreenSelectionModal} 
+          backdrop="static" 
+          keyboard={false}
+          centered
+        >
+          <Modal.Header>
+            <Modal.Title>Screen Selection Instructions</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="text-center mb-4">
+              <div className="d-flex justify-content-center mb-3">
+                <img 
+                  src="/images/screen-selection.svg" 
+                  alt="Select entire screen" 
+                  style={{ maxWidth: '100%', height: 'auto', maxHeight: '200px' }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+        </div>
+              <Alert variant="info">
+                <h5>Important Instructions:</h5>
+                <ol className="text-start mb-0">
+                  <li className="mb-2">When prompted, please select <strong>"Share entire screen"</strong> option.</li>
+                  <li className="mb-2">Choose your main monitor/display if you have multiple screens.</li>
+                  <li className="mb-2">Click the screen thumbnail, then click the "Share" button.</li>
+                  <li>Your entire screen will be recorded during the voting process for verification purposes.</li>
+                </ol>
+              </Alert>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button 
+              variant="primary" 
+              onClick={startRecordingAfterInstructions}
+            >
+              I Understand, Begin Recording
+            </Button>
+          </Modal.Footer>
+        </Modal>
         
         {/* Confirmation Modal */}
         <Modal show={showConfirmModal} onHide={() => setShowConfirmModal(false)}>

@@ -2,8 +2,6 @@ import React from 'react';
 import { Container } from 'react-bootstrap';
 import Navbar from './Navbar';
 import Footer from './Footer';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 
 // Import CSS files
 import '../styles/variables.css';
@@ -21,7 +19,6 @@ const Layout = ({ children }) => {
         {children}
       </Container>
       <Footer />
-      <ToastContainer position="bottom-right" autoClose={5000} />
     </div>
   );
 };
