@@ -60,7 +60,12 @@ const CastVote = () => {
   const screenVideoRef = useRef(null);
   const [isRecordingActive, setIsRecordingActive] = useState(false);
   const faceCamRef = useRef(null);
-  const [faceCamStream, setFaceCamStream] = useState(null);
+  
+  // Convert faceCamStream from state to ref to prevent re-renders when it changes
+  const faceCamStreamRef = useRef(null);
+  
+  // Reference to track if component is mounted
+  const isMountedRef = useRef(true);
   
   // Reference to track if this is first render
   const isFirstRender = useRef(true);
@@ -119,17 +124,26 @@ const CastVote = () => {
   const startFaceCam = async () => {
     try {
       if (faceCamRef.current) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            width: { ideal: 320 },
-            height: { ideal: 240 },
-            facingMode: 'user'
-          },
-          audio: false // We already have audio from the main recording
-        });
-        
-        faceCamRef.current.srcObject = stream;
-        setFaceCamStream(stream);
+        // If we already have a stream, don't create a new one
+        if (faceCamStreamRef.current) {
+          console.log('Reusing existing face cam stream');
+          faceCamRef.current.srcObject = faceCamStreamRef.current;
+        } else {
+          // Create a new stream
+          console.log('Creating new face cam stream');
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              width: { ideal: 320 },
+              height: { ideal: 240 },
+              facingMode: 'user'
+            },
+            audio: false // We already have audio from the main recording
+          });
+          
+          // Store in ref instead of state to prevent re-renders
+          faceCamStreamRef.current = stream;
+          faceCamRef.current.srcObject = stream;
+        }
         
         faceCamRef.current.play().catch(e => {
           console.error('Failed to play face cam:', e);
@@ -146,13 +160,23 @@ const CastVote = () => {
     try {
       console.log('Recording stopped, cleaning up resources');
       
-      // Stop face cam
-      if (faceCamStream) {
+      // Stop face cam - only when recording stops (which happens after vote is cast)
+      if (faceCamStreamRef.current) {
         console.log('Stopping face cam stream');
-        faceCamStream.getTracks().forEach(track => track.stop());
-        setFaceCamStream(null);
+        faceCamStreamRef.current.getTracks().forEach(track => track.stop());
+        faceCamStreamRef.current = null;
         if (faceCamRef.current) {
           faceCamRef.current.srcObject = null;
+        }
+      }
+      
+      // Also stop the main webcam stream if it's still running
+      if (streamRef.current) {
+        console.log('Stopping main webcam stream after vote is cast');
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
         }
       }
       
@@ -316,19 +340,28 @@ const CastVote = () => {
     }
   };
 
-  // Cleanup resources when component unmounts
+  // Replace the cleanup useEffect to only run on component unmount
   useEffect(() => {
+    // Set mounted flag when component mounts
+    isMountedRef.current = true;
+    
+    // This cleanup only runs on component unmount
     return () => {
+      console.log('Component unmounting, cleaning up all resources');
+      isMountedRef.current = false;
+      
+      // Clean up main webcam stream
       if (streamRef.current) {
         console.log('Cleaning up camera stream on component unmount');
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
       
-      // Clean up face cam stream
-      if (faceCamStream) {
-        console.log('Cleaning up face cam stream');
-        faceCamStream.getTracks().forEach(track => track.stop());
+      // Clean up face cam stream - use ref instead of state
+      if (faceCamStreamRef.current) {
+        console.log('Cleaning up face cam stream on component unmount');
+        faceCamStreamRef.current.getTracks().forEach(track => track.stop());
+        faceCamStreamRef.current = null;
       }
       
       // Clear the blob URL if component unmounts
@@ -336,7 +369,7 @@ const CastVote = () => {
         clearBlobUrl();
       }
     };
-  }, [mediaBlobUrl, clearBlobUrl, faceCamStream]);
+  }, []); // Empty dependency array means this only runs on mount/unmount
 
   useEffect(() => {
     const fetchData = async () => {
@@ -603,8 +636,10 @@ const CastVote = () => {
       setFaceImageData(dataUrl);
       setFaceCaptured(true);
       
-      // Stop webcam after capturing
-      stopWebcam();
+      // Don't stop the webcam, just hide the video but keep stream active
+      if (videoRef.current) {
+        videoRef.current.style.display = 'none';
+      }
       
       toast.success('Photo captured successfully!');
       
@@ -753,8 +788,23 @@ const CastVote = () => {
     }
   };
 
-  const handleSelectCandidate = (candidate) => {
+  const handleSelectCandidate = (candidate, event) => {
+    // If event is provided, prevent default behavior & propagation
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     console.log('handleSelectCandidate called with:', candidate.name || `${candidate.firstName} ${candidate.lastName}`);
+    
+    // Check if the candidate is already selected, if so, deselect it
+    if (selectedCandidate && 
+        ((selectedCandidate._id && candidate._id && selectedCandidate._id === candidate._id) || 
+         (selectedCandidate.id && candidate.id && selectedCandidate.id === candidate.id))) {
+      console.log('Deselecting candidate');
+      setSelectedCandidate(null);
+      return;
+    }
     
     // Format the candidate with proper image URLs before setting it as the selected candidate
     const formattedCandidate = {
@@ -872,7 +922,15 @@ const CastVote = () => {
   }, [selectedCandidate]);
 
   // Handle viewing candidate details without selecting them
-  const handleViewCandidateDetails = (candidate) => {
+  const handleViewCandidateDetails = (candidate, event) => {
+    // If event is provided, prevent default behavior & propagation
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    ensureWebcamActive();
+    
     if (!candidate) {
       console.error('No candidate provided to view details');
       return;
@@ -972,7 +1030,80 @@ const CastVote = () => {
   const handleCloseCandidateDetails = () => {
     setShowCandidateDetailsModal(false);
     setViewingCandidate(null);
+    
+    // Make sure webcam is still active after modal closes
+    setTimeout(ensureWebcamActive, 100);
   };
+
+  // Update the utility function to use ref instead of state
+  const ensureWebcamActive = () => {
+    // Only run if component is still mounted
+    if (!isMountedRef.current) return;
+    
+    // Check if face cam is disconnected but stream exists
+    if (faceCamStreamRef.current && faceCamRef.current && !faceCamRef.current.srcObject) {
+      console.log('Restoring face cam connection');
+      faceCamRef.current.srcObject = faceCamStreamRef.current;
+      faceCamRef.current.play().catch(e => {
+        console.error('Failed to play face cam:', e);
+      });
+    }
+    
+    // Check if main webcam is disconnected but stream exists
+    if (streamRef.current && videoRef.current && !videoRef.current.srcObject) {
+      console.log('Restoring main webcam connection');
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(e => {
+        console.error('Failed to play main webcam:', e);
+      });
+    }
+  };
+
+  // Add a continuous webcam monitoring effect that is completely independent from other state
+  useEffect(() => {
+    // Skip if not showing candidate section or recording
+    if (!showCandidateSection) return;
+    
+    console.log('Setting up continuous webcam monitoring');
+    
+    // Helper function to ensure the webcam is preserved through any React updates
+    const monitorWebcams = () => {
+      // Only run if component is mounted
+      if (!isMountedRef.current) return;
+      
+      try {
+        // Make sure face cam is active if we have a stream
+        if (faceCamStreamRef.current && faceCamRef.current && !faceCamRef.current.srcObject) {
+          console.log('Automatic face cam reconnection');
+          faceCamRef.current.srcObject = faceCamStreamRef.current;
+          faceCamRef.current.play().catch(e => {
+            console.error('Failed to play face cam in monitor:', e);
+          });
+        }
+        
+        // Make sure main webcam is active if we have a stream and need it
+        if (streamRef.current && videoRef.current && !videoRef.current.srcObject && showWebcam) {
+          console.log('Automatic main webcam reconnection');
+          videoRef.current.srcObject = streamRef.current;
+          videoRef.current.play().catch(e => {
+            console.error('Failed to play main webcam in monitor:', e);
+          });
+        }
+      } catch (err) {
+        console.error('Error in webcam monitoring:', err);
+      }
+    };
+    
+    // Run immediately
+    monitorWebcams();
+    
+    // Set up interval to check periodically
+    const interval = setInterval(monitorWebcams, 500);
+    
+    return () => {
+      clearInterval(interval);
+    };
+  }, [showCandidateSection, showWebcam]);
 
   if (loading) {
     return (
@@ -1431,7 +1562,14 @@ const CastVote = () => {
                            (selectedCandidate.id && candidate.id && selectedCandidate.id === candidate.id)) 
                           ? 'border-primary' : ''
                         }`}
-                        onClick={() => handleSelectCandidate(candidate)}
+                        onClick={(e) => {
+                          // Stop event propagation
+                          e.stopPropagation();
+                          // Call handler with event to prevent default behavior
+                          handleSelectCandidate(candidate, e);
+                          // Ensure webcam stays active
+                          setTimeout(ensureWebcamActive, 100);
+                        }}
                       style={{ 
                           cursor: 'pointer',
                           backgroundColor: candidate.isNoneOption ? '#f8f9fa' : 'white',
@@ -1483,7 +1621,7 @@ const CastVote = () => {
                         
                         <Card.Body className="text-center">
                           <Card.Title>
-                            {candidate.name || `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`}
+                            {candidate.name || `${candidate.firstName} ${candidate.lastName}`}
                           </Card.Title>
                           
                           {!candidate.isNoneOption ? (
@@ -1534,8 +1672,11 @@ const CastVote = () => {
                                 size="sm" 
                                 className="w-100"
                                 onClick={(e) => {
-                                  e.stopPropagation(); // Prevent double-click issues
-                                  handleSelectCandidate(candidate);
+                                  // Stop event propagation to prevent any issues with webcam
+                                  e.stopPropagation();
+                                  handleSelectCandidate(candidate, e);
+                                  // Ensure webcam stays active
+                                  setTimeout(ensureWebcamActive, 100);
                                 }}
                               >
                                 Select
@@ -1548,8 +1689,11 @@ const CastVote = () => {
                                 size="sm" 
                                 className="w-100"
                                 onClick={(e) => {
-                                  e.stopPropagation(); // Prevent double-click issues
-                                  handleViewCandidateDetails(candidate);
+                                  // Stop event propagation to prevent any issues with webcam
+                                  e.stopPropagation();
+                                  handleViewCandidateDetails(candidate, e);
+                                  // Ensure webcam stays active
+                                  setTimeout(ensureWebcamActive, 100);
                                 }}
                               >
                                 View Details
