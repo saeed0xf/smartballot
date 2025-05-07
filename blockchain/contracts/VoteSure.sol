@@ -18,6 +18,8 @@ contract VoteSureV2 {
         string name;
         string party;
         string slogan;
+        string pincode;      // Add pincode for candidate
+        string constituency; // Add constituency for candidate
         uint voteCount;
     }
 
@@ -25,6 +27,8 @@ contract VoteSureV2 {
         uint electionId;
         string title;
         string description;
+        string pincode;     // Add pincode for election
+        string region;      // Add region for election
         uint startTime;
         uint endTime;
         bool isActive;
@@ -33,11 +37,13 @@ contract VoteSureV2 {
         mapping(address => bool) hasVoted;
     }
 
-    // Modify the ArchivedElection struct to not include the candidates array directly
+    // Modify the ArchivedElection struct to also include pincode and region
     struct ArchivedElection {
         uint electionId;
         string title;
         string description;
+        string pincode;  // Add pincode for archived election
+        string region;   // Add region for archived election
         uint startTime;
         uint endTime;
     }
@@ -49,6 +55,8 @@ contract VoteSureV2 {
     mapping(uint => Election) public elections;
     ArchivedElection[] public archivedElections;
     mapping(address => bool) public approvedVoters;
+    mapping(address => string) public voterIdByAddress; // Map wallet address to voter ID
+    mapping(string => bool) public registeredVoterIds; // Track registered voter IDs
 
     // Events
     event VoterApproved(address voter);
@@ -64,22 +72,49 @@ contract VoteSureV2 {
         emit VoterApproved(_voter);
     }
 
+    // Add the new function to approve voter with voter ID
+    function approveVoterWithId(address _voter, string memory _voterId) external onlyAdmin {
+        require(!approvedVoters[_voter], "Voter already approved");
+        require(!registeredVoterIds[_voterId], "Voter ID already registered");
+        
+        approvedVoters[_voter] = true;
+        voterIdByAddress[_voter] = _voterId;
+        registeredVoterIds[_voterId] = true;
+        
+        emit VoterApproved(_voter);
+    }
+
+    // Add a helper function to check if a voter ID is already registered
+    function isVoterIdRegistered(string memory _voterId) external view returns (bool) {
+        return registeredVoterIds[_voterId];
+    }
+
+    // Add a function to get voter ID by address
+    function getVoterIdByAddress(address _voter) external view returns (string memory) {
+        return voterIdByAddress[_voter];
+    }
+
     // Create election
     function createElection(
         string memory _title,
         string memory _description,
+        string memory _pincode,
+        string memory _region,
         uint _startTime,
         uint _endTime,
         Candidate[] memory _candidates
     ) external onlyAdmin {
         require(_startTime < _endTime, "Invalid election timing");
         require(_candidates.length > 0, "At least one candidate required");
+        require(bytes(_pincode).length > 0, "Pincode must not be empty");
 
         electionCount++;
         Election storage newElection = elections[electionCount];
         newElection.electionId = electionCount;
         newElection.title = _title;
         newElection.description = _description;
+        newElection.pincode = _pincode;
+        newElection.region = _region;
         newElection.startTime = _startTime;
         newElection.endTime = _endTime;
         newElection.isActive = false;
@@ -91,6 +126,8 @@ contract VoteSureV2 {
                 name: _candidates[i].name,
                 party: _candidates[i].party,
                 slogan: _candidates[i].slogan,
+                pincode: _candidates[i].pincode,
+                constituency: _candidates[i].constituency,
                 voteCount: 0
             }));
         }
@@ -115,11 +152,13 @@ contract VoteSureV2 {
         e.isActive = false;
         e.isEnded = true;
 
-        // Archive election details first
+        // Archive election details first with pincode and region
         archivedElections.push(ArchivedElection({
             electionId: e.electionId,
             title: e.title,
             description: e.description,
+            pincode: e.pincode,
+            region: e.region,
             startTime: e.startTime,
             endTime: e.endTime
         }));
@@ -134,6 +173,8 @@ contract VoteSureV2 {
                 name: e.candidates[i].name,
                 party: e.candidates[i].party,
                 slogan: e.candidates[i].slogan,
+                pincode: e.candidates[i].pincode,
+                constituency: e.candidates[i].constituency,
                 voteCount: e.candidates[i].voteCount
             }));
         }

@@ -429,6 +429,9 @@ const ManageElection = () => {
   const [recordedElectionData, setRecordedElectionData] = useState(null);
   const [recordingOnBlockchain, setRecordingOnBlockchain] = useState(false);
   
+  // Add a new state for tracking blockchain recording status after other state declarations
+  const [electionBlockchainStatus, setElectionBlockchainStatus] = useState({});
+  
   // Initialize ethers provider and contract
   useEffect(() => {
     const initializeProvider = async () => {
@@ -1088,7 +1091,7 @@ const ManageElection = () => {
       } else if (!isNaN(electionId.replace(/\D/g, ''))) {
         // Extract numeric part if exists
         blockchainElectionId = electionId.replace(/\D/g, '');
-      } else {
+          } else {
         // Use the first 8 digits of timestamp as fallback
         blockchainElectionId = Math.floor(Date.now() / 100000) % 100000000;
       }
@@ -1195,7 +1198,7 @@ const ManageElection = () => {
       } else if (!isNaN(electionId.replace(/\D/g, ''))) {
         // Extract numeric part if exists
         blockchainElectionId = electionId.replace(/\D/g, '');
-      } else {
+          } else {
         // Use the first 8 digits of timestamp as fallback
         blockchainElectionId = Math.floor(Date.now() / 100000) % 100000000;
       }
@@ -1626,12 +1629,18 @@ const ManageElection = () => {
             candidate.lastName || ''
           ].filter(Boolean).join(' ');
         
+        // Include candidate pincode and constituency
+        const candidatePincode = candidate.pincode || election.pincode || '000000';
+        const constituency = candidate.constituency || 'Unknown';
+        
         return {
           candidateId: index + 1, // Use sequence number as candidateId
           name: fullName || 'Unknown Candidate',
           party: candidate.partyName || "Independent",
           slogan: candidate.manifesto || "",
-          voteCount: 0 // Initial vote count is zero
+          voteCount: 0, // Initial vote count is zero
+          pincode: candidatePincode, // Add candidate's pincode
+          constituency: constituency // Add candidate's constituency
         };
       });
       
@@ -1646,7 +1655,9 @@ const ManageElection = () => {
         description: election.description || 'No description',
         startTime: startTimestamp,
         endTime: endTimestamp,
-        candidates: formattedCandidates
+        candidates: formattedCandidates,
+        pincode: election.pincode || '000000', // Include pincode in the blockchain data
+        region: election.region || 'Unknown' // Include region information as well
       };
       
       // Store the formatted data in state for display and confirmation
@@ -1694,7 +1705,7 @@ const ManageElection = () => {
       // Call the contract's createElection function with the formatted data
       const tx = await contract.createElection(
         recordedElectionData.title,
-        recordedElectionData.description,
+        recordedElectionData.description + ` [Region: ${recordedElectionData.region}, Pincode: ${recordedElectionData.pincode}]`, // Add pincode to description
         recordedElectionData.startTime,
         recordedElectionData.endTime,
         recordedElectionData.candidates
@@ -1722,9 +1733,22 @@ const ManageElection = () => {
         }, { headers });
         
         console.log('Backend notified of successful blockchain recording');
+        
+        // Update local blockchain status tracking
+        setElectionBlockchainStatus(prev => ({
+          ...prev,
+          [electionId]: true
+        }));
       } catch (backendError) {
         console.warn('Failed to notify backend of blockchain recording:', backendError);
         // We still consider this a success since the blockchain transaction succeeded
+        
+        // Still update local status even if backend notification failed
+        const electionId = actionElection._id || actionElection.id;
+        setElectionBlockchainStatus(prev => ({
+          ...prev,
+          [electionId]: true
+        }));
       }
       
       setShowRecordModal(false);
@@ -1754,9 +1778,15 @@ const ManageElection = () => {
     }
   };
   
+  // Add a function to check if an election is recorded on blockchain
+  const isElectionRecordedOnBlockchain = (election) => {
+    return electionBlockchainStatus[election._id || election.id] === true;
+  };
+  
   // Helper function to get the appropriate button text and variant for each action
   const getActionButtonProps = (election) => {
     const isExpired = isElectionExpired(election);
+    const isRecorded = isElectionRecordedOnBlockchain(election);
     
     return {
       edit: {
@@ -1769,24 +1799,28 @@ const ManageElection = () => {
         variant: "outline-primary"
       },
       record: {
-        disabled: election.isActive || election.isArchived || isExpired,
+        disabled: election.isActive || election.isArchived || isExpired || isRecorded,
         title: election.isActive 
           ? "Election already recorded and active" 
           : election.isArchived 
           ? "Cannot record an archived election" 
           : isExpired 
           ? "Cannot record an expired election" 
+          : isRecorded
+          ? "Already recorded on blockchain"
           : "Record election details on blockchain",
         variant: "outline-info"
       },
       start: {
-        disabled: election.isActive || election.isArchived || isExpired,
+        disabled: election.isActive || election.isArchived || isExpired || !isRecorded,
         title: election.isActive 
           ? "Election is already active" 
           : election.isArchived 
           ? "Cannot start an archived election" 
           : isExpired 
           ? "Cannot start an expired election" 
+          : !isRecorded
+          ? "Record on blockchain before starting" 
           : "Start this election",
         variant: "outline-success"
       },
@@ -1919,6 +1953,13 @@ const ManageElection = () => {
                                 <small className="text-muted text-truncate d-inline-block" style={{ maxWidth: '250px' }}>
                                   {election.description}
                                 </small>
+                                {isElectionRecordedOnBlockchain(election) && (
+                                  <div className="mt-1">
+                                    <Badge bg="info" className="px-2 py-1">
+                                      <FaSyncAlt className="me-1" /> Blockchain Recorded
+                                    </Badge>
+                                  </div>
+                                )}
                           </td>
                               <td className="py-3">
                                 <Badge bg={
@@ -1957,9 +1998,9 @@ const ManageElection = () => {
                                     onClick={() => handleRecordClick(election)}
                                   >
                                     <FaSyncAlt className="me-1" /> Record on Blockchain
-                                  </Button>
+                              </Button>
                               
-                              {election.isActive ? (
+                                  {election.isActive ? (
                                 <Button
                                       {...getActionButtonProps(election).stop}
                                       onClick={() => handleStopClick(election)}
@@ -2410,6 +2451,10 @@ const ManageElection = () => {
                     <td>{new Date(recordedElectionData.endTime * 1000).toLocaleString()}</td>
                   </tr>
                   <tr>
+                    <th>Location</th>
+                    <td>{recordedElectionData.region} (Pincode: {recordedElectionData.pincode})</td>
+                  </tr>
+                  <tr>
                     <th>Candidates</th>
                     <td>{recordedElectionData.candidates.length} candidates</td>
                   </tr>
@@ -2424,6 +2469,8 @@ const ManageElection = () => {
                       <th>#</th>
                       <th>Name</th>
                       <th>Party</th>
+                      <th>Constituency</th>
+                      <th>Pincode</th>
                       <th>Slogan</th>
                     </tr>
                   </thead>
@@ -2433,6 +2480,8 @@ const ManageElection = () => {
                         <td>{candidate.candidateId}</td>
                         <td>{candidate.name}</td>
                         <td>{candidate.party}</td>
+                        <td>{candidate.constituency}</td>
+                        <td>{candidate.pincode}</td>
                         <td>{candidate.slogan.length > 30 ? `${candidate.slogan.substring(0, 30)}...` : candidate.slogan}</td>
                       </tr>
                     ))}
