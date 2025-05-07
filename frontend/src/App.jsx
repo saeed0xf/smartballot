@@ -23,10 +23,10 @@ import ManageCandidates from './pages/admin/ManageCandidates';
 import ManageElection from './pages/admin/ManageElection';
 import ArchivedElections from './pages/admin/ArchivedElections';
 import OfficerDashboard from './pages/officer/OfficerDashboard';
-import ViewSlots from './pages/officer/ViewSlots';
-import AddSlot from './pages/officer/AddSlot';
+import ElectionResults from './pages/officer/ElectionResults';
+import Reports from './pages/officer/Reports';
+import VerificationCenter from './pages/officer/VerificationCenter';
 import MonitorVoting from './pages/officer/MonitorVoting';
-import TimeSlotAllocation from './pages/officer/TimeSlotAllocation';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -54,9 +54,10 @@ function App() {
         
         {/* Officer Routes */}
         <Route path="/officer" element={<OfficerRoute><OfficerDashboard /></OfficerRoute>} />
-        <Route path="/officer/slots" element={<OfficerRoute><ViewSlots /></OfficerRoute>} />
-        <Route path="/officer/slots/add" element={<OfficerRoute><AddSlot /></OfficerRoute>} />
-        <Route path="/officer/timeslots" element={<OfficerRoute><TimeSlotAllocation /></OfficerRoute>} />
+        <Route path="/officer/results" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
+        <Route path="/officer/results/:electionId" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
+        <Route path="/officer/reports" element={<OfficerRoute><Reports /></OfficerRoute>} />
+        <Route path="/officer/verification" element={<OfficerRoute><VerificationCenter /></OfficerRoute>} />
         <Route path="/officer/monitor" element={<OfficerRoute><MonitorVoting /></OfficerRoute>} />
         
         {/* 404 Route */}

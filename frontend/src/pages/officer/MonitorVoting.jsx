@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, ProgressBar, Table, Badge, Spinner, Button, Modal, Form, Alert } from 'react-bootstrap';
-import { FaChartPie, FaChartBar, FaUsers, FaMapMarkerAlt, FaVideo, FaBan, FaCheck, FaExclamationTriangle } from 'react-icons/fa';
+import { FaChartPie, FaChartBar, FaUsers, FaMapMarkerAlt, FaVideo, FaBan, FaCheck, FaExclamationTriangle, FaArrowLeft } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import axios from 'axios';
 
@@ -56,7 +57,9 @@ const MonitorVoting = () => {
                 recentVoters: [
                   { id: 'v1', name: 'John Doe', time: '10:15 AM' },
                   { id: 'v2', name: 'Jane Smith', time: '10:22 AM' },
-                ]
+                ],
+                location: 'North Delhi',
+                pincode: '110001'
               },
               {
                 id: '2',
@@ -67,7 +70,9 @@ const MonitorVoting = () => {
                 hasLiveStream: true,
                 recentVoters: [
                   { id: 'v3', name: 'Robert Johnson', time: '10:30 AM' },
-                ]
+                ],
+                location: 'South Delhi',
+                pincode: '110002'
               },
               {
                 id: '3',
@@ -76,7 +81,9 @@ const MonitorVoting = () => {
                 voted: 120,
                 turnout: 60.0,
                 hasLiveStream: true,
-                recentVoters: []
+                recentVoters: [],
+                location: 'East Delhi',
+                pincode: '110003'
               },
               {
                 id: '4',
@@ -88,7 +95,9 @@ const MonitorVoting = () => {
                 recentVoters: [
                   { id: 'v4', name: 'Michael Williams', time: '10:05 AM' },
                   { id: 'v5', name: 'Sarah Davis', time: '10:12 AM' },
-                ]
+                ],
+                location: 'West Delhi',
+                pincode: '110005'
               },
               {
                 id: '5',
@@ -97,7 +106,9 @@ const MonitorVoting = () => {
                 voted: 28,
                 turnout: 8.0,
                 hasLiveStream: true,
-                recentVoters: []
+                recentVoters: [],
+                location: 'Central Delhi',
+                pincode: '110006'
               }
             ]
           });
@@ -179,11 +190,21 @@ const MonitorVoting = () => {
   return (
     <Layout>
       <Container className="py-4">
-        <div className="mb-4">
-          <h1>Election Monitoring</h1>
-          <p className="text-muted">
-            Monitor real-time voting statistics and polling station activity.
-          </p>
+        <div className="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h1>Election Monitoring</h1>
+            <p className="text-muted">
+              Monitor real-time voting statistics and polling station activity.
+            </p>
+          </div>
+          <Button
+            as={Link}
+            to="/officer"
+            variant="outline-secondary"
+            className="d-flex align-items-center"
+          >
+            <FaArrowLeft className="me-2" /> Back to Dashboard
+          </Button>
         </div>
         
         {alertInfo.show && (
@@ -253,59 +274,44 @@ const MonitorVoting = () => {
               </Col>
             </Row>
 
-            {/* Polling Station Stats */}
+            {/* Polling Stations */}
             <Card className="border-0 shadow-sm mb-4">
               <Card.Header className="bg-white py-3">
-                <div className="d-flex align-items-center">
-                  <FaMapMarkerAlt className="text-primary me-2" size={18} />
-                  <h5 className="mb-0">Polling Stations Monitoring</h5>
-                </div>
+                <h5 className="mb-0">Polling Stations</h5>
               </Card.Header>
               <Card.Body className="p-0">
                 <Table responsive hover className="mb-0">
                   <thead className="bg-light">
                     <tr>
-                      <th>Station Name</th>
-                      <th>Registered Voters</th>
-                      <th>Votes Cast</th>
+                      <th>Station</th>
+                      <th>Location</th>
+                      <th>Registered</th>
+                      <th>Voted</th>
                       <th>Turnout</th>
-                      <th>Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.stations.map((station) => (
+                    {stats.stations.map(station => (
                       <tr key={station.id}>
                         <td className="fw-semibold">{station.name}</td>
-                        <td>{station.registered.toLocaleString()}</td>
-                        <td>{station.voted.toLocaleString()}</td>
-                        <td>
-                          <div className="d-flex align-items-center">
-                            <span className="me-2">{station.turnout.toFixed(1)}%</span>
-                            <div style={{ flex: 1, maxWidth: '100px' }}>
-                              <ProgressBar 
-                                variant={getTurnoutStatus(station.turnout)} 
-                                now={station.turnout} 
-                                style={{ height: '8px' }}
-                              />
-                            </div>
-                          </div>
-                        </td>
+                        <td>{station.location} ({station.pincode})</td>
+                        <td>{station.registered}</td>
+                        <td>{station.voted}</td>
                         <td>
                           <Badge bg={getTurnoutStatus(station.turnout)}>
-                            {station.turnout < 30 ? 'Low' : 
-                             station.turnout < 60 ? 'Moderate' : 'High'}
+                            {station.turnout.toFixed(1)}%
                           </Badge>
                         </td>
                         <td>
                           <Button 
                             variant="outline-primary" 
-                            size="sm" 
-                            className="d-flex align-items-center"
+                            size="sm"
+                            className="me-2"
                             onClick={() => handleOpenVideoMonitoring(station)}
                             disabled={!station.hasLiveStream}
                           >
-                            <FaVideo className="me-1" /> Monitor
+                            <FaVideo className="me-1" /> Live Feed
                           </Button>
                         </td>
                       </tr>
@@ -315,146 +321,153 @@ const MonitorVoting = () => {
               </Card.Body>
             </Card>
 
-            {/* Video Monitoring Modal */}
-            <Modal 
-              show={showVideoModal} 
-              onHide={() => setShowVideoModal(false)} 
-              size="lg"
-              centered
-            >
-              <Modal.Header closeButton>
-                <Modal.Title>
-                  <FaVideo className="me-2" /> 
-                  Live Monitoring: {currentStation?.name}
-                </Modal.Title>
-              </Modal.Header>
-              <Modal.Body>
-                <Row>
-                  <Col lg={8} className="mb-3">
-                    <div className="live-video-container bg-dark rounded" style={{ height: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {activeStreams.length > 0 ? (
-                        <div className="text-white text-center">
-                          <FaVideo size={40} className="mb-3" />
-                          <h5>Live Video Feed</h5>
-                          <p className="text-muted">
-                            Monitoring {activeStreams[0].name} at {currentStation?.name}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="text-white text-center">
-                          <FaExclamationTriangle size={40} className="mb-3" />
-                          <h5>No Video Feeds Available</h5>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {activeStreams.length > 1 && (
-                      <div className="mt-3 d-flex overflow-auto">
-                        {activeStreams.map(stream => (
-                          <Button 
-                            key={stream.id}
-                            variant="outline-secondary" 
-                            className="me-2"
-                            size="sm"
-                          >
-                            {stream.name}
-                          </Button>
-                        ))}
-                      </div>
-                    )}
-                  </Col>
-                  <Col lg={4}>
-                    <Card className="border-0 shadow-sm">
-                      <Card.Header className="bg-light">
-                        <h6 className="mb-0">Recent Voters</h6>
-                      </Card.Header>
-                      <Card.Body className="p-0">
-                        {currentStation?.recentVoters?.length > 0 ? (
-                          <ul className="list-group list-group-flush">
-                            {currentStation.recentVoters.map(voter => (
-                              <li key={voter.id} className="list-group-item d-flex justify-content-between align-items-center">
-                                <div>
-                                  <p className="mb-0 fw-semibold">{voter.name}</p>
-                                  <small className="text-muted">Voted at {voter.time}</small>
-                                </div>
-                                <Button 
-                                  variant="outline-danger" 
+            {/* Recent Voters */}
+            <Row className="mb-4">
+              <Col xs={12}>
+                <Card className="border-0 shadow-sm">
+                  <Card.Header className="bg-white py-3">
+                    <h5 className="mb-0">Recent Voters</h5>
+                  </Card.Header>
+                  <Card.Body>
+                    <Table responsive hover>
+                      <thead>
+                        <tr>
+                          <th>Voter ID</th>
+                          <th>Name</th>
+                          <th>Polling Station</th>
+                          <th>Time</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stats.stations.flatMap(station => 
+                          station.recentVoters.map(voter => (
+                            <tr key={voter.id}>
+                              <td>{voter.id}</td>
+                              <td>{voter.name}</td>
+                              <td>{station.name}</td>
+                              <td>{voter.time}</td>
+                              <td>
+                                <Button
+                                  variant="outline-danger"
                                   size="sm"
                                   onClick={() => handleOpenCancelVoteModal(voter)}
                                 >
-                                  <FaBan className="me-1" /> Cancel
+                                  <FaBan className="me-1" /> Flag Issue
                                 </Button>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="p-3 text-center text-muted">
-                            No recent voters to display
-                          </div>
+                              </td>
+                            </tr>
+                          ))
                         )}
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                </Row>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button variant="secondary" onClick={() => setShowVideoModal(false)}>
-                  Close
-                </Button>
-              </Modal.Footer>
-            </Modal>
-            
-            {/* Vote Cancellation Modal */}
-            <Modal
-              show={showCancelModal}
-              onHide={() => setShowCancelModal(false)}
-              centered
-            >
-              <Modal.Header closeButton>
-                <Modal.Title>
-                  <FaBan className="me-2 text-danger" />
-                  Cancel Vote
-                </Modal.Title>
-              </Modal.Header>
-              <Modal.Body>
-                <Alert variant="warning">
-                  <FaExclamationTriangle className="me-2" />
-                  Cancelling a vote is a serious action that should only be taken in cases of clear misconduct.
-                </Alert>
-                <Form>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Reason for Cancellation:</Form.Label>
-                    <Form.Control 
-                      as="textarea" 
-                      rows={3}
-                      placeholder="Describe the misconduct or reason for cancellation in detail..."
-                      value={cancelReason}
-                      onChange={(e) => setCancelReason(e.target.value)}
-                      required
-                    />
-                    <Form.Text className="text-muted">
-                      This information will be recorded in the blockchain and cannot be changed.
-                    </Form.Text>
-                  </Form.Group>
-                </Form>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button variant="secondary" onClick={() => setShowCancelModal(false)}>
-                  Cancel
-                </Button>
-                <Button variant="danger" onClick={handleCancelVote}>
-                  <FaBan className="me-1" /> Confirm Cancellation
-                </Button>
-              </Modal.Footer>
-            </Modal>
-
-            {/* Refresh Info */}
-            <div className="text-center text-muted small">
-              <p>Data last updated: {new Date().toLocaleString()}</p>
-              <p>Statistics are updated every 15 minutes during active voting periods.</p>
-            </div>
+                        {stats.stations.flatMap(station => station.recentVoters).length === 0 && (
+                          <tr>
+                            <td colSpan="5" className="text-center py-3 text-muted">
+                              No recent voter activity to display
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </Table>
+                  </Card.Body>
+                </Card>
+              </Col>
+            </Row>
           </>
         )}
+
+        {/* Video Monitoring Modal */}
+        <Modal
+          show={showVideoModal}
+          onHide={() => setShowVideoModal(false)}
+          size="lg"
+          centered
+        >
+          <Modal.Header closeButton>
+            <Modal.Title>
+              Live Feed - {currentStation?.name}
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <Row>
+              {activeStreams.map(stream => (
+                <Col md={6} key={stream.id} className="mb-3">
+                  <Card>
+                    <Card.Header className="py-2 bg-dark text-white d-flex justify-content-between align-items-center">
+                      <small>{stream.name}</small>
+                      <Badge bg="danger">LIVE</Badge>
+                    </Card.Header>
+                    <Card.Body className="p-0 bg-dark">
+                      {/* This would be a real video stream in a production app */}
+                      <div className="video-placeholder d-flex align-items-center justify-content-center text-white bg-secondary" style={{ height: '180px' }}>
+                        <div className="text-center">
+                          <FaVideo size={32} className="mb-2" />
+                          <p className="mb-0 small">Live video feed would appear here</p>
+                          <small>Stream ID: {stream.id}</small>
+                        </div>
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+            <div className="mt-2">
+              <p className="mb-1 text-muted small">
+                <FaMapMarkerAlt className="me-1" /> 
+                Location: {currentStation?.location} (Pincode: {currentStation?.pincode})
+              </p>
+              <p className="mb-0 text-muted small">
+                <FaUsers className="me-1" />
+                Station Status: {currentStation?.voted} of {currentStation?.registered} voters ({currentStation?.turnout.toFixed(1)}% turnout)
+              </p>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowVideoModal(false)}>
+              Close
+            </Button>
+          </Modal.Footer>
+        </Modal>
+
+        {/* Cancel Vote Modal */}
+        <Modal
+          show={showCancelModal}
+          onHide={() => setShowCancelModal(false)}
+          centered
+        >
+          <Modal.Header closeButton>
+            <Modal.Title>
+              <FaExclamationTriangle className="text-warning me-2" />
+              Flag Voting Issue
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <p>
+              Flag a potential issue with voter ID: <strong>{cancelVoterId}</strong>
+            </p>
+            <Form.Group className="mb-3">
+              <Form.Label>Reason for flagging</Form.Label>
+              <Form.Control 
+                as="textarea" 
+                rows={3} 
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Please provide detailed information about the issue..."
+              />
+            </Form.Group>
+            <Alert variant="info">
+              <FaInfo className="me-2" />
+              Flagging an issue will alert the election officials and initiate an investigation process.
+            </Alert>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowCancelModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="warning" onClick={handleCancelVote}>
+              Flag Issue
+            </Button>
+          </Modal.Footer>
+        </Modal>
       </Container>
     </Layout>
   );

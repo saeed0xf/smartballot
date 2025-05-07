@@ -58,6 +58,18 @@ contract VoteSureV2 {
     mapping(address => string) public voterIdByAddress; // Map wallet address to voter ID
     mapping(string => bool) public registeredVoterIds; // Track registered voter IDs
 
+    // Add a Voter struct to store all voter details
+    struct Voter {
+        string voterId;       // Government-issued voter ID
+        string pincode;       // Voter's residential pincode
+        bool isApproved;      // Approval status
+        uint registrationTime; // When the voter was registered
+    }
+
+    // Replace simple mapping with detailed voter information
+    mapping(address => Voter) public voters;
+    mapping(string => address) public voterIdToAddress; // Reverse lookup from voterId to address
+
     // Events
     event VoterApproved(address voter);
     event ElectionCreated(uint electionId);
@@ -72,11 +84,28 @@ contract VoteSureV2 {
         emit VoterApproved(_voter);
     }
 
-    // Add the new function to approve voter with voter ID
-    function approveVoterWithId(address _voter, string memory _voterId) external onlyAdmin {
-        require(!approvedVoters[_voter], "Voter already approved");
-        require(!registeredVoterIds[_voterId], "Voter ID already registered");
+    // Update the approveVoterWithId function to include pincode
+    function approveVoterWithId(
+        address _voter, 
+        string memory _voterId, 
+        string memory _pincode
+    ) external onlyAdmin {
+        require(!voters[_voter].isApproved, "Voter already approved");
+        require(voterIdToAddress[_voterId] == address(0), "Voter ID already registered");
+        require(bytes(_pincode).length > 0, "Pincode must not be empty");
         
+        // Store complete voter information
+        voters[_voter] = Voter({
+            voterId: _voterId,
+            pincode: _pincode,
+            isApproved: true,
+            registrationTime: block.timestamp
+        });
+        
+        // Set up reverse lookup
+        voterIdToAddress[_voterId] = _voter;
+        
+        // For backward compatibility
         approvedVoters[_voter] = true;
         voterIdByAddress[_voter] = _voterId;
         registeredVoterIds[_voterId] = true;
@@ -182,20 +211,27 @@ contract VoteSureV2 {
         emit ElectionEnded(_electionId);
     }
 
-    // Cast vote
+    // Update castVote to check pincode eligibility
     function castVote(uint _electionId, uint _candidateId) external {
-        require(approvedVoters[msg.sender], "Voter not approved");
-
+        address voter = msg.sender;
+        require(voters[voter].isApproved, "Voter not approved");
+        
         Election storage e = elections[_electionId];
         require(e.isActive, "Election not active");
         require(block.timestamp >= e.startTime && block.timestamp <= e.endTime, "Voting window closed");
-        require(!e.hasVoted[msg.sender], "Already voted");
+        require(!e.hasVoted[voter], "Already voted");
         require(_candidateId > 0 && _candidateId <= e.candidates.length, "Invalid candidate");
-
+        
+        // Verify voter's pincode matches the election's pincode or is for the same region
+        require(
+            keccak256(bytes(voters[voter].pincode)) == keccak256(bytes(e.pincode)),
+            "Voter not eligible for this election based on pincode"
+        );
+        
         e.candidates[_candidateId - 1].voteCount++;
-        e.hasVoted[msg.sender] = true;
-
-        emit VoteCasted(msg.sender, _electionId, _candidateId);
+        e.hasVoted[voter] = true;
+        
+        emit VoteCasted(voter, _electionId, _candidateId);
     }
 
     // Utility Views
@@ -222,5 +258,21 @@ contract VoteSureV2 {
 
     function hasVoterVoted(address _voter, uint _electionId) external view returns (bool) {
         return elections[_electionId].hasVoted[_voter];
+    }
+
+    // Add function to get complete voter details
+    function getVoterDetails(address _voter) external view returns (Voter memory) {
+        return voters[_voter];
+    }
+
+    // Add function to verify if voter is eligible for an election based on pincode
+    function isVoterEligibleForElection(address _voter, uint _electionId) external view returns (bool) {
+        // Get voter and election details
+        Voter memory voter = voters[_voter];
+        string memory electionPincode = elections[_electionId].pincode;
+        
+        // Check if voter is approved and pincode matches election pincode
+        return (voter.isApproved && 
+                keccak256(bytes(voter.pincode)) == keccak256(bytes(electionPincode)));
     }
 }
