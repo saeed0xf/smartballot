@@ -432,11 +432,45 @@ const ApproveVoters = () => {
           toast.success('Voter approved successfully via backend transaction.');
           return;
         }
+
+        // Check for "already approved" message in successful response
+        if (backendResponse.data.message && 
+            backendResponse.data.message.includes('already approved on blockchain')) {
+          console.log('Voter was already approved on blockchain, database updated');
+          
+          // Update local state
+          setVoters(prevVoters => 
+            prevVoters.map(voter => 
+              voter.id === voterId ? { ...voter, status: 'approved' } : voter
+            )
+          );
+          
+          toast.success('Voter was already approved on the blockchain. Database updated.');
+          return;
+        }
         
         // If backend transaction approach failed but wasn't a fatal error, continue with MetaMask
         console.log('Backend transaction not successful, trying with MetaMask...');
       } catch (backendError) {
         console.error('Error with backend transaction attempt:', backendError);
+        
+        // Check if the error response indicates voter was already approved
+        if (backendError.response?.data?.message && 
+            (backendError.response.data.message.includes('already approved on blockchain') ||
+             backendError.response.data.message === 'Voter was already approved on blockchain, database updated')) {
+          console.log('Detected "already approved" message, handling as success');
+          
+          // Update local state
+          setVoters(prevVoters => 
+            prevVoters.map(voter => 
+              voter.id === voterId ? { ...voter, status: 'approved' } : voter
+            )
+          );
+          
+          toast.success('Voter was already approved on the blockchain. Database updated.');
+          return;
+        }
+        
         console.log('Continuing with MetaMask approach...');
         // Continue with MetaMask approach
       }
@@ -569,10 +603,56 @@ const ApproveVoters = () => {
       // Handle various error response formats
       if (err.response?.data?.message) {
         errorMessage = err.response.data.message;
+        
+        // Check if the error message indicates the voter was already approved on blockchain
+        if (errorMessage.includes('already approved on blockchain') || 
+            errorMessage.includes('Voter already approved')) {
+          console.log('Detected "already approved" message in error response, handling as success');
+          
+          // Update local state for the voter
+          setVoters(prevVoters => 
+            prevVoters.map(voter => 
+              voter.id === voterId ? { ...voter, status: 'approved' } : voter
+            )
+          );
+          
+          toast.success('Voter was previously approved on the blockchain. Database updated.');
+          return;
+        }
       } else if (err.response?.data?.error) {
         errorMessage = `Error: ${err.response.data.error}`;
+        
+        // Check if the error indicates the voter was already approved
+        if (err.response.data.error.includes('Voter already approved')) {
+          console.log('Detected "already approved" message in error, handling as success');
+          
+          // Update local state for the voter
+          setVoters(prevVoters => 
+            prevVoters.map(voter => 
+              voter.id === voterId ? { ...voter, status: 'approved' } : voter
+            )
+          );
+          
+          toast.success('Voter was previously approved on the blockchain. Database updated.');
+          return;
+        }
       } else if (err.message) {
         errorMessage = err.message;
+        
+        // Check if the error message indicates the voter was already approved
+        if (err.message.includes('Voter already approved')) {
+          console.log('Detected "already approved" message in error message, handling as success');
+          
+          // Update local state for the voter
+          setVoters(prevVoters => 
+            prevVoters.map(voter => 
+              voter.id === voterId ? { ...voter, status: 'approved' } : voter
+            )
+          );
+          
+          toast.success('Voter was previously approved on the blockchain. Database updated.');
+          return;
+        }
       }
       
       // Handle MetaMask specific errors
@@ -584,6 +664,21 @@ const ApproveVoters = () => {
         // Add more details for RPC errors if available
         if (err.data && err.data.message) {
           errorMessage += ` Details: ${err.data.message}`;
+          
+          // Check for "already approved" in RPC error message
+          if (err.data.message.includes('Voter already approved')) {
+            console.log('Detected "already approved" message in RPC error, handling as success');
+            
+            // Update local state for the voter
+            setVoters(prevVoters => 
+              prevVoters.map(voter => 
+                voter.id === voterId ? { ...voter, status: 'approved' } : voter
+              )
+            );
+            
+            toast.success('Voter was previously approved on the blockchain. Database updated.');
+            return;
+          }
         }
       } else if (err.code) {
         errorMessage = `MetaMask Error Code ${err.code}: ${errorMessage}`;
