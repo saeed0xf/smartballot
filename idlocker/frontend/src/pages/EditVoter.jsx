@@ -62,7 +62,10 @@ const EditVoter = () => {
     try {
       await voterService.updateVoter(id, voter);
       toast.success('Voter updated successfully');
-      navigate(`/voters/${id}`);
+      // Use a reload to ensure we get fresh data with recalculated age
+      navigate(`/voters/${id}`, { replace: true });
+      // Force a full reload to ensure we get fresh data with recalculated age
+      window.location.reload();
     } catch (error) {
       console.error('Error updating voter:', error);
       toast.error('Failed to update voter');
