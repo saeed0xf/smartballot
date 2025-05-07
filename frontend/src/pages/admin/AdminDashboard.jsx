@@ -30,60 +30,94 @@ const AdminDashboard = () => {
       
       const apiUrl = env.API_URL || 'http://localhost:5000/api';
       
+      let currentStats = {
+        pendingVoters: 0,
+        approvedVoters: 0,
+        rejectedVoters: 0,
+        totalCandidates: 0,
+        electionActive: false
+      };
+      
+      let hasErrors = false;
+      let errorMessage = '';
+      
+      // Use try/catch blocks for each API call so one failure doesn't stop everything
       try {
         // Get pending voters count
         const pendingVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=pending`);
-        const pendingVoters = pendingVotersResponse.data.voters.length;
-        
+        if (pendingVotersResponse.data && pendingVotersResponse.data.voters) {
+          currentStats.pendingVoters = pendingVotersResponse.data.voters.length;
+        }
+      } catch (err) {
+        console.error('Error fetching pending voters:', err);
+        hasErrors = true;
+        errorMessage = 'Could not fetch all voter statistics. Some data may be incomplete.';
+      }
+      
+      try {
         // Get approved voters count
         const approvedVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=approved`);
-        const approvedVoters = approvedVotersResponse.data.voters.length;
-        
+        if (approvedVotersResponse.data && approvedVotersResponse.data.voters) {
+          currentStats.approvedVoters = approvedVotersResponse.data.voters.length;
+        }
+      } catch (err) {
+        console.error('Error fetching approved voters:', err);
+        hasErrors = true;
+        errorMessage = 'Could not fetch all voter statistics. Some data may be incomplete.';
+      }
+      
+      try {
         // Get rejected voters count
         const rejectedVotersResponse = await axios.get(`${apiUrl}/admin/voters?status=rejected`);
-        const rejectedVoters = rejectedVotersResponse.data.voters.length;
-        
-        // Get candidates count - the response structure is different here
+        if (rejectedVotersResponse.data && rejectedVotersResponse.data.voters) {
+          currentStats.rejectedVoters = rejectedVotersResponse.data.voters.length;
+        }
+      } catch (err) {
+        console.error('Error fetching rejected voters:', err);
+        hasErrors = true;
+        errorMessage = 'Could not fetch all voter statistics. Some data may be incomplete.';
+      }
+      
+      try {
+        // Get candidates count
         const candidatesResponse = await axios.get(`${apiUrl}/admin/candidates`);
         
         // Handle the candidate response based on its actual structure
         // The admin/candidates endpoint returns an array directly, not wrapped in a 'candidates' property
-        const totalCandidates = Array.isArray(candidatesResponse.data) 
-          ? candidatesResponse.data.length 
-          : (candidatesResponse.data.candidates ? candidatesResponse.data.candidates.length : 0);
-        
-        // Get election status
-        const electionStatusResponse = await axios.get(`${apiUrl}/admin/election/status`);
-        const electionActive = electionStatusResponse.data.active;
-        
-        setStats({
-          pendingVoters,
-          approvedVoters,
-          rejectedVoters,
-          totalCandidates,
-          electionActive
-        });
-      } catch (apiError) {
-        console.error('API error:', apiError);
-        if (apiError.response) {
-          console.error('Response status:', apiError.response.status);
-          console.error('Response data:', apiError.response.data);
+        if (candidatesResponse.data) {
+          currentStats.totalCandidates = Array.isArray(candidatesResponse.data) 
+            ? candidatesResponse.data.length 
+            : (candidatesResponse.data.candidates ? candidatesResponse.data.candidates.length : 0);
         }
-        throw apiError; // Re-throw to be caught by the outer try-catch
+      } catch (err) {
+        console.error('Error fetching candidates:', err);
+        hasErrors = true;
+        errorMessage = 'Could not fetch candidate information. Some data may be incomplete.';
+      }
+      
+      try {
+        // Get election status - if this fails, we assume election is inactive
+        const electionStatusResponse = await axios.get(`${apiUrl}/admin/election/status`);
+        if (electionStatusResponse.data && electionStatusResponse.data.hasOwnProperty('active')) {
+          currentStats.electionActive = electionStatusResponse.data.active;
+        }
+      } catch (err) {
+        console.error('Error fetching election status:', err);
+        // Don't set hasErrors to true here, as we can safely assume no active election
+        console.log('Assuming election is inactive due to API error');
+        currentStats.electionActive = false;
+      }
+      
+      // Update stats with whatever data we were able to fetch
+      setStats(currentStats);
+      
+      // If we had some errors but still got data, show a warning message
+      if (hasErrors) {
+        setError(errorMessage);
       }
     } catch (err) {
-      console.error('Error fetching dashboard stats:', err);
-      setError('Failed to fetch dashboard statistics.');
-      
-      // Log detailed error information for debugging
-      if (err.response) {
-        console.error('Response status:', err.response.status);
-        console.error('Response data:', err.response.data);
-      } else if (err.request) {
-        console.error('No response received:', err.request);
-      } else {
-        console.error('Error setting up request:', err.message);
-      }
+      console.error('Error in dashboard stats fetch:', err);
+      setError('Failed to fetch dashboard statistics. Please refresh the page to try again.');
     } finally {
       setLoading(false);
     }
@@ -101,7 +135,7 @@ const AdminDashboard = () => {
           )}
         </div>
         
-        {error && <Alert variant="danger">{error}</Alert>}
+        {error && <Alert variant="warning">{error}</Alert>}
         {loading ? (
           <div className="text-center my-5">
             <Spinner animation="border" variant="primary" />

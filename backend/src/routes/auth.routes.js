@@ -9,6 +9,9 @@ router.post('/register', authController.register);
 // Get nonce for MetaMask authentication
 router.get('/nonce', authController.getNonce);
 
+// Check wallet status
+router.get('/wallet-status', authController.getWalletStatus);
+
 // Login with MetaMask
 router.post('/login', authController.login);
 

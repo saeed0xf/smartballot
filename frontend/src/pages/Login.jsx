@@ -1,17 +1,22 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Alert } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
+import { Container, Row, Col, Card, Button, Alert, Spinner } from 'react-bootstrap';
+import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import Layout from '../components/Layout';
 import { AuthContext } from '../context/AuthContext';
 import { FaEthereum } from 'react-icons/fa';
 import jwt_decode from 'jwt-decode';
+import axios from 'axios';
 
 const Login = () => {
   const { login, isMetaMaskInstalled, isAuthenticated, isAdmin, isVoter, isOfficer, checkWalletType } = useContext(AuthContext);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [debugInfo, setDebugInfo] = useState('');
+  const [walletAddress, setWalletAddress] = useState('');
+  const [canLogin, setCanLogin] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [voterStatus, setVoterStatus] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -79,6 +84,78 @@ const Login = () => {
     checkExistingToken();
   }, []);
 
+  // Check if wallet address is registered and approved
+  const checkWalletStatus = async (address) => {
+    if (!address) return;
+    
+    try {
+      setError(null);
+      setCheckingStatus(true);
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+      
+      console.log('Checking wallet status for:', address);
+      const response = await axios.get(`${apiUrl}/auth/wallet-status?address=${address}`);
+      console.log('Wallet status response:', response.data);
+      
+      // Admin and officer can always login
+      if (response.data.role === 'admin' || response.data.role === 'officer') {
+        setCanLogin(true);
+        setVoterStatus(null);
+      } 
+      // Voters need to have a profile and be approved
+      else if (response.data.role === 'voter') {
+        setCanLogin(response.data.canLogin);
+        setVoterStatus(response.data.voterStatus);
+      } else {
+        // New wallet, no user record exists
+        setCanLogin(false);
+        setVoterStatus(null);
+      }
+    } catch (err) {
+      console.error('Error checking wallet status:', err);
+      // If there's a 404 error, it means the wallet is not registered
+      if (err.response && err.response.status === 404) {
+        setCanLogin(false);
+        setVoterStatus(null);
+      } else {
+        setError('Failed to check wallet status. Please try again.');
+      }
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  // Connect wallet and check status
+  const connectAndCheckWallet = async () => {
+    try {
+      setLoading(true);
+      
+      // Check if MetaMask is available
+      if (!window.ethereum) {
+        throw new Error('MetaMask is not installed or not accessible');
+      }
+      
+      console.log('MetaMask detected, requesting accounts...');
+      
+      // Request accounts
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      console.log('Accounts received:', accounts);
+      
+      if (accounts && accounts.length > 0) {
+        const address = accounts[0];
+        setWalletAddress(address);
+        await checkWalletStatus(address);
+      } else {
+        throw new Error('No accounts found. Please unlock MetaMask and try again.');
+      }
+    } catch (err) {
+      console.error('Error connecting wallet:', err);
+      setError(err.message || 'Failed to connect wallet. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogin = async () => {
     try {
       setError(null);
@@ -144,6 +221,116 @@ const Login = () => {
     }
   };
 
+  // Render different UI based on wallet connection and registration status
+  const renderWalletContent = () => {
+    if (!walletAddress) {
+      return (
+        <div>
+          <div className="mb-4">
+            <FaEthereum size={80} color="#3f51b5" />
+          </div>
+          <p className="mb-4">
+            Connect your MetaMask wallet to continue.
+          </p>
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={connectAndCheckWallet}
+            disabled={loading || checkingStatus}
+            className="px-4 py-2"
+          >
+            {loading || checkingStatus ? 'Connecting...' : 'Connect Wallet'}
+          </Button>
+        </div>
+      );
+    }
+    
+    if (checkingStatus) {
+      return (
+        <div className="text-center">
+          <Spinner animation="border" variant="primary" />
+          <p className="mt-3">Checking wallet status...</p>
+        </div>
+      );
+    }
+
+    if (!canLogin) {
+      // Voter not registered or not approved
+      return (
+        <div>
+          <Alert variant="info" className="mb-4">
+            <strong>Wallet Connected:</strong> {walletAddress}
+          </Alert>
+          
+          {voterStatus === 'pending' ? (
+            <Alert variant="warning">
+              <h5>Registration Pending Approval</h5>
+              <p>Your voter registration is pending approval from an administrator.</p>
+              <p>Please check back later.</p>
+            </Alert>
+          ) : voterStatus === 'rejected' ? (
+            <Alert variant="danger">
+              <h5>Registration Rejected</h5>
+              <p>Your voter registration has been rejected.</p>
+              <p>Please contact an administrator for more information.</p>
+            </Alert>
+          ) : (
+            <Alert variant="warning">
+              <h5>Not Registered</h5>
+              <p>This wallet is not registered in our system.</p>
+              <p>If you are a voter, please register first.</p>
+              <Button 
+                as={Link} 
+                to="/voter/register" 
+                variant="primary" 
+                className="mt-2"
+              >
+                Register as Voter
+              </Button>
+            </Alert>
+          )}
+          
+          <Button
+            variant="outline-secondary"
+            onClick={() => {
+              setWalletAddress('');
+              setCanLogin(false);
+              setVoterStatus(null);
+            }}
+            className="mt-3"
+          >
+            Connect Different Wallet
+          </Button>
+        </div>
+      );
+    }
+
+    // Can login
+    return (
+      <div>
+        <Alert variant="success" className="mb-4">
+          <strong>Wallet Connected:</strong> {walletAddress}
+        </Alert>
+        <p className="mb-4">
+          Click the button below to sign in with your MetaMask wallet.
+        </p>
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={handleLogin}
+          disabled={loading}
+          className="px-4 py-2"
+        >
+          {loading ? 'Signing In...' : 'Sign In'}
+        </Button>
+        
+        <p className="mt-3 text-muted small">
+          You will be asked to sign a message to verify your identity.
+        </p>
+      </div>
+    );
+  };
+
   return (
     <Layout>
       <Container>
@@ -175,38 +362,18 @@ const Login = () => {
                     </Button>
                   </div>
                 ) : (
-                  <div>
-                    <div className="mb-4">
-                      <FaEthereum size={80} color="#3f51b5" />
-                    </div>
-                    <p className="mb-4">
-                      Click the button below to connect your MetaMask wallet and login.
-                    </p>
-                    <Button
-                      variant="primary"
-                      size="lg"
-                      onClick={handleLogin}
-                      disabled={loading}
-                      className="px-4 py-2"
-                    >
-                      {loading ? 'Connecting...' : 'Connect Wallet'}
-                    </Button>
-                    
-                    <p className="mt-3 text-muted small">
-                      You will be asked to sign a message to verify your identity.
-                    </p>
-                    
-                    {/* Debug information */}
-                    <div className="mt-4 text-start">
-                      <details>
-                        <summary className="text-muted">Debug Information</summary>
-                        <pre className="mt-2 bg-light p-2" style={{ fontSize: '0.8rem' }}>
-                          {debugInfo}
-                        </pre>
-                      </details>
-                    </div>
-                  </div>
+                  renderWalletContent()
                 )}
+                
+                {/* Debug information */}
+                <div className="mt-4 text-start">
+                  <details>
+                    <summary className="text-muted">Debug Information</summary>
+                    <pre className="mt-2 bg-light p-2" style={{ fontSize: '0.8rem' }}>
+                      {debugInfo}
+                    </pre>
+                  </details>
+                </div>
               </Card.Body>
             </Card>
           </Col>
