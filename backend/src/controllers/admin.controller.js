@@ -237,6 +237,21 @@ exports.approveVoter = async (req, res) => {
         
         console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
         
+        // Send approval email
+        const userEmail = user.email || voter.email;
+        try {
+          if (userEmail) {
+            console.log(`Attempting to send approval email to ${userEmail} using Brevo API`);
+            const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName);
+            console.log(`Approval email sent to ${userEmail}, result:`, emailResult);
+          } else {
+            console.log(`No email available for voter ${voterId}, skipping notification`);
+          }
+        } catch (emailError) {
+          console.error(`Error sending approval email to ${userEmail}:`, emailError);
+          // Continue despite email error
+        }
+        
         return res.json({
           message: 'Voter was already approved on blockchain, database updated',
           voter: {
@@ -277,7 +292,7 @@ exports.approveVoter = async (req, res) => {
       });
     }
     
-    // Special handling for "Voter already approved" error
+    // Special handling for "Voter already approved" error - treat as success
     if (!blockchainResult.success && 
         blockchainResult.error && 
         blockchainResult.error.includes('Voter already approved')) {
@@ -291,6 +306,21 @@ exports.approveVoter = async (req, res) => {
       await voter.save();
       
       console.log(`Voter ${voterId} status updated to approved (to match blockchain)`);
+      
+      // Send approval email
+      const userEmail = user.email || voter.email;
+      try {
+        if (userEmail) {
+          console.log(`Attempting to send approval email to ${userEmail} using Brevo API`);
+          const emailResult = await sendVoterApprovalEmail(userEmail, voter.firstName);
+          console.log(`Approval email sent to ${userEmail}, result:`, emailResult);
+        } else {
+          console.log(`No email available for voter ${voterId}, skipping notification`);
+        }
+      } catch (emailError) {
+        console.error(`Error sending approval email to ${userEmail}:`, emailError);
+        // Continue despite email error
+      }
       
       return res.json({
         message: 'Voter was already approved on blockchain, database updated',

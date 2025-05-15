@@ -143,22 +143,31 @@ exports.login = async (req, res) => {
     }
     console.log('Determined role:', role);
     
-    // Find or create user
+    // Find user
     let user = await User.findOne({ walletAddress: address });
     
-    if (!user) {
-      console.log('User not found, creating new user with role:', role);
+    // If user doesn't exist and trying to login as a voter, return error
+    if (!user && role === 'voter') {
+      console.log('User not found and not an admin/officer');
+      return res.status(404).json({ 
+        message: 'Wallet not registered. Please register as a voter first.' 
+      });
+    }
+    
+    // If user doesn't exist but is admin/officer, create the user
+    if (!user && (isAdmin || isOfficer)) {
+      console.log('Admin/Officer not found, creating new user with role:', role);
       // Create new user
       user = new User({
         walletAddress: address,
         role
       });
       await user.save();
-      console.log('New user created:', user);
-    } else {
+      console.log('New admin/officer user created:', user);
+    } else if (user) {
       console.log('User found:', user);
-      // Update role if needed
-      if (user.role !== role) {
+      // Update role if needed for admin/officer
+      if ((isAdmin || isOfficer) && user.role !== role) {
         console.log('Updating user role from', user.role, 'to', role);
         user.role = role;
         await user.save();
@@ -197,6 +206,9 @@ exports.login = async (req, res) => {
         }
       } else {
         console.log('No voter profile found for user');
+        return res.status(404).json({ 
+          message: 'Voter profile not found. Please complete your registration.' 
+        });
       }
     }
     
@@ -252,6 +264,76 @@ exports.getCurrentUser = async (req, res) => {
     });
   } catch (error) {
     console.error('Get current user error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Get wallet status
+exports.getWalletStatus = async (req, res) => {
+  try {
+    const { address } = req.query;
+    
+    console.log('Checking wallet status for address:', address);
+    
+    if (!address) {
+      console.log('No address provided for wallet status check');
+      return res.status(400).json({ message: 'Address is required' });
+    }
+    
+    // Check if this is the admin address
+    const adminAddress = process.env.ADMIN_WALLET_ADDRESS;
+    const isAdmin = address.toLowerCase() === adminAddress.toLowerCase();
+    
+    // Check if this is an officer address
+    const officerAddressesStr = process.env.OFFICER_WALLET_ADDRESSES || '';
+    const officerAddresses = officerAddressesStr ? officerAddressesStr.split(',') : [];
+    const isOfficer = officerAddresses.some(addr => addr.toLowerCase() === address.toLowerCase());
+    
+    // Find the user
+    const user = await User.findOne({ walletAddress: address });
+    
+    // If user doesn't exist, return not found
+    if (!user) {
+      console.log('No user found for address:', address);
+      return res.status(404).json({ 
+        message: 'Wallet not registered', 
+        canLogin: false 
+      });
+    }
+    
+    // Determine the role and response
+    let response = {
+      address,
+      registered: true,
+      role: user.role,
+      canLogin: false,
+      voterStatus: null
+    };
+    
+    // Admin and officer can always login
+    if (isAdmin || isOfficer || user.role === 'admin' || user.role === 'officer') {
+      response.canLogin = true;
+      console.log('User is admin or officer, can login:', response);
+      return res.json(response);
+    }
+    
+    // For voters, check if they have a voter profile and if it's approved
+    const voter = await Voter.findOne({ user: user._id });
+    
+    if (!voter) {
+      console.log('No voter profile found for user:', user._id);
+      response.canLogin = false;
+      response.voterStatus = null;
+    } else {
+      console.log('Voter profile found with status:', voter.status);
+      response.voterStatus = voter.status;
+      response.canLogin = voter.status === 'approved';
+    }
+    
+    console.log('Responding with wallet status:', response);
+    res.json(response);
+  } catch (error) {
+    console.error('Get wallet status error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 }; 

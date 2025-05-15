@@ -190,7 +190,9 @@ const VoterForm = () => {
       if (isEditMode) {
         result = await voterService.updateVoter(id, formData);
         toast.success('Voter updated successfully');
-        navigate(`/voters/${id}`);
+        navigate(`/voters/${id}`, { replace: true });
+        // Force a full reload to ensure we get fresh data with recalculated age
+        window.location.reload();
       } else {
         result = await voterService.createVoter(formData);
         toast.success('Voter added successfully');

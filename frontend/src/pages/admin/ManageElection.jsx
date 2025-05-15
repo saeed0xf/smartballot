@@ -6,12 +6,389 @@ import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
 import { formatImageUrl } from '../../utils/imageUtils';
 import { Link } from 'react-router-dom';
+import { ethers } from 'ethers';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0xbF705f479a0123B18aE9d3e3ff1545E87a03effa';
+const BLOCKCHAIN_RPC_URL = import.meta.env.VITE_BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:7545';
+
+// VoteSure contract ABI - includes essential functions for election management
+const CONTRACT_ABI = [
+  // Admin check
+  {
+    "inputs": [],
+    "name": "admin",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  // Election functions
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_electionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "startElection",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_electionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "endElection",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_title",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_description",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_startTime",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_endTime",
+        "type": "uint256"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "candidateId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "party",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "slogan",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "voteCount",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct VoteSure.Candidate[]",
+        "name": "_candidates",
+        "type": "tuple[]"
+      }
+    ],
+    "name": "createElection",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  // Utility functions
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_electionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getCandidateCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_electionId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_candidateId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getCandidate",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "candidateId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "party",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "slogan",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "voteCount",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct VoteSure.Candidate",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getArchivedCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      }
+    ],
+    "name": "getArchivedElection",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "electionId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "description",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "startTime",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "endTime",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct VoteSure.ArchivedElection",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_archivedIndex",
+        "type": "uint256"
+      }
+    ],
+    "name": "getArchivedElectionCandidates",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "candidateId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "party",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "slogan",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "voteCount",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct VoteSure.Candidate[]",
+        "name": "",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  // Events
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "electionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "ElectionCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "electionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "ElectionStarted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "electionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "ElectionEnded",
+    "type": "event"
+  }
+];
 
 // Debug info
 console.log('API URL being used:', API_URL);
+console.log('Contract Address being used:', CONTRACT_ADDRESS);
+console.log('Blockchain RPC URL being used:', BLOCKCHAIN_RPC_URL);
+
+// Transaction block explorer URL - based on network (default to Etherscan for dev/test)
+const getBlockExplorerUrl = (txHash, chainId) => {
+  if (!txHash) return null;
+  
+  // Determine explorer based on chainId
+  if (chainId === 1) {
+    return `https://etherscan.io/tx/${txHash}`; // Ethereum Mainnet
+  } else if (chainId === 5) {
+    return `https://goerli.etherscan.io/tx/${txHash}`; // Goerli Testnet
+  } else if (chainId === 11155111) {
+    return `https://sepolia.etherscan.io/tx/${txHash}`; // Sepolia Testnet
+  } else if (chainId === 42161) {
+    return `https://arbiscan.io/tx/${txHash}`; // Arbitrum
+  } else if (chainId === 137) {
+    return `https://polygonscan.com/tx/${txHash}`; // Polygon
+  }
+  
+  // Local development - no block explorer available
+  return null;
+};
+
+// Format success message with transaction details
+const formatSuccessMessage = (message, txHash, chainId) => {
+  if (!txHash) {
+    return message;
+  }
+  
+  const blockExplorerUrl = getBlockExplorerUrl(txHash, chainId);
+  if (blockExplorerUrl) {
+    return (
+      <div>
+        {message}
+        <br />
+        <small>
+          Transaction Hash: <a href={blockExplorerUrl} target="_blank" rel="noopener noreferrer">
+            {txHash.slice(0, 10)}...{txHash.slice(-8)}
+          </a>
+        </small>
+      </div>
+    );
+  }
+  
+  return (
+    <div>
+      {message}
+      <br />
+      <small>Transaction Hash: {txHash.slice(0, 10)}...{txHash.slice(-8)}</small>
+    </div>
+  );
+};
 
 const ManageElection = () => {
   const { isAuthenticated } = useContext(AuthContext);
@@ -29,6 +406,8 @@ const ManageElection = () => {
   const [editingElection, setEditingElection] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [contract, setContract] = useState(null);
+  const [provider, setProvider] = useState(null);
   
   // Election form state
   const [newElection, setNewElection] = useState({
@@ -44,6 +423,74 @@ const ManageElection = () => {
   });
   
   const [formErrors, setFormErrors] = useState({});
+  
+  // Add new state variables after the other state declarations
+  const [showRecordModal, setShowRecordModal] = useState(false);
+  const [recordedElectionData, setRecordedElectionData] = useState(null);
+  const [recordingOnBlockchain, setRecordingOnBlockchain] = useState(false);
+  
+  // Add a new state for tracking blockchain recording status after other state declarations
+  const [electionBlockchainStatus, setElectionBlockchainStatus] = useState({});
+  
+  // Initialize ethers provider and contract
+  useEffect(() => {
+    const initializeProvider = async () => {
+      try {
+        // Check if MetaMask is installed
+        if (window.ethereum) {
+          // Create a Web3Provider using the MetaMask provider
+          const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+          
+          // Check the network
+          const network = await web3Provider.getNetwork();
+          console.log('Connected to network:', network.name, network.chainId);
+          
+          // Check if we're in a local development environment (like Ganache)
+          const isLocalNetwork = network.chainId === 1337 || network.chainId === 5777;
+          
+          if (!isLocalNetwork && process.env.NODE_ENV === 'development') {
+            console.warn('You are not connected to a local network (Ganache). Transactions might fail.');
+            setError('Warning: You appear to be connected to ' + network.name + ' instead of a local Ganache network. Please check your MetaMask network settings.');
+          }
+          
+          setProvider(web3Provider);
+          
+          // Create the contract instance
+          const contractInstance = new ethers.Contract(
+            CONTRACT_ADDRESS,
+            CONTRACT_ABI,
+            web3Provider.getSigner()
+          );
+          
+          setContract(contractInstance);
+          console.log('Smart contract connection initialized');
+          
+          // Set up event listener for network changes
+          window.ethereum.on('chainChanged', (chainId) => {
+            console.log('Network changed to chainId:', chainId);
+            window.location.reload(); // Recommended by MetaMask to reload on network change
+          });
+        } else {
+          console.error('MetaMask not installed');
+          setError('MetaMask is not installed. Please install MetaMask to use blockchain functions.');
+        }
+      } catch (err) {
+        console.error('Error initializing blockchain provider:', err);
+        setError('Failed to initialize blockchain connection. Please check MetaMask and try again.');
+      }
+    };
+    
+    initializeProvider();
+    
+    // Cleanup event listeners
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('chainChanged', () => {
+          console.log('chainChanged event listener removed');
+        });
+      }
+    };
+  }, []);
   
   // Get auth token
   const getAuthHeaders = () => {
@@ -625,91 +1072,86 @@ const ManageElection = () => {
     setProcessingAction(true);
     
     try {
-      // First request MetaMask connection to get user's ethereum address
-      console.log('Requesting MetaMask connection...');
-      let metaMaskAddress;
-      
-      try {
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        metaMaskAddress = accounts[0];
-        console.log('MetaMask connected with address:', metaMaskAddress);
-      } catch (metaMaskError) {
-        console.error('MetaMask connection failed:', metaMaskError);
-        setError('MetaMask connection failed. Please ensure MetaMask is installed and unlocked.');
-          setProcessingAction(false);
-          return;
+      // First check if MetaMask is available and contract is initialized
+      if (!window.ethereum || !contract) {
+        throw new Error('MetaMask or contract not initialized. Please refresh the page and try again.');
       }
       
-      const headers = getAuthHeaders();
+      // Request account access if needed
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      
+      // Get the election ID
       const electionId = actionElection._id || actionElection.id;
       
-      console.log(`Starting election with ID: ${electionId} using MetaMask address: ${metaMaskAddress}`);
-      
-      // Send request to backend with the MetaMask address
-      const response = await axios.post(`${API_URL}/admin/election/start`, { 
-        electionId,
-        metaMaskAddress  // Include the MetaMask address in the request
-      }, {
-            headers: headers
-          });
-          
-      console.log('Start election response:', response.data);
-      
-      // Check blockchain status in response
-      if (response.data && response.data.blockchain) {
-        const { blockchain } = response.data;
-        
-        if (blockchain.success) {
-          if (blockchain.txHash) {
-            console.log('Transaction successful with hash:', blockchain.txHash);
-            setSuccessMessage(`Election started successfully! Transaction hash: ${blockchain.txHash.slice(0, 10)}...`);
-          } else if (blockchain.message && blockchain.message.includes('already started')) {
-            // Election was already started on blockchain
-            console.log('Election already started on blockchain');
-            setSuccessMessage('Election started successfully! (It was already active on the blockchain)');
+      // Create a numeric ID for the blockchain (since blockchain expects uint)
+      // If the ID is not a number, try to extract a numeric portion or use a hash
+      let blockchainElectionId;
+      if (!isNaN(electionId)) {
+        blockchainElectionId = electionId;
+      } else if (!isNaN(electionId.replace(/\D/g, ''))) {
+        // Extract numeric part if exists
+        blockchainElectionId = electionId.replace(/\D/g, '');
           } else {
-            // Generic success
-            setSuccessMessage('Election started successfully!');
-          }
-        } else if (blockchain.error) {
-          // Handle blockchain errors
-          console.warn('Blockchain error:', blockchain.error);
-          
-          // Check for specific error messages
-          if (blockchain.error.includes('already started')) {
-            setSuccessMessage('Election started successfully! (It was already active on the blockchain)');
-          } else {
-            setSuccessMessage("Election started in database, but blockchain transaction encountered an issue.");
-            setError(`Blockchain warning: ${blockchain.error.slice(0, 100)}${blockchain.error.length > 100 ? '...' : ''}`);
-          }
-        }
-      } else {
-        // Generic success if no blockchain info
-        setSuccessMessage("Election started successfully!");
+        // Use the first 8 digits of timestamp as fallback
+        blockchainElectionId = Math.floor(Date.now() / 100000) % 100000000;
       }
       
-      // Update elections in the UI
+      console.log(`Starting election with ID: ${electionId}, blockchain ID: ${blockchainElectionId}`);
+      
+      // Call the contract's startElection function directly
+      const tx = await contract.startElection(blockchainElectionId);
+      console.log('Transaction sent:', tx.hash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await tx.wait();
+      console.log('Transaction confirmed:', receipt);
+      
+      // Update the UI to reflect the change
       setElections(prev => prev.map(e => 
         (e._id === electionId || e.id === electionId) 
           ? { ...e, isActive: true }
           : e
       ));
       
+      const network = await provider.getNetwork();
+      setSuccessMessage(formatSuccessMessage("Election started successfully on the blockchain!", tx.hash, network.chainId));
+      
+      // Also update the backend to keep it in sync
+      try {
+        const headers = getAuthHeaders();
+        await axios.post(`${API_URL}/admin/election/start`, { 
+          electionId,
+          blockchainTxHash: tx.hash,  // Include the actual blockchain transaction hash
+          blockchainSuccess: true
+        }, { headers });
+        console.log('Backend notified of successful blockchain transaction');
+      } catch (backendError) {
+        console.warn('Failed to notify backend of blockchain transaction:', backendError);
+        // We still consider this a success since the blockchain transaction succeeded
+      }
+      
       setShowStartModal(false);
       setActionElection(null);
     } catch (error) {
-      console.error('Error starting election:', error);
+      console.error('Error starting election on blockchain:', error);
       
-      // Parse and display helpful error messages
-      if (error.response?.data?.message) {
-        setError(`Failed to start election: ${error.response.data.message}`);
-      } else if (error.response?.data?.details) {
-        setError(`Failed to start election: ${error.response.data.details}`);
-      } else if (error.response?.data?.blockchain?.error) {
-        setError(`Blockchain error: ${error.response.data.blockchain.error}`);
-      } else {
-        setError('Failed to start election. ' + (error.message || 'Unknown error'));
+      // Parse and display helpful error messages for common blockchain errors
+      let errorMessage = 'Failed to start election on blockchain.';
+      
+      if (error.code === 4001) {
+        // User rejected transaction
+        errorMessage = 'Transaction rejected. You cancelled the MetaMask transaction.';
+      } else if (error.message.includes('user rejected')) {
+        errorMessage = 'Transaction rejected. You cancelled the MetaMask transaction.';
+      } else if (error.message.includes('already started')) {
+        errorMessage = 'This election has already been started on the blockchain.';
+      } else if (error.data && error.data.message) {
+        errorMessage = `Blockchain error: ${error.data.message}`;
+      } else if (error.message) {
+        errorMessage = `Blockchain error: ${error.message}`;
       }
+      
+      setError(errorMessage);
     } finally {
       setProcessingAction(false);
       setLoading(false);
@@ -737,91 +1179,88 @@ const ManageElection = () => {
     setProcessingAction(true);
     
     try {
-      // First request MetaMask connection to get user's ethereum address
-      console.log('Requesting MetaMask connection...');
-      let metaMaskAddress;
-      
-      try {
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        metaMaskAddress = accounts[0];
-        console.log('MetaMask connected with address:', metaMaskAddress);
-      } catch (metaMaskError) {
-        console.error('MetaMask connection failed:', metaMaskError);
-        setError('MetaMask connection failed. Please ensure MetaMask is installed and unlocked.');
-        setProcessingAction(false);
-        return;
+      // First check if MetaMask is available and contract is initialized
+      if (!window.ethereum || !contract) {
+        throw new Error('MetaMask or contract not initialized. Please refresh the page and try again.');
       }
       
-      const headers = getAuthHeaders();
+      // Request account access if needed
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      
+      // Get the election ID
       const electionId = actionElection._id || actionElection.id;
       
-      console.log(`Stopping election with ID: ${electionId} using MetaMask address: ${metaMaskAddress}`);
-      
-      // Send request to backend with the MetaMask address
-      const response = await axios.post(`${API_URL}/admin/election/end`, { 
-        electionId,
-        metaMaskAddress // Include MetaMask address in the request
-      }, {
-            headers: headers
-          });
-          
-          console.log('Election stop response:', response.data);
-      
-      // Check blockchain status in response
-      if (response.data && response.data.blockchain) {
-        const { blockchain } = response.data;
-        
-        if (blockchain.success) {
-          if (blockchain.txHash) {
-            console.log('Transaction successful with hash:', blockchain.txHash);
-            setSuccessMessage(`Election stopped successfully! Transaction hash: ${blockchain.txHash.slice(0, 10)}...`);
-          } else if (blockchain.message && blockchain.message.includes('already ended')) {
-            // Election was already ended on blockchain
-            console.log('Election already ended on blockchain');
-            setSuccessMessage('Election stopped successfully! (It was already inactive on the blockchain)');
+      // Create a numeric ID for the blockchain (since blockchain expects uint)
+      // If the ID is not a number, try to extract a numeric portion or use a hash
+      let blockchainElectionId;
+      if (!isNaN(electionId)) {
+        blockchainElectionId = electionId;
+      } else if (!isNaN(electionId.replace(/\D/g, ''))) {
+        // Extract numeric part if exists
+        blockchainElectionId = electionId.replace(/\D/g, '');
           } else {
-            // Generic success
-            setSuccessMessage('Election stopped successfully!');
-          }
-        } else if (blockchain.error) {
-          // Handle blockchain errors
-          console.warn('Blockchain error:', blockchain.error);
-          
-          // Check for specific error messages
-          if (blockchain.error.includes('already ended') || blockchain.error.includes('not started')) {
-            setSuccessMessage('Election stopped successfully! (It was already inactive on the blockchain)');
-          } else {
-            setSuccessMessage("Election stopped in database, but blockchain transaction encountered an issue.");
-            setError(`Blockchain warning: ${blockchain.error.slice(0, 100)}${blockchain.error.length > 100 ? '...' : ''}`);
-          }
-        }
-      } else {
-        // Generic success if no blockchain info
-        setSuccessMessage("Election stopped successfully!");
+        // Use the first 8 digits of timestamp as fallback
+        blockchainElectionId = Math.floor(Date.now() / 100000) % 100000000;
       }
       
-      // Update the election status in the UI
+      console.log(`Ending election with ID: ${electionId}, blockchain ID: ${blockchainElectionId}`);
+      
+      // Call the contract's endElection function directly
+      const tx = await contract.endElection(blockchainElectionId);
+      console.log('Transaction sent:', tx.hash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await tx.wait();
+      console.log('Transaction confirmed:', receipt);
+      
+      // Update the UI to reflect the change
       setElections(prev => prev.map(e => 
         (e._id === electionId || e.id === electionId) 
           ? { ...e, isActive: false }
           : e
       ));
       
+      const network = await provider.getNetwork();
+      setSuccessMessage(formatSuccessMessage("Election ended successfully on the blockchain!", tx.hash, network.chainId));
+      
+      // Also update the backend to keep it in sync
+      try {
+        const headers = getAuthHeaders();
+        await axios.post(`${API_URL}/admin/election/end`, { 
+          electionId,
+          blockchainTxHash: tx.hash,  // Include the actual blockchain transaction hash
+          blockchainSuccess: true
+        }, { headers });
+        console.log('Backend notified of successful blockchain transaction');
+      } catch (backendError) {
+        console.warn('Failed to notify backend of blockchain transaction:', backendError);
+        // We still consider this a success since the blockchain transaction succeeded
+      }
+      
       setShowStopModal(false);
       setActionElection(null);
     } catch (error) {
-      console.error('Error stopping election:', error);
+      console.error('Error ending election on blockchain:', error);
       
-      // Parse and display helpful error messages
-      if (error.response?.data?.message) {
-        setError(`Failed to stop election: ${error.response.data.message}`);
-      } else if (error.response?.data?.details) {
-        setError(`Failed to stop election: ${error.response.data.details}`);
-      } else if (error.response?.data?.blockchain?.error) {
-        setError(`Blockchain error: ${error.response.data.blockchain.error}`);
-      } else {
-        setError('Failed to stop election. ' + (error.message || 'Unknown error'));
+      // Parse and display helpful error messages for common blockchain errors
+      let errorMessage = 'Failed to end election on blockchain.';
+      
+      if (error.code === 4001) {
+        // User rejected transaction
+        errorMessage = 'Transaction rejected. You cancelled the MetaMask transaction.';
+      } else if (error.message.includes('user rejected')) {
+        errorMessage = 'Transaction rejected. You cancelled the MetaMask transaction.';
+      } else if (error.message.includes('not active')) {
+        errorMessage = 'This election is not active on the blockchain.';
+      } else if (error.message.includes('already ended')) {
+        errorMessage = 'This election has already been ended on the blockchain.';
+      } else if (error.data && error.data.message) {
+        errorMessage = `Blockchain error: ${error.data.message}`;
+      } else if (error.message) {
+        errorMessage = `Blockchain error: ${error.message}`;
       }
+      
+      setError(errorMessage);
     } finally {
       setProcessingAction(false);
       setLoading(false);
@@ -1092,9 +1531,262 @@ const ManageElection = () => {
     }
   };
   
+  // Handle record button click
+  const handleRecordClick = (election) => {
+    setActionElection(election);
+    setShowRecordModal(true);
+    setRecordedElectionData(null); // Reset election data
+  };
+  
+  // Handle record on blockchain
+  const handleRecordOnBlockchain = async () => {
+    if (!actionElection) return;
+    
+    // Verify the election can be recorded
+    if (actionElection.isActive) {
+      setError('This election is already active. No need to record it again.');
+      setShowRecordModal(false);
+      return;
+    }
+    
+    if (actionElection.isArchived) {
+      setError('Cannot record an archived election.');
+      setShowRecordModal(false);
+      return;
+    }
+    
+    if (isElectionExpired(actionElection)) {
+      setError('Cannot record an election that has already ended.');
+      setShowRecordModal(false);
+      return;
+    }
+    
+    setLoading(true);
+    setRecordingOnBlockchain(true);
+    
+    try {
+      // First check if MetaMask is available and contract is initialized
+      if (!window.ethereum || !contract) {
+        throw new Error('MetaMask or contract not initialized. Please refresh the page and try again.');
+      }
+      
+      // Request account access if needed
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      
+      // Get the election ID
+      const electionId = actionElection._id || actionElection.id;
+      
+      // Create a numeric ID for the blockchain (since blockchain expects uint)
+      // If the ID is not a number, try to extract a numeric portion or use a hash
+      let blockchainElectionId;
+      if (!isNaN(electionId)) {
+        blockchainElectionId = electionId;
+      } else if (!isNaN(electionId.replace(/\D/g, ''))) {
+        // Extract numeric part if exists
+        blockchainElectionId = electionId.replace(/\D/g, '');
+      } else {
+        // Use the first 8 digits of timestamp as fallback
+        blockchainElectionId = Math.floor(Date.now() / 100000) % 100000000;
+      }
+      
+      console.log(`Preparing to record election with ID: ${electionId}, blockchain ID: ${blockchainElectionId}`);
+      
+      // Fetch data from the correct API endpoints
+      const headers = getAuthHeaders();
+      
+      // Use admin endpoint to get election details
+      const adminElectionResponse = await axios.get(`${API_URL}/admin/election/${electionId}`, { headers });
+      console.log('Fetched election data:', adminElectionResponse.data);
+      
+      // Extract election from response based on API structure
+      const election = adminElectionResponse.data.election || adminElectionResponse.data;
+      
+      // Use the correct admin endpoint to fetch candidates
+      console.log('Fetching candidates from admin endpoint');
+      const candidatesResponse = await axios.get(`${API_URL}/admin/candidates`, { headers });
+      console.log('Fetched candidates data:', candidatesResponse.data);
+      
+      // Filter candidates for the current election - with better handling of election reference
+      const candidates = (candidatesResponse.data || []).filter(candidate => {
+        // Handle different possible structures of the election reference
+        if (typeof candidate.election === 'object' && candidate.election && candidate.election._id) {
+          return candidate.election._id === electionId;
+        } else if (typeof candidate.election === 'string') {
+          return candidate.election === electionId;
+        }
+        return false;
+      });
+      
+      console.log('Filtered candidates for this election:', candidates.length);
+      
+      // Format candidates for blockchain
+      const formattedCandidates = candidates.map((candidate, index) => {
+        // Create full name based on available fields
+        const fullName = candidate.name || 
+          [
+            candidate.firstName || '',
+            candidate.middleName || '',
+            candidate.lastName || ''
+          ].filter(Boolean).join(' ');
+        
+        // Include candidate pincode and constituency
+        const candidatePincode = candidate.pincode || election.pincode || '000000';
+        const constituency = candidate.constituency || 'Unknown';
+        
+        return {
+          candidateId: index + 1, // Use sequence number as candidateId
+          name: fullName || 'Unknown Candidate',
+          party: candidate.partyName || "Independent",
+          slogan: candidate.manifesto || "",
+          voteCount: 0, // Initial vote count is zero
+          pincode: candidatePincode, // Add candidate's pincode
+          constituency: constituency // Add candidate's constituency
+        };
+      });
+      
+      // Calculate Unix timestamps for start and end times
+      const startTimestamp = Math.floor(new Date(election.startDate).getTime() / 1000);
+      const endTimestamp = Math.floor(new Date(election.endDate).getTime() / 1000);
+      
+      // Complete election data for blockchain
+      const blockchainElectionData = {
+        electionId: blockchainElectionId,
+        title: election.title || election.name,
+        description: election.description || 'No description',
+        startTime: startTimestamp,
+        endTime: endTimestamp,
+        candidates: formattedCandidates,
+        pincode: election.pincode || '000000', // Include pincode in the blockchain data
+        region: election.region || 'Unknown' // Include region information as well
+      };
+      
+      // Store the formatted data in state for display and confirmation
+      setRecordedElectionData(blockchainElectionData);
+      
+      console.log('Formatted election data for blockchain:', blockchainElectionData);
+      
+      setLoading(false);
+    } catch (error) {
+      console.error('Error preparing election data for blockchain:', error);
+      
+      // Parse and display helpful error messages
+      let errorMessage = 'Failed to prepare election data for blockchain.';
+      
+      if (error.response) {
+        if (error.response.status === 404) {
+          errorMessage = 'Election or candidates not found in the database.';
+        } else if (error.response.status === 401) {
+          errorMessage = 'Authentication failed. Please log in again.';
+        } else if (error.response.data && error.response.data.message) {
+          errorMessage = `Server error: ${error.response.data.message}`;
+        }
+      } else if (error.message) {
+        errorMessage = `Error: ${error.message}`;
+      }
+      
+      setError(errorMessage);
+      setLoading(false);
+    } finally {
+      setRecordingOnBlockchain(false);
+    }
+  };
+  
+  // Handle record confirm
+  const handleRecordConfirm = async () => {
+    if (!recordedElectionData) {
+      setError('No election data to record on the blockchain.');
+      return;
+    }
+    
+    setLoading(true);
+    setRecordingOnBlockchain(true);
+    
+    try {
+      // Call the contract's createElection function with the formatted data
+      const tx = await contract.createElection(
+        recordedElectionData.title,
+        recordedElectionData.description + ` [Region: ${recordedElectionData.region}, Pincode: ${recordedElectionData.pincode}]`, // Add pincode to description
+        recordedElectionData.startTime,
+        recordedElectionData.endTime,
+        recordedElectionData.candidates
+      );
+      
+      console.log('Transaction sent:', tx.hash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await tx.wait();
+      console.log('Transaction confirmed:', receipt);
+      
+      const network = await provider.getNetwork();
+      setSuccessMessage(formatSuccessMessage("Election successfully recorded on the blockchain!", tx.hash, network.chainId));
+      
+      // Notify the backend of successful blockchain recording
+      try {
+        const headers = getAuthHeaders();
+        const electionId = actionElection._id || actionElection.id;
+        
+        await axios.post(`${API_URL}/admin/election/record`, { 
+          electionId,
+          blockchainElectionId: recordedElectionData.electionId,
+          blockchainTxHash: tx.hash,
+          blockchainSuccess: true
+        }, { headers });
+        
+        console.log('Backend notified of successful blockchain recording');
+        
+        // Update local blockchain status tracking
+        setElectionBlockchainStatus(prev => ({
+          ...prev,
+          [electionId]: true
+        }));
+      } catch (backendError) {
+        console.warn('Failed to notify backend of blockchain recording:', backendError);
+        // We still consider this a success since the blockchain transaction succeeded
+        
+        // Still update local status even if backend notification failed
+        const electionId = actionElection._id || actionElection.id;
+        setElectionBlockchainStatus(prev => ({
+          ...prev,
+          [electionId]: true
+        }));
+      }
+      
+      setShowRecordModal(false);
+      setActionElection(null);
+      setRecordedElectionData(null);
+    } catch (error) {
+      console.error('Error recording election on blockchain:', error);
+      
+      // Parse and display helpful error messages for common blockchain errors
+      let errorMessage = 'Failed to record election on blockchain.';
+      
+      if (error.code === 4001) {
+        // User rejected transaction
+        errorMessage = 'Transaction rejected. You cancelled the MetaMask transaction.';
+      } else if (error.message.includes('user rejected')) {
+        errorMessage = 'Transaction rejected. You cancelled the MetaMask transaction.';
+      } else if (error.data && error.data.message) {
+        errorMessage = `Blockchain error: ${error.data.message}`;
+      } else if (error.message) {
+        errorMessage = `Blockchain error: ${error.message}`;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setRecordingOnBlockchain(false);
+      setLoading(false);
+    }
+  };
+  
+  // Add a function to check if an election is recorded on blockchain
+  const isElectionRecordedOnBlockchain = (election) => {
+    return electionBlockchainStatus[election._id || election.id] === true;
+  };
+  
   // Helper function to get the appropriate button text and variant for each action
   const getActionButtonProps = (election) => {
     const isExpired = isElectionExpired(election);
+    const isRecorded = isElectionRecordedOnBlockchain(election);
     
     return {
       edit: {
@@ -1106,14 +1798,29 @@ const ManageElection = () => {
           : "Edit this election",
         variant: "outline-primary"
       },
+      record: {
+        disabled: election.isActive || election.isArchived || isExpired || isRecorded,
+        title: election.isActive 
+          ? "Election already recorded and active" 
+          : election.isArchived 
+          ? "Cannot record an archived election" 
+          : isExpired 
+          ? "Cannot record an expired election" 
+          : isRecorded
+          ? "Already recorded on blockchain"
+          : "Record election details on blockchain",
+        variant: "outline-info"
+      },
       start: {
-        disabled: election.isActive || election.isArchived || isExpired,
+        disabled: election.isActive || election.isArchived || isExpired || !isRecorded,
         title: election.isActive 
           ? "Election is already active" 
           : election.isArchived 
           ? "Cannot start an archived election" 
           : isExpired 
           ? "Cannot start an expired election" 
+          : !isRecorded
+          ? "Record on blockchain before starting" 
           : "Start this election",
         variant: "outline-success"
       },
@@ -1246,6 +1953,13 @@ const ManageElection = () => {
                                 <small className="text-muted text-truncate d-inline-block" style={{ maxWidth: '250px' }}>
                                   {election.description}
                                 </small>
+                                {isElectionRecordedOnBlockchain(election) && (
+                                  <div className="mt-1">
+                                    <Badge bg="info" className="px-2 py-1">
+                                      <FaSyncAlt className="me-1" /> Blockchain Recorded
+                                    </Badge>
+                                  </div>
+                                )}
                           </td>
                               <td className="py-3">
                                 <Badge bg={
@@ -1277,6 +1991,13 @@ const ManageElection = () => {
                                 onClick={() => handleEditClick(election)}
                               >
                                     <FaEdit className="me-1" /> Edit
+                              </Button>
+                              
+                                  <Button
+                                    {...getActionButtonProps(election).record}
+                                    onClick={() => handleRecordClick(election)}
+                                  >
+                                    <FaSyncAlt className="me-1" /> Record on Blockchain
                               </Button>
                               
                                   {election.isActive ? (
@@ -1548,7 +2269,7 @@ const ManageElection = () => {
         centered
       >
         <Modal.Header closeButton>
-          <Modal.Title>Start Election</Modal.Title>
+          <Modal.Title>Start Election on Blockchain</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           Are you sure you want to start this election? This will make it active for voters.
@@ -1561,16 +2282,16 @@ const ManageElection = () => {
             </ul>
           </Alert>
           <Alert variant="warning" className="mt-3">
-            <strong>Blockchain Transaction Info:</strong>
+            <strong>Blockchain Transaction Required:</strong>
             <p className="mb-2">
-              This action will attempt to start the election on the blockchain using MetaMask. 
-              Common issues that might occur:
+              This action will create a direct blockchain transaction using your MetaMask wallet.
+              You will need to:
             </p>
             <ul className="mb-0 small">
-              <li>If the election is already started on the blockchain, the transaction will be recognized as successful.</li>
-              <li>If MetaMask isn't properly set up or connected, you may encounter connection errors.</li>
-              <li>Gas estimate errors sometimes occur when the blockchain state conflicts with the operation.</li>
-              <li>Even if blockchain transaction fails, the election will still be started in our database.</li>
+              <li>Approve the transaction in your MetaMask wallet</li>
+              <li>Wait for the transaction to be mined (this may take a moment)</li>
+              <li>Ensure you have enough ETH in your wallet to cover gas fees</li>
+              <li>Make sure you are connected to the correct blockchain network (Ganache or test network)</li>
             </ul>
           </Alert>
         </Modal.Body>
@@ -1593,10 +2314,10 @@ const ManageElection = () => {
                   aria-hidden="true"
                   className="me-2"
                 />
-                Starting...
+                Starting on Blockchain...
               </>
             ) : (
-              'Start Election'
+              'Start Election on Blockchain'
             )}
           </Button>
         </Modal.Footer>
@@ -1609,29 +2330,30 @@ const ManageElection = () => {
         centered
       >
         <Modal.Header closeButton>
-          <Modal.Title>Stop Election</Modal.Title>
+          <Modal.Title>End Election on Blockchain</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          Are you sure you want to stop this election? This will end voting for all voters.
+          Are you sure you want to end this election? This will stop voting for all voters.
           <Alert variant="warning" className="mt-3">
-            <strong>Warning:</strong> Stopping an election will:
+            <strong>Warning:</strong> Ending an election will:
             <ul className="mb-0">
               <li>Prevent further votes from being cast</li>
               <li>Finalize results on the blockchain</li>
-              <li>This action cannot be easily reversed</li>
+              <li>Archive election data permanently on the blockchain</li>
+              <li>This action cannot be reversed</li>
             </ul>
           </Alert>
           <Alert variant="warning" className="mt-3">
-            <strong>Blockchain Transaction Info:</strong>
+            <strong>Blockchain Transaction Required:</strong>
             <p className="mb-2">
-              This action will attempt to end the election on the blockchain using MetaMask.
-              Common issues that might occur:
+              This action will create a direct blockchain transaction using your MetaMask wallet.
+              You will need to:
             </p>
             <ul className="mb-0 small">
-              <li>If the election is already ended on the blockchain, the transaction will be recognized as successful.</li>
-              <li>If the election was never properly started on the blockchain, you might see a "not started" error.</li>
-              <li>MetaMask connection issues might prevent the blockchain transaction from completing.</li>
-              <li>Even if the blockchain transaction fails, the election will still be ended in our database.</li>
+              <li>Approve the transaction in your MetaMask wallet</li>
+              <li>Wait for the transaction to be mined (this may take a moment)</li>
+              <li>Ensure you have enough ETH in your wallet to cover gas fees</li>
+              <li>Make sure you are connected to the correct blockchain network (Ganache or test network)</li>
             </ul>
           </Alert>
         </Modal.Body>
@@ -1654,12 +2376,175 @@ const ManageElection = () => {
                   aria-hidden="true"
                   className="me-2"
                 />
-                Stopping...
+                Ending on Blockchain...
               </>
             ) : (
-              'Stop Election'
+              'End Election on Blockchain'
             )}
           </Button>
+        </Modal.Footer>
+      </Modal>
+      
+      {/* Add Record Election Modal after the stop modal */}
+      <Modal
+        show={showRecordModal}
+        onHide={() => setShowRecordModal(false)}
+        centered
+        size="lg"
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Record Election on Blockchain</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {!recordedElectionData ? (
+            <>
+              <p>
+                First we'll fetch election and candidate data from the backend, then record it to the blockchain.
+                This will ensure that all candidate details are properly recorded before starting the election.
+              </p>
+              <Alert variant="info" className="mt-3">
+                <strong>Note:</strong> This action will:
+                <ul className="mb-0">
+                  <li>Fetch all election and candidate details from the database</li>
+                  <li>Structure the data according to the smart contract requirements</li>
+                  <li>Record everything on the blockchain</li>
+                  <li>After recording, you can start the election</li>
+                </ul>
+              </Alert>
+              <Alert variant="warning" className="mt-3">
+                <strong>Blockchain Transaction Required:</strong>
+                <p className="mb-2">
+                  This action will create a direct blockchain transaction using your MetaMask wallet.
+                  You will need to:
+                </p>
+                <ul className="mb-0 small">
+                  <li>Approve the transaction in your MetaMask wallet</li>
+                  <li>Wait for the transaction to be mined (this may take a moment)</li>
+                  <li>Ensure you have enough ETH in your wallet to cover gas fees</li>
+                  <li>Make sure you are connected to the correct blockchain network (Ganache or test network)</li>
+                </ul>
+              </Alert>
+            </>
+          ) : (
+            <>
+              <Alert variant="success" className="mb-3">
+                <strong>Data Loaded!</strong> The election data has been successfully loaded from the backend.
+              </Alert>
+              
+              <h5>Election Details</h5>
+              <Table striped bordered hover size="sm" className="mb-4">
+                <tbody>
+                  <tr>
+                    <th>Title</th>
+                    <td>{recordedElectionData.title}</td>
+                  </tr>
+                  <tr>
+                    <th>Description</th>
+                    <td>{recordedElectionData.description}</td>
+                  </tr>
+                  <tr>
+                    <th>Start Time</th>
+                    <td>{new Date(recordedElectionData.startTime * 1000).toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <th>End Time</th>
+                    <td>{new Date(recordedElectionData.endTime * 1000).toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <th>Location</th>
+                    <td>{recordedElectionData.region} (Pincode: {recordedElectionData.pincode})</td>
+                  </tr>
+                  <tr>
+                    <th>Candidates</th>
+                    <td>{recordedElectionData.candidates.length} candidates</td>
+                  </tr>
+                </tbody>
+              </Table>
+              
+              <h5>Candidates</h5>
+              <div style={{ maxHeight: '200px', overflowY: 'auto' }} className="border rounded p-2 mb-3">
+                <Table striped bordered hover size="sm">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Name</th>
+                      <th>Party</th>
+                      <th>Constituency</th>
+                      <th>Pincode</th>
+                      <th>Slogan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recordedElectionData.candidates.map((candidate, index) => (
+                      <tr key={index}>
+                        <td>{candidate.candidateId}</td>
+                        <td>{candidate.name}</td>
+                        <td>{candidate.party}</td>
+                        <td>{candidate.constituency}</td>
+                        <td>{candidate.pincode}</td>
+                        <td>{candidate.slogan.length > 30 ? `${candidate.slogan.substring(0, 30)}...` : candidate.slogan}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+              
+              <Alert variant="warning">
+                <strong>Important:</strong> Please review the data above before proceeding. 
+                Once recorded on the blockchain, this information cannot be modified.
+              </Alert>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowRecordModal(false)}>
+            Cancel
+          </Button>
+          {!recordedElectionData ? (
+            <Button 
+              variant="primary" 
+              onClick={handleRecordOnBlockchain}
+              disabled={recordingOnBlockchain || loading}
+            >
+              {recordingOnBlockchain || loading ? (
+                <>
+                  <Spinner
+                    as="span"
+                    animation="border"
+                    size="sm"
+                    role="status"
+                    aria-hidden="true"
+                    className="me-2"
+                  />
+                  Fetching Data...
+                </>
+              ) : (
+                'Fetch Election Data'
+              )}
+            </Button>
+          ) : (
+            <Button 
+              variant="success" 
+              onClick={handleRecordConfirm}
+              disabled={recordingOnBlockchain}
+            >
+              {recordingOnBlockchain ? (
+                <>
+                  <Spinner
+                    as="span"
+                    animation="border"
+                    size="sm"
+                    role="status"
+                    aria-hidden="true"
+                    className="me-2"
+                  />
+                  Recording on Blockchain...
+                </>
+              ) : (
+                'Record on Blockchain'
+              )}
+            </Button>
+          )}
         </Modal.Footer>
       </Modal>
     </Layout>

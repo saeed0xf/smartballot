@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Navbar, Nav, Container, Button, Badge } from 'react-bootstrap';
-import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine, FaClock, FaCalendarAlt, FaArchive } from 'react-icons/fa';
+import { FaVoteYea, FaUserShield, FaUsers, FaClipboardList, FaBoxes, FaSignOutAlt, FaHome, FaUserCheck, FaCheckSquare, FaChartLine, FaClock, FaCalendarAlt, FaArchive, FaChartBar, FaFilePdf, FaVideo } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 import env from '../utils/env';
 
@@ -141,14 +141,14 @@ const AppNavbar = () => {
       <Nav.Link as={Link} to="/officer" className="d-flex align-items-center">
         <FaHome className="me-1" /> Dashboard
       </Nav.Link>
-      <Nav.Link as={Link} to="/officer/slots" className="d-flex align-items-center">
-        <FaClock className="me-1" /> Time Slots
+      <Nav.Link as={Link} to="/officer/results" className="d-flex align-items-center">
+        <FaChartBar className="me-1" /> Election Results
       </Nav.Link>
-      <Nav.Link as={Link} to="/officer/timeslots" className="d-flex align-items-center">
-        <FaCalendarAlt className="me-1" /> Manage Voter Time Slots
+      <Nav.Link as={Link} to="/officer/reports" className="d-flex align-items-center">
+        <FaFilePdf className="me-1" /> Reports
       </Nav.Link>
-      <Nav.Link as={Link} to="/officer/monitor" className="d-flex align-items-center">
-        <FaChartLine className="me-1" /> Live Monitoring
+      <Nav.Link as={Link} to="/officer/verification" className="d-flex align-items-center">
+        <FaVideo className="me-1" /> Verification Center
       </Nav.Link>
       <Button variant="outline-danger" onClick={handleLogout} className="ms-2 d-flex align-items-center">
         <FaSignOutAlt className="me-1" /> Logout

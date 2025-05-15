@@ -319,6 +319,31 @@ export const AuthProvider = ({ children }) => {
       const address = await connectWallet();
       console.log('Wallet connected, address:', address);
 
+      // Check wallet status
+      const apiUrl = env.API_URL || 'http://localhost:5000/api';
+      console.log('Using API URL:', apiUrl);
+      
+      console.log('Checking wallet status...');
+      const statusResponse = await axios.get(`${apiUrl}/auth/wallet-status?address=${address}`);
+      console.log('Wallet status response:', statusResponse.data);
+      
+      // If voter can't login, show error
+      if (!statusResponse.data.canLogin) {
+        console.log('Wallet not authorized to login:', statusResponse.data);
+        
+        if (statusResponse.data.role === 'voter') {
+          if (statusResponse.data.voterStatus === 'pending') {
+            throw new Error('Your voter registration is pending approval. Please check back later.');
+          } else if (statusResponse.data.voterStatus === 'rejected') {
+            throw new Error('Your voter registration has been rejected. Please contact an administrator.');
+          } else {
+            throw new Error('You need to register as a voter before you can login.');
+          }
+        } else {
+          throw new Error('This wallet is not authorized to login.');
+        }
+      }
+
       // Check if this is the admin address
       const adminAddress = env.ADMIN_ADDRESS;
       console.log('Admin address from env:', adminAddress);
@@ -330,9 +355,6 @@ export const AuthProvider = ({ children }) => {
 
       // Get nonce from server
       console.log('Getting nonce from server...');
-      const apiUrl = env.API_URL || 'http://localhost:5000/api';
-      console.log('Using API URL:', apiUrl);
-
       const nonceResponse = await axios.get(`${apiUrl}/auth/nonce?address=${address}`);
       console.log('Nonce response:', nonceResponse.data);
 

@@ -1,146 +1,278 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract VoteSure {
+contract VoteSureV2 {
     address public admin;
-    bool public electionStarted;
-    bool public electionEnded;
-    
-    struct Voter {
-        bool isRegistered;
-        bool isApproved;
-        bool hasVoted;
-        uint256 votedCandidateId;
+
+    constructor() {
+        admin = msg.sender;
     }
-    
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin can perform this action");
+        _;
+    }
+
     struct Candidate {
-        uint256 id;
+        uint candidateId;
         string name;
         string party;
         string slogan;
-        uint256 voteCount;
+        string pincode;      // Add pincode for candidate
+        string constituency; // Add constituency for candidate
+        uint voteCount;
     }
-    
+
+    struct Election {
+        uint electionId;
+        string title;
+        string description;
+        string pincode;     // Add pincode for election
+        string region;      // Add region for election
+        uint startTime;
+        uint endTime;
+        bool isActive;
+        bool isEnded;
+        Candidate[] candidates;
+        mapping(address => bool) hasVoted;
+    }
+
+    // Modify the ArchivedElection struct to also include pincode and region
+    struct ArchivedElection {
+        uint electionId;
+        string title;
+        string description;
+        string pincode;  // Add pincode for archived election
+        string region;   // Add region for archived election
+        uint startTime;
+        uint endTime;
+    }
+
+    // Create a separate mapping to store candidates for archived elections
+    mapping(uint => Candidate[]) public archivedElectionCandidates;
+
+    uint public electionCount;
+    mapping(uint => Election) public elections;
+    ArchivedElection[] public archivedElections;
+    mapping(address => bool) public approvedVoters;
+    mapping(address => string) public voterIdByAddress; // Map wallet address to voter ID
+    mapping(string => bool) public registeredVoterIds; // Track registered voter IDs
+
+    // Add a Voter struct to store all voter details
+    struct Voter {
+        string voterId;       // Government-issued voter ID
+        string pincode;       // Voter's residential pincode
+        bool isApproved;      // Approval status
+        uint registrationTime; // When the voter was registered
+    }
+
+    // Replace simple mapping with detailed voter information
     mapping(address => Voter) public voters;
-    mapping(uint256 => Candidate) public candidates;
-    uint256 public candidatesCount;
-    uint256 public approvedVotersCount;
-    uint256 public totalVotesCount;
-    
-    event VoterRegistered(address indexed voterAddress);
-    event VoterApproved(address indexed voterAddress);
-    event VoterRejected(address indexed voterAddress);
-    event CandidateAdded(uint256 indexed candidateId, string name, string party);
-    event VoteCast(address indexed voter, uint256 indexed candidateId);
-    event ElectionStarted(uint256 timestamp);
-    event ElectionEnded(uint256 timestamp);
-    event ElectionAlreadyStarted();
-    event ElectionAlreadyEnded();
-    
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin can call this function");
-        _;
+    mapping(string => address) public voterIdToAddress; // Reverse lookup from voterId to address
+
+    // Events
+    event VoterApproved(address voter);
+    event ElectionCreated(uint electionId);
+    event ElectionStarted(uint electionId);
+    event ElectionEnded(uint electionId);
+    event VoteCasted(address voter, uint electionId, uint candidateId);
+
+    // Approve voter
+    function approveVoter(address _voter) external onlyAdmin {
+        require(!approvedVoters[_voter], "Voter already approved");
+        approvedVoters[_voter] = true;
+        emit VoterApproved(_voter);
     }
-    
-    modifier electionIsOngoing() {
-        require(electionStarted, "Election has not started yet");
-        require(!electionEnded, "Election has already ended");
-        _;
-    }
-    
-    constructor() {
-        admin = msg.sender;
-        electionStarted = false;
-        electionEnded = false;
-    }
-    
-    function registerVoter(address _voterAddress) external {
-        require(!voters[_voterAddress].isRegistered, "Voter already registered");
+
+    // Update the approveVoterWithId function to include pincode
+    function approveVoterWithId(
+        address _voter, 
+        string memory _voterId, 
+        string memory _pincode
+    ) external onlyAdmin {
+        require(!voters[_voter].isApproved, "Voter already approved");
+        require(voterIdToAddress[_voterId] == address(0), "Voter ID already registered");
+        require(bytes(_pincode).length > 0, "Pincode must not be empty");
         
-        voters[_voterAddress].isRegistered = true;
-        voters[_voterAddress].isApproved = false;
-        voters[_voterAddress].hasVoted = false;
+        // Store complete voter information
+        voters[_voter] = Voter({
+            voterId: _voterId,
+            pincode: _pincode,
+            isApproved: true,
+            registrationTime: block.timestamp
+        });
         
-        emit VoterRegistered(_voterAddress);
+        // Set up reverse lookup
+        voterIdToAddress[_voterId] = _voter;
+        
+        // For backward compatibility
+        approvedVoters[_voter] = true;
+        voterIdByAddress[_voter] = _voterId;
+        registeredVoterIds[_voterId] = true;
+        
+        emit VoterApproved(_voter);
     }
-    
-    function approveVoter(address _voterAddress) external onlyAdmin {
-        require(voters[_voterAddress].isRegistered, "Voter not registered");
-        require(!voters[_voterAddress].isApproved, "Voter already approved");
-        
-        voters[_voterAddress].isApproved = true;
-        approvedVotersCount++;
-        
-        emit VoterApproved(_voterAddress);
+
+    // Add a helper function to check if a voter ID is already registered
+    function isVoterIdRegistered(string memory _voterId) external view returns (bool) {
+        return registeredVoterIds[_voterId];
     }
-    
-    function rejectVoter(address _voterAddress) external onlyAdmin {
-        require(voters[_voterAddress].isRegistered, "Voter not registered");
-        require(!voters[_voterAddress].isApproved, "Voter already approved");
-        
-        emit VoterRejected(_voterAddress);
+
+    // Add a function to get voter ID by address
+    function getVoterIdByAddress(address _voter) external view returns (string memory) {
+        return voterIdByAddress[_voter];
     }
-    
-    function addCandidate(string memory _name, string memory _party, string memory _slogan) external onlyAdmin {
-        candidatesCount++;
-        candidates[candidatesCount] = Candidate(candidatesCount, _name, _party, _slogan, 0);
-        
-        emit CandidateAdded(candidatesCount, _name, _party);
-    }
-    
-    function startElection() external onlyAdmin {
-        if (electionStarted) {
-            emit ElectionAlreadyStarted();
-            return;
+
+    // Create election
+    function createElection(
+        string memory _title,
+        string memory _description,
+        string memory _pincode,
+        string memory _region,
+        uint _startTime,
+        uint _endTime,
+        Candidate[] memory _candidates
+    ) external onlyAdmin {
+        require(_startTime < _endTime, "Invalid election timing");
+        require(_candidates.length > 0, "At least one candidate required");
+        require(bytes(_pincode).length > 0, "Pincode must not be empty");
+
+        electionCount++;
+        Election storage newElection = elections[electionCount];
+        newElection.electionId = electionCount;
+        newElection.title = _title;
+        newElection.description = _description;
+        newElection.pincode = _pincode;
+        newElection.region = _region;
+        newElection.startTime = _startTime;
+        newElection.endTime = _endTime;
+        newElection.isActive = false;
+        newElection.isEnded = false;
+
+        for (uint i = 0; i < _candidates.length; i++) {
+            newElection.candidates.push(Candidate({
+                candidateId: i + 1,
+                name: _candidates[i].name,
+                party: _candidates[i].party,
+                slogan: _candidates[i].slogan,
+                pincode: _candidates[i].pincode,
+                constituency: _candidates[i].constituency,
+                voteCount: 0
+            }));
         }
-        
-        require(!electionEnded, "Election already ended");
-        
-        electionStarted = true;
-        
-        emit ElectionStarted(block.timestamp);
+
+        emit ElectionCreated(electionCount);
     }
-    
-    function endElection() external onlyAdmin {
-        if (electionEnded) {
-            emit ElectionAlreadyEnded();
-            return;
+
+    // Start election
+    function startElection(uint _electionId) external onlyAdmin {
+        Election storage e = elections[_electionId];
+        require(!e.isActive && !e.isEnded, "Election already started or ended");
+        e.isActive = true;
+        emit ElectionStarted(_electionId);
+    }
+
+    // End election and archive - Modified to avoid the struct array copy issue
+    function endElection(uint _electionId) external onlyAdmin {
+        Election storage e = elections[_electionId];
+        require(e.isActive, "Election is not active");
+        require(!e.isEnded, "Election already ended");
+
+        e.isActive = false;
+        e.isEnded = true;
+
+        // Archive election details first with pincode and region
+        archivedElections.push(ArchivedElection({
+            electionId: e.electionId,
+            title: e.title,
+            description: e.description,
+            pincode: e.pincode,
+            region: e.region,
+            startTime: e.startTime,
+            endTime: e.endTime
+        }));
+        
+        // Store the candidates separately using a mapping based on electionId
+        uint archivedIndex = archivedElections.length - 1;
+        
+        // Now copy the candidates one by one to the archived candidates mapping
+        for (uint i = 0; i < e.candidates.length; i++) {
+            archivedElectionCandidates[archivedIndex].push(Candidate({
+                candidateId: e.candidates[i].candidateId,
+                name: e.candidates[i].name,
+                party: e.candidates[i].party,
+                slogan: e.candidates[i].slogan,
+                pincode: e.candidates[i].pincode,
+                constituency: e.candidates[i].constituency,
+                voteCount: e.candidates[i].voteCount
+            }));
         }
+
+        emit ElectionEnded(_electionId);
+    }
+
+    // Update castVote to check pincode eligibility
+    function castVote(uint _electionId, uint _candidateId) external {
+        address voter = msg.sender;
+        require(voters[voter].isApproved, "Voter not approved");
         
-        require(electionStarted, "Election not started yet");
+        Election storage e = elections[_electionId];
+        require(e.isActive, "Election not active");
+        require(block.timestamp >= e.startTime && block.timestamp <= e.endTime, "Voting window closed");
+        require(!e.hasVoted[voter], "Already voted");
+        require(_candidateId > 0 && _candidateId <= e.candidates.length, "Invalid candidate");
         
-        electionEnded = true;
+        // Verify voter's pincode matches the election's pincode or is for the same region
+        require(
+            keccak256(bytes(voters[voter].pincode)) == keccak256(bytes(e.pincode)),
+            "Voter not eligible for this election based on pincode"
+        );
         
-        emit ElectionEnded(block.timestamp);
+        e.candidates[_candidateId - 1].voteCount++;
+        e.hasVoted[voter] = true;
+        
+        emit VoteCasted(voter, _electionId, _candidateId);
+    }
+
+    // Utility Views
+    function getCandidateCount(uint _electionId) external view returns (uint) {
+        return elections[_electionId].candidates.length;
+    }
+
+    function getCandidate(uint _electionId, uint _candidateId) external view returns (Candidate memory) {
+        return elections[_electionId].candidates[_candidateId - 1];
+    }
+
+    function getArchivedElection(uint index) external view returns (ArchivedElection memory) {
+        return archivedElections[index];
+    }
+
+    function getArchivedCount() external view returns (uint) {
+        return archivedElections.length;
     }
     
-    function castVote(uint256 _candidateId) external electionIsOngoing {
-        require(voters[msg.sender].isRegistered, "Voter not registered");
-        require(voters[msg.sender].isApproved, "Voter not approved");
-        require(!voters[msg.sender].hasVoted, "Voter has already voted");
-        require(_candidateId > 0 && _candidateId <= candidatesCount, "Invalid candidate ID");
+    // New function to get archived election candidates
+    function getArchivedElectionCandidates(uint _archivedIndex) external view returns (Candidate[] memory) {
+        return archivedElectionCandidates[_archivedIndex];
+    }
+
+    function hasVoterVoted(address _voter, uint _electionId) external view returns (bool) {
+        return elections[_electionId].hasVoted[_voter];
+    }
+
+    // Add function to get complete voter details
+    function getVoterDetails(address _voter) external view returns (Voter memory) {
+        return voters[_voter];
+    }
+
+    // Add function to verify if voter is eligible for an election based on pincode
+    function isVoterEligibleForElection(address _voter, uint _electionId) external view returns (bool) {
+        // Get voter and election details
+        Voter memory voter = voters[_voter];
+        string memory electionPincode = elections[_electionId].pincode;
         
-        voters[msg.sender].hasVoted = true;
-        voters[msg.sender].votedCandidateId = _candidateId;
-        
-        candidates[_candidateId].voteCount++;
-        totalVotesCount++;
-        
-        emit VoteCast(msg.sender, _candidateId);
+        // Check if voter is approved and pincode matches election pincode
+        return (voter.isApproved && 
+                keccak256(bytes(voter.pincode)) == keccak256(bytes(electionPincode)));
     }
-    
-    function getVoterStatus(address _voterAddress) external view returns (bool isRegistered, bool isApproved, bool hasVoted, uint256 votedCandidateId) {
-        Voter memory voter = voters[_voterAddress];
-        return (voter.isRegistered, voter.isApproved, voter.hasVoted, voter.votedCandidateId);
-    }
-    
-    function getCandidate(uint256 _candidateId) external view returns (uint256 id, string memory name, string memory party, string memory slogan, uint256 voteCount) {
-        require(_candidateId > 0 && _candidateId <= candidatesCount, "Invalid candidate ID");
-        Candidate memory candidate = candidates[_candidateId];
-        return (candidate.id, candidate.name, candidate.party, candidate.slogan, candidate.voteCount);
-    }
-    
-    function getElectionStatus() external view returns (bool started, bool ended, uint256 totalCandidates, uint256 totalApprovedVoters, uint256 totalVotes) {
-        return (electionStarted, electionEnded, candidatesCount, approvedVotersCount, totalVotesCount);
-    }
-} 
+}

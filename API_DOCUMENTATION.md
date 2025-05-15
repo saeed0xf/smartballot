@@ -1118,4 +1118,36 @@ Authorization: Bearer <jwt-token>
 Role-based access is enforced for protected routes:
 - Admin-only endpoints require admin role
 - Voter endpoints require voter role
-- Officer endpoints require officer role 
+- Officer endpoints require officer role
+
+### Complete Voter Approval After Blockchain Registration
+
+Complete the voter approval process after successful blockchain registration.
+
+- **URL**: `/api/admin/voters/:voterId/approve-complete`
+- **Method**: `PUT`
+- **Auth required**: Yes (Admin)
+
+**Request Body**:
+```json
+{
+  "txHash": "0xBlockchainTransactionHash",
+  "voterAddress": "0x1234567890123456789012345678901234567890",
+  "blockchainSuccess": true,
+  "skipBlockchainUpdate": false
+}
+```
+
+**Success Response**:
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "message": "Voter approval completed successfully",
+  "voter": {
+    "id": "voter-id",
+    "status": "approved",
+    "blockchainRegistered": true
+  }
+}
+``` 

@@ -165,6 +165,19 @@ const updateVoter = async (req, res) => {
       }
     }
 
+    // Calculate age if date of birth was provided
+    let age = voter.age;
+    if (dateOfBirth) {
+      const today = new Date();
+      const birthDate = new Date(dateOfBirth);
+      age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+    }
+
     // Prepare update object
     const updateData = {
       firstName,
@@ -172,6 +185,7 @@ const updateVoter = async (req, res) => {
       lastName,
       fatherName,
       dateOfBirth,
+      age,
       voterId,
       email,
       phoneNumber,
