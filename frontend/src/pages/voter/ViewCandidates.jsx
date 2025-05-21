@@ -34,7 +34,7 @@ const ViewCandidates = () => {
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         
         // Fetch all active elections (which already include candidates)
-        const electionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
+        const electionsResponse = await axios.get(`${API_URL}/elections/remote/active`, { headers });
         console.log('Active elections:', electionsResponse.data);
         
         // Handle different response formats
@@ -185,7 +185,7 @@ const ViewCandidates = () => {
         console.log(`Fetching details for candidate ID: ${apiCandidateId} from API`);
         
         // First try the direct candidate endpoint which gives the most complete details
-        const response = await axios.get(`${API_URL}/candidates/${apiCandidateId}`, { headers });
+        const response = await axios.get(`${API_URL}/candidates/remote/${apiCandidateId}`, { headers });
         console.log('Candidate details response:', response.data);
         
         // Handle different response formats
@@ -557,6 +557,14 @@ const ViewCandidates = () => {
                   ))}
                 </tr>
                 <tr>
+                  <td><strong>Criminal Record</strong></td>
+                  {compareList.map(candidate => (
+                    <td key={candidate._id || candidate.id}>
+                      {candidate.criminalRecord || 'None'}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
                   <td><strong>Manifesto</strong></td>
                   {compareList.map(candidate => (
                     <td key={candidate._id || candidate.id}>
@@ -783,7 +791,11 @@ const ViewCandidates = () => {
                             <p className="mb-2"><FaHistory className="me-2" /><strong>Experience:</strong> {selectedCandidate.experience}</p>
                           )}
                           
-                          {!selectedCandidate.education && !selectedCandidate.experience && (
+                          {selectedCandidate.criminalRecord && (
+                            <p className="mb-2"><FaIdCard className="me-2" /><strong>Criminal Record:</strong> {selectedCandidate.criminalRecord}</p>
+                          )}
+                          
+                          {!selectedCandidate.education && !selectedCandidate.experience && !selectedCandidate.criminalRecord && (
                             <p className="text-muted">No detailed qualification information available.</p>
                           )}
                         </Card.Body>

@@ -26,6 +26,15 @@ router.get('/elections/active', electionController.getActiveElections);
 // Get active elections from remote database
 router.get('/elections/remote/active', electionController.getActiveElectionsRemote);
 
+// Get remote candidate details
+router.get('/candidates/remote/:candidateId', electionController.getRemoteCandidateDetails);
+
+// Get all candidates for a remote election
+router.get('/elections/remote/:electionId/candidates', electionController.getRemoteCandidatesByElection);
+
+// Get all remote candidates from active elections
+router.get('/candidates/remote', electionController.getAllRemoteCandidates);
+
 // Election status - multiple paths for compatibility
 router.get('/status', electionController.getElectionStatus);
 router.get('/election/status', electionController.getElectionStatus);
