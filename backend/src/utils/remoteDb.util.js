@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // Remote MongoDB Atlas connection string
-const REMOTE_MONGO_URI = 'mongodb+srv://votesure:votesure@votesureblockchain.sywkvcr.mongodb.net/?retryWrites=true&w=majority&appName=VoteSureBlockchain';
+const REMOTE_MONGO_URI = 'mongodb://admin:secret@localhost:27018/test?authSource=admin';
 
 // Create schemas for remote database models
 const RemoteElectionSchema = new mongoose.Schema({
