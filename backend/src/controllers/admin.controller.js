@@ -1604,7 +1604,7 @@ exports.storeElectionInRemoteDb = async (req, res) => {
     console.log(`Found ${candidates.length} candidates for election ${electionId}`);
 
     // Create a new connection to remote MongoDB Atlas
-    const remoteMongoUri = 'mongodb+srv://votesure:votesure@votesureblockchain.sywkvcr.mongodb.net/?retryWrites=true&w=majority&appName=VoteSureBlockchain';
+    const remoteMongoUri = 'mongodb://admin:secret@localhost:27018/test?authSource=admin';
     
     // Create a new mongoose connection for the remote database
     const remoteConnection = mongoose.createConnection(remoteMongoUri, {
