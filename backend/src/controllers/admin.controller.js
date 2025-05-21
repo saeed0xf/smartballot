@@ -12,6 +12,7 @@ const {
   getVoterStatusFromBlockchain
 } = require('../utils/blockchain.util');
 const { sendVoterApprovalEmail, sendVoterRejectionEmail } = require('../utils/email.util');
+const { updateRemoteElectionStarted, updateRemoteElectionEnded, updateRemoteElectionArchived } = require('../utils/remoteDb.util');
 const mongoose = require('mongoose');
 const path = require('path');
 
@@ -980,6 +981,19 @@ exports.archiveElection = async (req, res) => {
     election.archivedAt = Date.now();
     await election.save();
     
+    // Update the election in the remote database
+    try {
+      const remoteResult = await updateRemoteElectionArchived(election);
+      if (remoteResult.success) {
+        console.log('Remote database updated successfully with archived status');
+      } else {
+        console.warn('Failed to update remote database for archived status:', remoteResult.error);
+      }
+    } catch (remoteError) {
+      console.error('Error updating remote database for archived status:', remoteError);
+      // Continue with the flow even if remote update fails
+    }
+    
     res.status(200).json({
       message: 'Election archived successfully',
       electionId: election._id
@@ -1083,6 +1097,19 @@ exports.startElection = async (req, res) => {
       // Update election with blockchain transaction hash
       election.blockchainStartTxHash = blockchainResult.txHash;
       await election.save();
+      
+      // Update the election in the remote database
+      try {
+        const remoteResult = await updateRemoteElectionStarted(election, blockchainResult.txHash);
+        if (remoteResult.success) {
+          console.log('Remote database updated successfully');
+        } else {
+          console.warn('Failed to update remote database:', remoteResult.error);
+        }
+      } catch (remoteError) {
+        console.error('Error updating remote database:', remoteError);
+        // Continue with the flow even if remote update fails
+      }
     } else {
       blockchainError = blockchainResult.error;
       console.error('Blockchain transaction error:', blockchainResult.error);
@@ -1187,6 +1214,19 @@ exports.endElection = async (req, res) => {
     activeElection.endDate = new Date();
     
     await activeElection.save();
+    
+    // Update the election in the remote database
+    try {
+      const remoteResult = await updateRemoteElectionEnded(activeElection, blockchainResult.txHash);
+      if (remoteResult.success) {
+        console.log('Remote database updated successfully with ended status');
+      } else {
+        console.warn('Failed to update remote database for ended status:', remoteResult.error);
+      }
+    } catch (remoteError) {
+      console.error('Error updating remote database for ended status:', remoteError);
+      // Continue with the flow even if remote update fails
+    }
     
     // Log the activity with status
     try {
@@ -1532,5 +1572,281 @@ exports.getVoterById = async (req, res) => {
   } catch (error) {
     console.error('Get voter by ID error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Store election data in remote MongoDB Atlas database
+exports.storeElectionInRemoteDb = async (req, res) => {
+  try {
+    const { electionId, blockchainElectionId, blockchainTxHash, blockchainSuccess } = req.body;
+    
+    console.log(`Storing election data for ID: ${electionId} in remote MongoDB Atlas database`);
+    console.log(`Blockchain TX Hash: ${blockchainTxHash}, Success: ${blockchainSuccess}`);
+    
+    if (!electionId || !blockchainTxHash) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing required data for remote database storage' 
+      });
+    }
+
+    // Find election and candidates in the local database
+    const election = await Election.findById(electionId);
+    if (!election) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Election not found' 
+      });
+    }
+
+    // Find candidates associated with this election
+    const candidates = await Candidate.find({ election: electionId });
+    console.log(`Found ${candidates.length} candidates for election ${electionId}`);
+
+    // Create a new connection to remote MongoDB Atlas
+    const remoteMongoUri = 'mongodb+srv://votesure:votesure@votesureblockchain.sywkvcr.mongodb.net/?retryWrites=true&w=majority&appName=VoteSureBlockchain';
+    
+    // Create a new mongoose connection for the remote database
+    const remoteConnection = mongoose.createConnection(remoteMongoUri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+
+    // Log remote connection status
+    console.log('Connected to remote MongoDB Atlas database for election storage');
+
+    // Create models on the remote connection
+    const RemoteElectionSchema = new mongoose.Schema({
+      title: String,
+      description: String,
+      startDate: Date,
+      endDate: Date,
+      isActive: Boolean,
+      isArchived: Boolean,
+      region: String,
+      pincode: String,
+      blockchainElectionId: String,
+      blockchainTxHash: String,
+      originalElectionId: String,
+      recordedAt: { type: Date, default: Date.now }
+    });
+    
+    const RemoteCandidateSchema = new mongoose.Schema({
+      firstName: String,
+      middleName: String,
+      lastName: String,
+      age: Number,
+      gender: String,
+      dateOfBirth: Date,
+      partyName: String,
+      electionType: String,
+      electionId: String,
+      constituency: String,
+      pincode: String,
+      manifesto: String,
+      education: String,
+      experience: String,
+      criminalRecord: String,
+      email: String,
+      voteCount: { type: Number, default: 0 },
+      photoUrl: String,
+      partySymbol: String,
+      blockchainTxHash: String,
+      originalCandidateId: String,
+      recordedAt: { type: Date, default: Date.now }
+    });
+
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
+
+    // Store the election in the remote database
+    const remoteElection = new RemoteElection({
+      title: election.title || election.name,
+      description: election.description,
+      startDate: election.startDate,
+      endDate: election.endDate,
+      isActive: election.isActive,
+      isArchived: election.isArchived,
+      region: election.region,
+      pincode: election.pincode,
+      blockchainElectionId: blockchainElectionId,
+      blockchainTxHash: blockchainTxHash,
+      originalElectionId: electionId,
+      recordedAt: new Date()
+    });
+
+    // Check if the election already exists in the remote database
+    let existingRemoteElection = await RemoteElection.findOne({ originalElectionId: electionId });
+    
+    if (existingRemoteElection) {
+      console.log(`Election already exists in remote database: ${existingRemoteElection._id}, updating it...`);
+      
+      // Update existing election with new data
+      existingRemoteElection.title = remoteElection.title;
+      existingRemoteElection.description = remoteElection.description;
+      existingRemoteElection.startDate = remoteElection.startDate;
+      existingRemoteElection.endDate = remoteElection.endDate;
+      existingRemoteElection.isActive = remoteElection.isActive;
+      existingRemoteElection.isArchived = remoteElection.isArchived;
+      existingRemoteElection.region = remoteElection.region;
+      existingRemoteElection.pincode = remoteElection.pincode;
+      existingRemoteElection.blockchainElectionId = remoteElection.blockchainElectionId;
+      existingRemoteElection.blockchainTxHash = remoteElection.blockchainTxHash;
+      existingRemoteElection.updatedAt = new Date();
+      
+      await existingRemoteElection.save();
+      console.log('Existing election updated in remote database');
+      
+      // Use the existing remote election ID
+      remoteElection._id = existingRemoteElection._id;
+    } else {
+      // Save new election if it doesn't exist
+      await remoteElection.save();
+      console.log('New election saved to remote database:', remoteElection._id);
+    }
+
+    // Get the remote election ID that we'll use for all candidates
+    const remoteElectionId = remoteElection._id;
+    console.log(`Using remote election ID for candidate associations: ${remoteElectionId}`);
+
+    // First, update any existing candidates that might be linked to the wrong election ID
+    try {
+      // Find all candidates that are linked to this original election ID but might have wrong remote election ID
+      const existingRemoteCandidates = await RemoteCandidate.find({ 
+        originalCandidateId: { $in: candidates.map(c => c._id.toString()) }
+      });
+      
+      if (existingRemoteCandidates.length > 0) {
+        console.log(`Found ${existingRemoteCandidates.length} existing candidates in remote database that might need election ID correction`);
+        
+        // Update all existing candidates to use the correct remote election ID
+        const updateResults = await RemoteCandidate.updateMany(
+          { originalCandidateId: { $in: candidates.map(c => c._id.toString()) } },
+          { $set: { electionId: remoteElectionId.toString() } }
+        );
+        
+        console.log(`Updated election ID reference for ${updateResults.modifiedCount} existing candidates in remote database`);
+      }
+    } catch (bulkUpdateError) {
+      console.error('Error updating existing candidate election references:', bulkUpdateError);
+      // Continue with individual candidate updates
+    }
+
+    // Store all candidates in the remote database
+    const remoteCandidatesPromises = candidates.map(async (candidate) => {
+      // Check if candidate already exists in remote database
+      const existingRemoteCandidate = await RemoteCandidate.findOne({ originalCandidateId: candidate._id.toString() });
+      
+      if (existingRemoteCandidate) {
+        console.log(`Candidate ${candidate._id} already exists in remote database, updating...`);
+        
+        // Update existing candidate with current data
+        existingRemoteCandidate.firstName = candidate.firstName;
+        existingRemoteCandidate.middleName = candidate.middleName;
+        existingRemoteCandidate.lastName = candidate.lastName;
+        existingRemoteCandidate.age = candidate.age;
+        existingRemoteCandidate.gender = candidate.gender;
+        existingRemoteCandidate.dateOfBirth = candidate.dateOfBirth;
+        existingRemoteCandidate.partyName = candidate.partyName;
+        existingRemoteCandidate.electionType = candidate.electionType;
+        existingRemoteCandidate.constituency = candidate.constituency;
+        existingRemoteCandidate.pincode = candidate.pincode;
+        existingRemoteCandidate.manifesto = candidate.manifesto;
+        existingRemoteCandidate.education = candidate.education;
+        existingRemoteCandidate.experience = candidate.experience;
+        existingRemoteCandidate.criminalRecord = candidate.criminalRecord;
+        existingRemoteCandidate.email = candidate.email;
+        existingRemoteCandidate.voteCount = candidate.voteCount || 0;
+        existingRemoteCandidate.photoUrl = candidate.photoUrl;
+        existingRemoteCandidate.partySymbol = candidate.partySymbol;
+        existingRemoteCandidate.blockchainTxHash = blockchainTxHash;
+        existingRemoteCandidate.updatedAt = new Date();
+        
+        // Ensure the candidate is linked to the correct remote election ID (not the local election ID)
+        existingRemoteCandidate.electionId = remoteElectionId.toString();
+        
+        return existingRemoteCandidate.save();
+      } else {
+        // Create new candidate if it doesn't exist
+        const remoteCandidate = new RemoteCandidate({
+          firstName: candidate.firstName,
+          middleName: candidate.middleName,
+          lastName: candidate.lastName,
+          age: candidate.age,
+          gender: candidate.gender,
+          dateOfBirth: candidate.dateOfBirth,
+          partyName: candidate.partyName,
+          electionType: candidate.electionType,
+          electionId: remoteElectionId.toString(), // Explicitly convert to string to ensure consistency
+          constituency: candidate.constituency,
+          pincode: candidate.pincode,
+          manifesto: candidate.manifesto,
+          education: candidate.education,
+          experience: candidate.experience,
+          criminalRecord: candidate.criminalRecord,
+          email: candidate.email,
+          voteCount: candidate.voteCount || 0,
+          photoUrl: candidate.photoUrl,
+          partySymbol: candidate.partySymbol,
+          blockchainTxHash: blockchainTxHash,
+          originalCandidateId: candidate._id.toString(), // Explicitly convert to string
+          recordedAt: new Date()
+        });
+        return remoteCandidate.save();
+      }
+    });
+
+    // Execute all candidate save operations (both updates and new records)
+    const savedCandidates = await Promise.all(remoteCandidatesPromises);
+    
+    // Count how many were updated vs created
+    const updatedCount = savedCandidates.filter(c => c.updatedAt && c.recordedAt && c.updatedAt > c.recordedAt).length;
+    const createdCount = savedCandidates.length - updatedCount;
+    
+    console.log(`Remote database update complete: ${createdCount} candidates created, ${updatedCount} candidates updated`);
+
+    // Log the action in the activity log of the local database
+    try {
+      const activity = new Activity({
+        user: req.user?._id,
+        action: 'REMOTE_DB_RECORD',
+        entity: 'election',
+        entityId: electionId,
+        details: `Election "${election.title}" recorded in remote database with blockchain transaction ${blockchainTxHash}`,
+        metadata: {
+          electionId,
+          blockchainTxHash,
+          remoteElectionId: remoteElection._id.toString()
+        }
+      });
+      await activity.save();
+      console.log('Activity logged in local database');
+    } catch (activityError) {
+      console.error('Error logging activity:', activityError);
+      // Continue despite activity logging error
+    }
+
+    // Update the election in the local database to reflect it's been recorded in the remote DB
+    election.remoteDbRecorded = true;
+    election.blockchainTxHash = blockchainTxHash;
+    await election.save();
+    console.log('Local election updated with remote recording status');
+
+    // Close the remote connection after saving the data
+    await remoteConnection.close();
+    console.log('Remote database connection closed');
+
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Election and candidates successfully stored in remote database',
+      remoteElectionId: remoteElection._id
+    });
+  } catch (error) {
+    console.error('Error storing election in remote database:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Failed to store election in remote database',
+      error: error.message
+    });
   }
 }; 

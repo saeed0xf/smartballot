@@ -10,7 +10,7 @@ import { ethers } from 'ethers';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0xbF705f479a0123B18aE9d3e3ff1545E87a03effa';
+const CONTRACT_ADDRESS = import.meta.env.CONTRACT_ADDRESS || '0x1b0209326d4A985FAe8b399Ad2B743F78cffc8FD';
 const BLOCKCHAIN_RPC_URL = import.meta.env.VITE_BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:7545';
 
 // VoteSure contract ABI - includes essential functions for election management
@@ -1720,19 +1720,21 @@ const ManageElection = () => {
       const network = await provider.getNetwork();
       setSuccessMessage(formatSuccessMessage("Election successfully recorded on the blockchain!", tx.hash, network.chainId));
       
-      // Notify the backend of successful blockchain recording
+      // Notify the backend of successful blockchain recording and store data in remote MongoDB
       try {
         const headers = getAuthHeaders();
         const electionId = actionElection._id || actionElection.id;
         
-        await axios.post(`${API_URL}/admin/election/record`, { 
+        // Send complete election data to be stored in remote MongoDB
+        await axios.post(`${API_URL}/admin/election/remote-record`, { 
           electionId,
           blockchainElectionId: recordedElectionData.electionId,
           blockchainTxHash: tx.hash,
-          blockchainSuccess: true
+          blockchainSuccess: true,
+          electionData: recordedElectionData  // Include the complete election data
         }, { headers });
         
-        console.log('Backend notified of successful blockchain recording');
+        console.log('Backend notified of successful blockchain recording and data stored in remote MongoDB');
         
         // Update local blockchain status tracking
         setElectionBlockchainStatus(prev => ({
@@ -1740,7 +1742,7 @@ const ManageElection = () => {
           [electionId]: true
         }));
       } catch (backendError) {
-        console.warn('Failed to notify backend of blockchain recording:', backendError);
+        console.warn('Failed to store data in remote database:', backendError);
         // We still consider this a success since the blockchain transaction succeeded
         
         // Still update local status even if backend notification failed
