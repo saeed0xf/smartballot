@@ -23,6 +23,9 @@ router.post('/elections/end', verifyToken, isAdmin, electionController.endElecti
 // Get active elections
 router.get('/elections/active', electionController.getActiveElections);
 
+// Get active elections from remote database
+router.get('/elections/remote/active', electionController.getActiveElectionsRemote);
+
 // Election status - multiple paths for compatibility
 router.get('/status', electionController.getElectionStatus);
 router.get('/election/status', electionController.getElectionStatus);

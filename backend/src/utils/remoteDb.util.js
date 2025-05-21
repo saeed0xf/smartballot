@@ -22,7 +22,8 @@ const RemoteElectionSchema = new mongoose.Schema({
   archivedAt: Date,
   blockchainStartTxHash: String,
   blockchainEndTxHash: String,
-  totalVotes: Number
+  totalVotes: Number,
+  type: String
 });
 
 const RemoteCandidateSchema = new mongoose.Schema({
@@ -210,5 +211,9 @@ const updateRemoteElectionArchived = async (election) => {
 module.exports = {
   updateRemoteElectionStarted,
   updateRemoteElectionEnded,
-  updateRemoteElectionArchived
+  updateRemoteElectionArchived,
+  RemoteElectionSchema,
+  RemoteCandidateSchema,
+  REMOTE_MONGO_URI,
+  createRemoteConnection
 }; 

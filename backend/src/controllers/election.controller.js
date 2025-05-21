@@ -1454,4 +1454,81 @@ exports.checkAndArchiveInactiveElections = async () => {
     console.error('Error in archive inactive elections function:', error);
     return 0;
   }
+};
+
+// Get active elections from remote database
+exports.getActiveElectionsRemote = async (req, res) => {
+  try {
+    console.log('Fetching active elections from remote database');
+    
+    // Import the remoteDb utility functions and schemas
+    const { 
+      RemoteElectionSchema, 
+      RemoteCandidateSchema, 
+      createRemoteConnection 
+    } = require('../utils/remoteDb.util');
+    
+    // Create connection to remote database
+    const remoteConnection = await createRemoteConnection();
+    
+    // Create models on the remote connection
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
+    
+    // Query for active elections
+    const activeElections = await RemoteElection.find({ 
+      isActive: true,
+      isArchived: false
+    });
+    
+    console.log(`Found ${activeElections.length} active elections in remote database`);
+    
+    // Get candidates for each election
+    const electionsWithCandidates = await Promise.all(activeElections.map(async (election) => {
+      // Find candidates that match this election's ID
+      const candidates = await RemoteCandidate.find({ electionId: election._id.toString() });
+      
+      console.log(`Found ${candidates.length} candidates for election ${election._id}`);
+      
+      // Format candidates to match the expected format
+      const formattedCandidates = candidates.map(candidate => ({
+        id: candidate._id.toString(),
+        name: `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`,
+        partyName: candidate.partyName,
+        partySymbol: candidate.partySymbol,
+        photoUrl: candidate.photoUrl,
+        constituency: candidate.constituency
+      }));
+      
+      // Return election with candidates
+      return {
+        _id: election._id.toString(),
+        title: election.title,
+        type: election.type || 'Other',
+        description: election.description,
+        region: election.region,
+        pincode: election.pincode,
+        startDate: election.startDate,
+        endDate: election.endDate,
+        isActive: election.isActive,
+        isArchived: election.isArchived,
+        totalVotes: election.totalVotes || 0,
+        createdAt: election.recordedAt,
+        updatedAt: election.recordedAt,
+        startedAt: election.startedAt,
+        candidates: formattedCandidates
+      };
+    }));
+    
+    // Close the remote connection
+    await remoteConnection.close();
+    console.log('Remote database connection closed');
+    
+    // Return the elections
+    res.status(200).json(electionsWithCandidates);
+    
+  } catch (error) {
+    console.error('Error fetching remote active elections:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 }; 

@@ -162,7 +162,7 @@ const VoterDashboard = () => {
 
         // Fetch all active elections (this should now include candidates)
         try {
-          const activeElectionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
+          const activeElectionsResponse = await axios.get(`${API_URL}/elections/remote/active`, { headers });
           console.log('Active elections:', activeElectionsResponse.data);
           
           // Handle different response formats
