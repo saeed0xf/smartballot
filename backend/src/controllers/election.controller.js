@@ -11,6 +11,7 @@ const {
   startElectionOnBlockchain,
   endElectionOnBlockchain
 } = require('../utils/blockchain.util');
+const { updateRemoteElectionStarted, updateRemoteElectionEnded, updateRemoteElectionArchived } = require('../utils/remoteDb.util');
 const mongoose = require('mongoose');
 
 // Get all elections
@@ -257,58 +258,26 @@ exports.checkAndAutoEndElections = async () => {
   try {
     console.log('Checking for elections that need to be auto-ended...');
     
-    // Find active elections that have passed their end date
+    // Find active elections past their end date
     const now = new Date();
     const expiredElections = await Election.find({
       isActive: true,
       endDate: { $lt: now }
     });
     
-    console.log(`Found ${expiredElections.length} expired elections that need to be auto-ended`);
+    console.log(`Found ${expiredElections.length} active elections that have expired`);
     
     let archivedCandidatesCount = 0;
     
-    // Process each expired election
+    // Auto-end each expired election
     for (const election of expiredElections) {
-      console.log(`Auto-ending expired election: ${election.title} (ID: ${election._id})`);
+      console.log(`Auto-ending election: ${election.title} (ID: ${election._id})`);
       
-      // Update election status
+      // End the election
       election.isActive = false;
       election.endedAt = now;
       
-      // Find and link unlinked candidates (having election type but no election reference)
-      const unlinkedCandidates = await Candidate.find({
-        electionType: election.type,
-        $or: [
-          { election: { $exists: false } },
-          { election: null }
-        ]
-      });
-      
-      if (unlinkedCandidates.length > 0) {
-        console.log(`Found ${unlinkedCandidates.length} candidates with matching type but no election reference`);
-        
-        // Link these candidates to this election
-        const linkResult = await Candidate.updateMany(
-          { 
-            electionType: election.type,
-            $or: [
-              { election: { $exists: false } },
-              { election: null }
-            ]
-          },
-          {
-            $set: {
-              election: election._id,
-              inActiveElection: false
-            }
-          }
-        );
-        
-        console.log(`Linked ${linkResult.modifiedCount} candidates to election ${election.title}`);
-      }
-      
-      // Find all candidates associated with this election
+      // Get candidates by election ID or type
       const candidates = await Candidate.find({
         $or: [
           { election: election._id },
@@ -355,12 +324,14 @@ exports.checkAndAutoEndElections = async () => {
       console.log(`Successfully auto-ended and archived election: ${election.title}`);
       
       // Try blockchain integration for election end
+      let blockchainTxHash = null;
       try {
         // Call blockchain integration if available
         if (typeof endElectionOnBlockchain === 'function') {
           const blockchainResult = await endElectionOnBlockchain(election._id.toString());
           
           if (blockchainResult && blockchainResult.success) {
+            blockchainTxHash = blockchainResult.txHash;
             election.blockchainEndTxHash = blockchainResult.txHash;
             await election.save();
             console.log(`Election ended on blockchain with transaction hash: ${blockchainResult.txHash}`);
@@ -370,6 +341,32 @@ exports.checkAndAutoEndElections = async () => {
         }
       } catch (blockchainError) {
         console.error('Error ending election on blockchain:', blockchainError);
+        // Continue with next election
+      }
+      
+      // Update the election in the remote database - first mark as ended
+      try {
+        const remoteEndResult = await updateRemoteElectionEnded(election, blockchainTxHash);
+        if (remoteEndResult.success) {
+          console.log('Remote database updated successfully with ended status');
+        } else {
+          console.warn('Failed to update remote database for ended status:', remoteEndResult.error);
+        }
+      } catch (remoteError) {
+        console.error('Error updating remote database for ended status:', remoteError);
+        // Continue with next election
+      }
+      
+      // Then mark as archived in remote database
+      try {
+        const remoteArchiveResult = await updateRemoteElectionArchived(election);
+        if (remoteArchiveResult.success) {
+          console.log('Remote database updated successfully with archived status');
+        } else {
+          console.warn('Failed to update remote database for archived status:', remoteArchiveResult.error);
+        }
+      } catch (remoteError) {
+        console.error('Error updating remote database for archived status:', remoteError);
         // Continue with next election
       }
     }
@@ -504,6 +501,19 @@ exports.startElection = async (req, res) => {
       
       // Save the election with updated fields
       await election.save();
+      
+      // Update the election in the remote database
+      try {
+        const remoteResult = await updateRemoteElectionStarted(election, blockchainTxHash);
+        if (remoteResult.success) {
+          console.log('Remote database updated successfully with started status');
+        } else {
+          console.warn('Failed to update remote database for started status:', remoteResult.error);
+        }
+      } catch (remoteError) {
+        console.error('Error updating remote database for started status:', remoteError);
+        // Continue despite remote database update failure
+      }
       
       // Associate candidates with this election and mark them as in an active election
       // This makes it easy to find candidates for a specific election
@@ -711,6 +721,32 @@ exports.endElection = async (req, res) => {
       
       console.log(`Updated ${updateResult.modifiedCount} candidates to archived status`);
       console.log('Election ended and archived successfully:', election);
+      
+      // Update the election in the remote database - first mark as ended
+      try {
+        const remoteEndResult = await updateRemoteElectionEnded(election, blockchainTxHash);
+        if (remoteEndResult.success) {
+          console.log('Remote database updated successfully with ended status');
+        } else {
+          console.warn('Failed to update remote database for ended status:', remoteEndResult.error);
+        }
+      } catch (remoteError) {
+        console.error('Error updating remote database for ended status:', remoteError);
+        // Continue despite remote database update failure
+      }
+      
+      // Then mark as archived in remote database
+      try {
+        const remoteArchiveResult = await updateRemoteElectionArchived(election);
+        if (remoteArchiveResult.success) {
+          console.log('Remote database updated successfully with archived status');
+        } else {
+          console.warn('Failed to update remote database for archived status:', remoteArchiveResult.error);
+        }
+      } catch (remoteError) {
+        console.error('Error updating remote database for archived status:', remoteError);
+        // Continue despite remote database update failure
+      }
       
       // Determine the appropriate message to return
       let successMessage = 'Election ended and archived successfully';
@@ -1396,6 +1432,19 @@ exports.checkAndArchiveInactiveElections = async () => {
       await election.save();
       
       console.log(`Successfully archived election: ${election.title} with ${candidates.length} candidates and ${totalVotes} votes`);
+      
+      // Update the election in the remote database
+      try {
+        const remoteResult = await updateRemoteElectionArchived(election);
+        if (remoteResult.success) {
+          console.log('Remote database updated successfully with archived status');
+        } else {
+          console.warn('Failed to update remote database for archived status:', remoteResult.error);
+        }
+      } catch (remoteError) {
+        console.error('Error updating remote database for archived status:', remoteError);
+        // Continue with the flow even if remote update fails
+      }
     }
     
     console.log(`Archive operation completed: ${unarchived.length} elections and ${totalArchivedCandidates} candidates archived`);

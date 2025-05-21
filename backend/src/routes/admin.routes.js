@@ -28,6 +28,7 @@ router.put('/election/:id', electionController.updateElection);
 router.delete('/election/:id', electionController.deleteElection);
 router.post('/election/start', electionController.startElection);
 router.post('/election/end', electionController.endElection);
+router.post('/election/remote-record', adminController.storeElectionInRemoteDb);
 
 // Election maintenance - add this new route for manual triggering
 router.post('/elections/check-status', async (req, res) => {
