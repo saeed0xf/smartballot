@@ -1675,40 +1675,135 @@ exports.storeElectionInRemoteDb = async (req, res) => {
       recordedAt: new Date()
     });
 
-    await remoteElection.save();
-    console.log('Election saved to remote database:', remoteElection._id);
+    // Check if the election already exists in the remote database
+    let existingRemoteElection = await RemoteElection.findOne({ originalElectionId: electionId });
+    
+    if (existingRemoteElection) {
+      console.log(`Election already exists in remote database: ${existingRemoteElection._id}, updating it...`);
+      
+      // Update existing election with new data
+      existingRemoteElection.title = remoteElection.title;
+      existingRemoteElection.description = remoteElection.description;
+      existingRemoteElection.startDate = remoteElection.startDate;
+      existingRemoteElection.endDate = remoteElection.endDate;
+      existingRemoteElection.isActive = remoteElection.isActive;
+      existingRemoteElection.isArchived = remoteElection.isArchived;
+      existingRemoteElection.region = remoteElection.region;
+      existingRemoteElection.pincode = remoteElection.pincode;
+      existingRemoteElection.blockchainElectionId = remoteElection.blockchainElectionId;
+      existingRemoteElection.blockchainTxHash = remoteElection.blockchainTxHash;
+      existingRemoteElection.updatedAt = new Date();
+      
+      await existingRemoteElection.save();
+      console.log('Existing election updated in remote database');
+      
+      // Use the existing remote election ID
+      remoteElection._id = existingRemoteElection._id;
+    } else {
+      // Save new election if it doesn't exist
+      await remoteElection.save();
+      console.log('New election saved to remote database:', remoteElection._id);
+    }
+
+    // Get the remote election ID that we'll use for all candidates
+    const remoteElectionId = remoteElection._id;
+    console.log(`Using remote election ID for candidate associations: ${remoteElectionId}`);
+
+    // First, update any existing candidates that might be linked to the wrong election ID
+    try {
+      // Find all candidates that are linked to this original election ID but might have wrong remote election ID
+      const existingRemoteCandidates = await RemoteCandidate.find({ 
+        originalCandidateId: { $in: candidates.map(c => c._id.toString()) }
+      });
+      
+      if (existingRemoteCandidates.length > 0) {
+        console.log(`Found ${existingRemoteCandidates.length} existing candidates in remote database that might need election ID correction`);
+        
+        // Update all existing candidates to use the correct remote election ID
+        const updateResults = await RemoteCandidate.updateMany(
+          { originalCandidateId: { $in: candidates.map(c => c._id.toString()) } },
+          { $set: { electionId: remoteElectionId.toString() } }
+        );
+        
+        console.log(`Updated election ID reference for ${updateResults.modifiedCount} existing candidates in remote database`);
+      }
+    } catch (bulkUpdateError) {
+      console.error('Error updating existing candidate election references:', bulkUpdateError);
+      // Continue with individual candidate updates
+    }
 
     // Store all candidates in the remote database
-    const remoteCandidatesPromises = candidates.map(candidate => {
-      const remoteCandidate = new RemoteCandidate({
-        firstName: candidate.firstName,
-        middleName: candidate.middleName,
-        lastName: candidate.lastName,
-        age: candidate.age,
-        gender: candidate.gender,
-        dateOfBirth: candidate.dateOfBirth,
-        partyName: candidate.partyName,
-        electionType: candidate.electionType,
-        electionId: remoteElection._id, // Reference to the remote election
-        constituency: candidate.constituency,
-        pincode: candidate.pincode,
-        manifesto: candidate.manifesto,
-        education: candidate.education,
-        experience: candidate.experience,
-        criminalRecord: candidate.criminalRecord,
-        email: candidate.email,
-        voteCount: candidate.voteCount || 0,
-        photoUrl: candidate.photoUrl,
-        partySymbol: candidate.partySymbol,
-        blockchainTxHash: blockchainTxHash,
-        originalCandidateId: candidate._id,
-        recordedAt: new Date()
-      });
-      return remoteCandidate.save();
+    const remoteCandidatesPromises = candidates.map(async (candidate) => {
+      // Check if candidate already exists in remote database
+      const existingRemoteCandidate = await RemoteCandidate.findOne({ originalCandidateId: candidate._id.toString() });
+      
+      if (existingRemoteCandidate) {
+        console.log(`Candidate ${candidate._id} already exists in remote database, updating...`);
+        
+        // Update existing candidate with current data
+        existingRemoteCandidate.firstName = candidate.firstName;
+        existingRemoteCandidate.middleName = candidate.middleName;
+        existingRemoteCandidate.lastName = candidate.lastName;
+        existingRemoteCandidate.age = candidate.age;
+        existingRemoteCandidate.gender = candidate.gender;
+        existingRemoteCandidate.dateOfBirth = candidate.dateOfBirth;
+        existingRemoteCandidate.partyName = candidate.partyName;
+        existingRemoteCandidate.electionType = candidate.electionType;
+        existingRemoteCandidate.constituency = candidate.constituency;
+        existingRemoteCandidate.pincode = candidate.pincode;
+        existingRemoteCandidate.manifesto = candidate.manifesto;
+        existingRemoteCandidate.education = candidate.education;
+        existingRemoteCandidate.experience = candidate.experience;
+        existingRemoteCandidate.criminalRecord = candidate.criminalRecord;
+        existingRemoteCandidate.email = candidate.email;
+        existingRemoteCandidate.voteCount = candidate.voteCount || 0;
+        existingRemoteCandidate.photoUrl = candidate.photoUrl;
+        existingRemoteCandidate.partySymbol = candidate.partySymbol;
+        existingRemoteCandidate.blockchainTxHash = blockchainTxHash;
+        existingRemoteCandidate.updatedAt = new Date();
+        
+        // Ensure the candidate is linked to the correct remote election ID (not the local election ID)
+        existingRemoteCandidate.electionId = remoteElectionId.toString();
+        
+        return existingRemoteCandidate.save();
+      } else {
+        // Create new candidate if it doesn't exist
+        const remoteCandidate = new RemoteCandidate({
+          firstName: candidate.firstName,
+          middleName: candidate.middleName,
+          lastName: candidate.lastName,
+          age: candidate.age,
+          gender: candidate.gender,
+          dateOfBirth: candidate.dateOfBirth,
+          partyName: candidate.partyName,
+          electionType: candidate.electionType,
+          electionId: remoteElectionId.toString(), // Explicitly convert to string to ensure consistency
+          constituency: candidate.constituency,
+          pincode: candidate.pincode,
+          manifesto: candidate.manifesto,
+          education: candidate.education,
+          experience: candidate.experience,
+          criminalRecord: candidate.criminalRecord,
+          email: candidate.email,
+          voteCount: candidate.voteCount || 0,
+          photoUrl: candidate.photoUrl,
+          partySymbol: candidate.partySymbol,
+          blockchainTxHash: blockchainTxHash,
+          originalCandidateId: candidate._id.toString(), // Explicitly convert to string
+          recordedAt: new Date()
+        });
+        return remoteCandidate.save();
+      }
     });
 
-    await Promise.all(remoteCandidatesPromises);
-    console.log(`${candidates.length} candidates saved to remote database`);
+    // Execute all candidate save operations (both updates and new records)
+    const savedCandidates = await Promise.all(remoteCandidatesPromises);
+    
+    // Count how many were updated vs created
+    const updatedCount = savedCandidates.filter(c => c.updatedAt && c.recordedAt && c.updatedAt > c.recordedAt).length;
+    const createdCount = savedCandidates.length - updatedCount;
+    
+    console.log(`Remote database update complete: ${createdCount} candidates created, ${updatedCount} candidates updated`);
 
     // Log the action in the activity log of the local database
     try {
