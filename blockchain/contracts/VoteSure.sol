@@ -76,6 +76,7 @@ contract VoteSureV2 {
     event ElectionStarted(uint electionId);
     event ElectionEnded(uint electionId);
     event VoteCasted(address voter, uint electionId, uint candidateId);
+    event CandidateAdded(uint electionId, uint candidateId);
 
     // Approve voter
     function approveVoter(address _voter) external onlyAdmin {
@@ -123,18 +124,16 @@ contract VoteSureV2 {
         return voterIdByAddress[_voter];
     }
 
-    // Create election
+    // Modified: Create election without requiring candidates
     function createElection(
         string memory _title,
         string memory _description,
         string memory _pincode,
         string memory _region,
         uint _startTime,
-        uint _endTime,
-        Candidate[] memory _candidates
+        uint _endTime
     ) external onlyAdmin {
         require(_startTime < _endTime, "Invalid election timing");
-        require(_candidates.length > 0, "At least one candidate required");
         require(bytes(_pincode).length > 0, "Pincode must not be empty");
 
         electionCount++;
@@ -149,25 +148,44 @@ contract VoteSureV2 {
         newElection.isActive = false;
         newElection.isEnded = false;
 
-        for (uint i = 0; i < _candidates.length; i++) {
-            newElection.candidates.push(Candidate({
-                candidateId: i + 1,
-                name: _candidates[i].name,
-                party: _candidates[i].party,
-                slogan: _candidates[i].slogan,
-                pincode: _candidates[i].pincode,
-                constituency: _candidates[i].constituency,
-                voteCount: 0
-            }));
-        }
-
         emit ElectionCreated(electionCount);
+    }
+
+    // New function to add a candidate to an existing election
+    function addCandidate(
+        uint _electionId,
+        string memory _name,
+        string memory _party,
+        string memory _slogan,
+        string memory _pincode,
+        string memory _constituency
+    ) external onlyAdmin {
+        // Make sure the election exists and is not active or ended
+        Election storage election = elections[_electionId];
+        require(election.electionId == _electionId, "Election does not exist");
+        require(!election.isActive, "Cannot add candidates to active election");
+        require(!election.isEnded, "Cannot add candidates to ended election");
+        
+        // Add the new candidate
+        uint candidateId = election.candidates.length + 1;
+        election.candidates.push(Candidate({
+            candidateId: candidateId,
+            name: _name,
+            party: _party,
+            slogan: _slogan,
+            pincode: _pincode,
+            constituency: _constituency,
+            voteCount: 0
+        }));
+        
+        emit CandidateAdded(_electionId, candidateId);
     }
 
     // Start election
     function startElection(uint _electionId) external onlyAdmin {
         Election storage e = elections[_electionId];
         require(!e.isActive && !e.isEnded, "Election already started or ended");
+        require(e.candidates.length > 0, "At least one candidate required before starting election");
         e.isActive = true;
         emit ElectionStarted(_electionId);
     }
@@ -241,6 +259,18 @@ contract VoteSureV2 {
 
     function getCandidate(uint _electionId, uint _candidateId) external view returns (Candidate memory) {
         return elections[_electionId].candidates[_candidateId - 1];
+    }
+
+    // New function to get all candidates for an election
+    function getAllCandidates(uint _electionId) external view returns (Candidate[] memory) {
+        uint count = elections[_electionId].candidates.length;
+        Candidate[] memory allCandidates = new Candidate[](count);
+        
+        for (uint i = 0; i < count; i++) {
+            allCandidates[i] = elections[_electionId].candidates[i];
+        }
+        
+        return allCandidates;
     }
 
     function getArchivedElection(uint index) external view returns (ArchivedElection memory) {

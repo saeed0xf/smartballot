@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Container, Row, Col, Card, Button, Alert, Badge, Spinner } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaVoteYea, FaUserCheck, FaClipboardList, FaCalendarAlt, FaClock, FaMapMarkerAlt } from 'react-icons/fa';
+import { FaVoteYea, FaUserCheck, FaClipboardList, FaCalendarAlt, FaClock, FaMapMarkerAlt, FaEthereum } from 'react-icons/fa';
 import axios from 'axios';
 import Layout from '../../components/Layout';
 import { AuthContext } from '../../context/AuthContext';
+import { initializeBlockchain, getAllCandidatesForElection, hasVoterVotedInElection, getVoterDetailsFromBlockchain } from '../../utils/blockchainUtils';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -31,8 +32,25 @@ const getImageUrl = (imagePath) => {
 };
 
 // Display candidates for an active election
-const ElectionCandidatesList = ({ candidates }) => {
-  if (!candidates || candidates.length === 0) {
+const ElectionCandidatesList = ({ candidates, blockchainCandidates }) => {
+  // Merge candidates from API with blockchain data
+  const mergedCandidates = candidates.map(candidate => {
+    const blockchainCandidate = blockchainCandidates?.find(bc => 
+      bc.id.toString() === candidate.blockchainId?.toString() || 
+      bc.id.toString() === candidate.candidateId?.toString()
+    );
+    
+    if (blockchainCandidate) {
+      return {
+        ...candidate,
+        voteCount: blockchainCandidate.voteCount,
+        blockchainData: blockchainCandidate
+      };
+    }
+    return candidate;
+  });
+
+  if (!mergedCandidates || mergedCandidates.length === 0) {
     return (
       <p className="text-muted">No candidates found for this election.</p>
     );
@@ -42,7 +60,7 @@ const ElectionCandidatesList = ({ candidates }) => {
     <div className="mt-3">
       <h6 className="mb-3 border-bottom pb-2">Candidates</h6>
       <Row xs={1} md={2} lg={3} className="g-3">
-        {candidates.map((candidate) => (
+        {mergedCandidates.map((candidate) => (
           <Col key={candidate.id || candidate._id}>
             <Card className="h-100 candidate-card">
               <div className="text-center pt-3">
@@ -82,6 +100,13 @@ const ElectionCandidatesList = ({ candidates }) => {
                     Constituency: {candidate.constituency}
                   </p>
                 )}
+                {candidate.blockchainData && (
+                  <div className="mt-2">
+                    <Badge bg="success" pill className="d-flex align-items-center justify-content-center gap-1 mx-auto" style={{ width: 'fit-content' }}>
+                      <FaEthereum /> Blockchain Verified
+                    </Badge>
+                  </div>
+                )}
               </Card.Body>
             </Card>
           </Col>
@@ -100,6 +125,10 @@ const VoterDashboard = () => {
   const [error, setError] = useState(null);
   const [voteStatus, setVoteStatus] = useState(null);
   const [filteredElections, setFilteredElections] = useState([]);
+  const [blockchainError, setBlockchainError] = useState(null);
+  const [blockchainCandidates, setBlockchainCandidates] = useState({});
+  const [blockchainInitialized, setBlockchainInitialized] = useState(false);
+  const [blockchainVoteStatus, setBlockchainVoteStatus] = useState({});
 
   // Format date for display
   const formatDate = (dateString) => {
@@ -137,6 +166,68 @@ const VoterDashboard = () => {
       return "Time unknown";
     }
   };
+
+  // Initialize blockchain connection
+  useEffect(() => {
+    const setupBlockchain = async () => {
+      try {
+        const result = await initializeBlockchain();
+        if (result.success) {
+          console.log('Blockchain initialized successfully');
+          setBlockchainInitialized(true);
+        } else {
+          console.error('Failed to initialize blockchain:', result.error);
+          setBlockchainError(result.error);
+        }
+      } catch (error) {
+        console.error('Error initializing blockchain:', error);
+        setBlockchainError('Failed to connect to blockchain. Please make sure MetaMask is installed and connected.');
+      }
+    };
+
+    setupBlockchain();
+  }, []);
+
+  // Fetch blockchain data for elections once we have both election data and blockchain initialized
+  useEffect(() => {
+    const fetchBlockchainData = async () => {
+      if (!blockchainInitialized || filteredElections.length === 0) return;
+
+      try {
+        // For each filtered election, fetch its candidates from blockchain
+        const candidatesData = {};
+        const voteStatusData = {};
+
+        for (const election of filteredElections) {
+          const electionId = election.blockchainElectionId || election._id;
+          
+          // Skip if we can't determine a numeric election ID
+          if (!electionId) continue;
+
+          // Get candidates from blockchain
+          const candidatesResult = await getAllCandidatesForElection(electionId);
+          if (candidatesResult.success) {
+            candidatesData[electionId] = candidatesResult.candidates;
+          }
+
+          // Check if user has voted in this election
+          if (user?.walletAddress) {
+            const voteResult = await hasVoterVotedInElection(user.walletAddress, electionId);
+            if (voteResult.success) {
+              voteStatusData[electionId] = voteResult.hasVoted;
+            }
+          }
+        }
+
+        setBlockchainCandidates(candidatesData);
+        setBlockchainVoteStatus(voteStatusData);
+      } catch (error) {
+        console.error('Error fetching blockchain data:', error);
+      }
+    };
+
+    fetchBlockchainData();
+  }, [blockchainInitialized, filteredElections, user?.walletAddress]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -287,12 +378,18 @@ const VoterDashboard = () => {
   }, []);
 
   // Check if voter has already voted
-  const hasVoted = () => {
+  const hasVoted = (electionId) => {
+    // First check blockchain status if available
+    if (blockchainVoteStatus && blockchainVoteStatus[electionId]) {
+      return true;
+    }
+
+    // Then check API status
     if (voteStatus && voteStatus.hasVoted) {
       return true;
     }
     
-    // Also check blockchain status if available
+    // Also check blockchain status in voter profile if available
     if (voterProfile && voterProfile.blockchainStatus && voterProfile.blockchainStatus.hasVoted) {
       return true;
     }
@@ -319,6 +416,13 @@ const VoterDashboard = () => {
         <h1 className="mb-4">Voter Dashboard</h1>
         
         {error && <Alert variant="danger">{error}</Alert>}
+        {blockchainError && (
+          <Alert variant="warning">
+            <FaEthereum className="me-2" />
+            {blockchainError} 
+            <span className="ms-2 small">(Some blockchain features may be unavailable)</span>
+          </Alert>
+        )}
         
         {voterProfile && (
           <Card className="mb-4 shadow-sm">
@@ -327,23 +431,6 @@ const VoterDashboard = () => {
             </Card.Header>
             <Card.Body>
               <Row>
-                {/* <Col md={3} className="text-center mb-3 mb-md-0">
-                  {voterProfile.faceImage ? (
-                    <img 
-                      src={getImageUrl(voterProfile.faceImage)}
-                      alt="Voter Photo" 
-                      className="img-fluid rounded-circle" 
-                      style={{ width: '150px', height: '150px', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <div 
-                      className="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center"
-                      style={{ width: '150px', height: '150px', margin: '0 auto' }}
-                    >
-                      <span className="h1">{voterProfile.firstName?.charAt(0)}{voterProfile.lastName?.charAt(0)}</span>
-                    </div>
-                  )}
-                </Col> */}
                 <Col md={9}>
                   <h3>{voterProfile.firstName} {voterProfile.middleName ? voterProfile.middleName + ' ' : ''}{voterProfile.lastName}</h3>
                   <p className="text-muted mb-2">Voter ID: {voterProfile.voterId}</p>
@@ -364,8 +451,10 @@ const VoterDashboard = () => {
                       </span>
                     )}
                     
-                    {hasVoted() && (
-                      <Badge bg="info" className="ms-2">Vote Cast</Badge>
+                    {Object.values(blockchainVoteStatus).some(status => status === true) && (
+                      <Badge bg="info" className="ms-2">
+                        <FaEthereum className="me-1" /> Vote Recorded on Blockchain
+                      </Badge>
                     )}
                   </div>
                 </Col>
@@ -385,72 +474,85 @@ const VoterDashboard = () => {
           <Card.Body>
             {filteredElections.length > 0 ? (
               <>
-                {filteredElections.map((election, index) => (
-                  <Card key={election._id || index} className={index > 0 ? "mt-4 border" : "border"}>
-                    <Card.Body>
-                      <div className="d-flex justify-content-between align-items-start">
-                        <div>
-                          <h5>{election.title || election.name}</h5>
-                          <p className="text-muted">
-                            <FaCalendarAlt className="me-2" />
-                            {election.type || "General Election"}
-                          </p>
-                          <p className="text-muted">
-                            <FaMapMarkerAlt className="me-2" />
-                            Pincode: {election.pincode || 'Not specified'}
-                          </p>
-                          {election.description && (
-                            <p>{election.description}</p>
-                          )}
+                {filteredElections.map((election, index) => {
+                  const electionId = election.blockchainElectionId || election._id;
+                  return (
+                    <Card key={election._id || index} className={index > 0 ? "mt-4 border" : "border"}>
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-start">
+                          <div>
+                            <h5>{election.title || election.name}</h5>
+                            <p className="text-muted">
+                              <FaCalendarAlt className="me-2" />
+                              {election.type || "General Election"}
+                            </p>
+                            <p className="text-muted">
+                              <FaMapMarkerAlt className="me-2" />
+                              Pincode: {election.pincode || 'Not specified'}
+                            </p>
+                            {election.description && (
+                              <p>{election.description}</p>
+                            )}
+                            {election.blockchainTxHash && (
+                              <div className="mt-2">
+                                <Badge bg="info" className="d-flex align-items-center" style={{ width: 'fit-content' }}>
+                                  <FaEthereum className="me-1" /> Blockchain Verified
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-end">
+                            <Badge bg="success" className="mb-2">Active</Badge>
+                            <p className="small text-muted mb-1">
+                              <FaClock className="me-1" />
+                              {getTimeRemaining(election.endDate)}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-end">
-                          <Badge bg="success" className="mb-2">Active</Badge>
-                          <p className="small text-muted mb-1">
-                            <FaClock className="me-1" />
-                            {getTimeRemaining(election.endDate)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="d-flex justify-content-between mt-3">
-                        <div>
-                          <p className="small text-muted mb-0">
-                            Started: {formatDate(election.startDate)}
-                          </p>
-                          <p className="small text-muted">
-                            Ends: {formatDate(election.endDate)}
-                          </p>
-                        </div>
-                        <Button 
-                          as={Link} 
-                          to="/voter/vote" 
-                          variant="primary"
-                          disabled={hasVoted() || voterProfile?.status !== 'approved'}
-                        >
-                          {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
-                        </Button>
-                      </div>
-
-                      {/* Display candidates for this election */}
-                      {election.candidates && election.candidates.length > 0 && (
-                        <ElectionCandidatesList candidates={election.candidates} />
-                      )}
-                      
-                      {/* Show a link to view all candidates if there are any */}
-                      {election.candidates && election.candidates.length > 0 && (
-                        <div className="text-center mt-3">
+                        <div className="d-flex justify-content-between mt-3">
+                          <div>
+                            <p className="small text-muted mb-0">
+                              Started: {formatDate(election.startDate)}
+                            </p>
+                            <p className="small text-muted">
+                              Ends: {formatDate(election.endDate)}
+                            </p>
+                          </div>
                           <Button 
                             as={Link} 
-                            to="/voter/candidates" 
-                            variant="outline-primary"
-                            size="sm"
+                            to={`/voter/vote?electionId=${election._id}`}
+                            variant="primary"
+                            disabled={hasVoted(electionId) || voterProfile?.status !== 'approved'}
                           >
-                            View All Candidates
+                            {hasVoted(electionId) ? 'Vote Already Cast' : 'Cast Vote'}
                           </Button>
                         </div>
-                      )}
-                    </Card.Body>
-                  </Card>
-                ))}
+
+                        {/* Display candidates for this election, including blockchain data */}
+                        {election.candidates && election.candidates.length > 0 && (
+                          <ElectionCandidatesList 
+                            candidates={election.candidates} 
+                            blockchainCandidates={blockchainCandidates[electionId] || []}
+                          />
+                        )}
+                        
+                        {/* Show a link to view all candidates if there are any */}
+                        {election.candidates && election.candidates.length > 0 && (
+                          <div className="text-center mt-3">
+                            <Button 
+                              as={Link} 
+                              to="/voter/candidates" 
+                              variant="outline-primary"
+                              size="sm"
+                            >
+                              View All Candidates
+                            </Button>
+                          </div>
+                        )}
+                      </Card.Body>
+                    </Card>
+                  );
+                })}
               </>
             ) : electionStatus && electionStatus.active ? (
               <Alert variant="success">
@@ -470,14 +572,21 @@ const VoterDashboard = () => {
                     <p>
                       <strong>Ends:</strong> {formatDate(electionStatus.election.endDate)}
                     </p>
+                    {electionStatus.election.blockchainTxHash && (
+                      <div className="mt-2">
+                        <Badge bg="info" className="d-flex align-items-center" style={{ width: 'fit-content' }}>
+                          <FaEthereum className="me-1" /> Blockchain Verified
+                        </Badge>
+                      </div>
+                    )}
                   </div>
                   <Button 
                     as={Link} 
-                    to="/voter/vote" 
+                    to={`/voter/vote?electionId=${electionStatus.election._id}`}
                     variant="primary"
-                    disabled={hasVoted() || voterProfile?.status !== 'approved'}
+                    disabled={hasVoted(electionStatus.election.blockchainElectionId || electionStatus.election._id) || voterProfile?.status !== 'approved'}
                   >
-                    {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
+                    {hasVoted(electionStatus.election.blockchainElectionId || electionStatus.election._id) ? 'Vote Already Cast' : 'Cast Vote'}
                   </Button>
                 </div>
                 
@@ -542,9 +651,9 @@ const VoterDashboard = () => {
                   to="/voter/vote" 
                   variant="outline-primary" 
                   className="mt-auto"
-                  disabled={filteredElections.length === 0 || hasVoted() || voterProfile?.status !== 'approved'}
+                  disabled={filteredElections.length === 0 || Object.values(blockchainVoteStatus).some(status => status === true) || voterProfile?.status !== 'approved'}
                 >
-                  {hasVoted() ? 'Already Voted' : 'Cast Vote'}
+                  {Object.values(blockchainVoteStatus).some(status => status === true) ? 'Already Voted' : 'Cast Vote'}
                 </Button>
               </Card.Body>
             </Card>

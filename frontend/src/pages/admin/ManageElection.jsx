@@ -10,7 +10,7 @@ import { ethers } from 'ethers';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0xbF705f479a0123B18aE9d3e3ff1545E87a03effa';
+const CONTRACT_ADDRESS = import.meta.env.CONTRACT_ADDRESS || '0x161e2757Cfa3e8956141030365797eeC8270a873';
 const BLOCKCHAIN_RPC_URL = import.meta.env.VITE_BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:7545';
 
 // VoteSure contract ABI - includes essential functions for election management

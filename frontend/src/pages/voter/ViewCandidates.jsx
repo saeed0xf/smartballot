@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Container, Row, Col, Card, Alert, Badge, Button, Modal, Form, InputGroup, Spinner, Tab, Nav } from 'react-bootstrap';
-import { FaSearch, FaFilter, FaUser, FaMapMarkerAlt, FaIdCard, FaCalendarAlt, FaBirthdayCake, FaBookReader, FaHistory, FaCertificate } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaUser, FaMapMarkerAlt, FaIdCard, FaCalendarAlt, FaBirthdayCake, FaBookReader, FaHistory, FaCertificate, FaUserCheck, FaEthereum } from 'react-icons/fa';
 import axios from 'axios';
 import Layout from '../../components/Layout';
 import { formatImageUrl } from '../../utils/imageUtils';
+import { AuthContext } from '../../context/AuthContext';
+import { initializeBlockchain, getAllCandidatesForElection } from '../../utils/blockchainUtils';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const ViewCandidates = () => {
+  const { user } = useContext(AuthContext);
   const [candidates, setCandidates] = useState([]);
   const [elections, setElections] = useState([]);
   const [electionGroups, setElectionGroups] = useState([]);
@@ -22,91 +25,88 @@ const ViewCandidates = () => {
   const [activeView, setActiveView] = useState('grid');
   const [compareList, setCompareList] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
+  const [blockchainCandidates, setBlockchainCandidates] = useState({});
+  const [blockchainError, setBlockchainError] = useState(null);
+  const [blockchainInitialized, setBlockchainInitialized] = useState(false);
+  const [blockchainLoading, setBlockchainLoading] = useState(false);
 
+  // Initialize blockchain connection
+  useEffect(() => {
+    const setupBlockchain = async () => {
+      try {
+        const result = await initializeBlockchain();
+        if (result.success) {
+          console.log('Blockchain initialized successfully');
+          setBlockchainInitialized(true);
+        } else {
+          console.error('Failed to initialize blockchain:', result.error);
+          setBlockchainError(result.error);
+        }
+      } catch (error) {
+        console.error('Error initializing blockchain:', error);
+        setBlockchainError('Failed to connect to blockchain. Please make sure MetaMask is installed and connected.');
+      }
+    };
+
+    setupBlockchain();
+  }, []);
+
+  // Fetch candidates data from API and blockchain
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
-        
+
         // Get auth headers
         const token = localStorage.getItem('token');
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        
-        // Fetch all active elections (which already include candidates)
-        const electionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
-        console.log('Active elections:', electionsResponse.data);
-        
-        // Handle different response formats
-        let electionsData = [];
-        if (Array.isArray(electionsResponse.data)) {
-          electionsData = electionsResponse.data;
-        } else if (electionsResponse.data.elections && Array.isArray(electionsResponse.data.elections)) {
-          electionsData = electionsResponse.data.elections;
-        } else if (electionsResponse.data) {
-          electionsData = [electionsResponse.data]; // Assume it's a single election object
-        }
-        
-        setElections(electionsData);
-        
-        // Extract candidates from elections
-        let allCandidates = [];
-        const electionGroups = [];
-        
-        // Process each election and extract its candidates
-        electionsData.forEach(election => {
-          if (election.candidates && Array.isArray(election.candidates)) {
-            // Add election to election groups
-            const electionGroup = {
-              electionId: election._id,
-              electionName: election.title || election.name,
-              electionType: election.type,
-              electionDescription: election.description,
-              electionStartDate: election.startDate,
-              electionEndDate: election.endDate,
-              electionPincode: election.pincode,
-              candidates: []
-            };
-            
-            // Process each candidate
-            election.candidates.forEach(candidate => {
-              // Enhance candidate with election info
-              const enhancedCandidate = {
+
+        // Fetch active elections
+        try {
+          const activeElectionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
+          console.log('Active elections:', activeElectionsResponse.data);
+          
+          // Handle different response formats
+          let electionsData = [];
+          if (Array.isArray(activeElectionsResponse.data)) {
+            electionsData = activeElectionsResponse.data;
+          } else if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
+            electionsData = activeElectionsResponse.data.elections;
+          } else {
+            electionsData = [activeElectionsResponse.data]; // Assume it's a single election object
+          }
+          
+          setElections(electionsData);
+          
+          // Extract all candidates from all elections and enhance them with election info
+          let allCandidates = [];
+          
+          electionsData.forEach(election => {
+            if (election.candidates && election.candidates.length > 0) {
+              // Add election reference to each candidate
+              const candidatesWithElection = election.candidates.map(candidate => ({
                 ...candidate,
                 electionId: election._id,
-                electionName: election.title || election.name,
-                electionType: election.type,
-                electionDescription: election.description,
+                electionTitle: election.title || election.name,
                 electionStartDate: election.startDate,
                 electionEndDate: election.endDate,
-                electionPincode: election.pincode,
-                photoUrl: formatImageUrl(candidate.photoUrl || candidate.image),
-                partySymbol: formatImageUrl(candidate.partySymbol)
-              };
+                blockchainElectionId: election.blockchainElectionId
+              }));
               
-              // Add to all candidates array
-              allCandidates.push(enhancedCandidate);
-              
-              // Add to this election's candidates
-              electionGroup.candidates.push(enhancedCandidate);
-            });
-            
-            // Add this election group if it has candidates
-            if (electionGroup.candidates.length > 0) {
-              electionGroups.push(electionGroup);
+              allCandidates = [...allCandidates, ...candidatesWithElection];
             }
-          }
-        });
-        
-        console.log(`Extracted ${allCandidates.length} candidates from ${electionGroups.length} elections`);
-        
-        // Set the election groups and candidates
-        setElectionGroups(electionGroups);
-        setCandidates(allCandidates);
-        setFilteredCandidates(allCandidates);
+          });
+          
+          console.log(`Found ${allCandidates.length} candidates from all elections`);
+          setCandidates(allCandidates);
+        } catch (error) {
+          console.error('Error fetching elections and candidates:', error);
+          setError('Failed to load candidates data. Please try again later.');
+        }
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError('Failed to load candidates. Please try again later.');
+        setError('Failed to load candidates data. Please try again later.');
       } finally {
         setLoading(false);
       }
@@ -114,6 +114,41 @@ const ViewCandidates = () => {
 
     fetchData();
   }, []);
+
+  // Fetch blockchain data for elections once we have both election data and blockchain initialized
+  useEffect(() => {
+    const fetchBlockchainData = async () => {
+      if (!blockchainInitialized || elections.length === 0) return;
+
+      try {
+        setBlockchainLoading(true);
+        // For each election, fetch its candidates from blockchain
+        const candidatesData = {};
+
+        for (const election of elections) {
+          const electionId = election.blockchainElectionId || election._id;
+          
+          // Skip if we can't determine a numeric election ID
+          if (!electionId) continue;
+
+          // Get candidates from blockchain
+          const candidatesResult = await getAllCandidatesForElection(electionId);
+          if (candidatesResult.success) {
+            candidatesData[electionId] = candidatesResult.candidates;
+            console.log(`Fetched ${candidatesResult.candidates.length} candidates from blockchain for election ${electionId}`);
+          }
+        }
+
+        setBlockchainCandidates(candidatesData);
+      } catch (error) {
+        console.error('Error fetching blockchain data:', error);
+      } finally {
+        setBlockchainLoading(false);
+      }
+    };
+
+    fetchBlockchainData();
+  }, [blockchainInitialized, elections]);
 
   // Filter candidates based on selected election and search term
   useEffect(() => {
@@ -141,6 +176,26 @@ const ViewCandidates = () => {
     
     setFilteredCandidates(filtered);
   }, [selectedElection, searchTerm, candidates]);
+
+  // Merge blockchain data with candidate data
+  const mergedCandidates = filteredCandidates.map(candidate => {
+    // Find matching blockchain candidate
+    const blockchainElectionId = candidate.blockchainElectionId || candidate.electionId;
+    const blockchainCandidate = blockchainCandidates[blockchainElectionId]?.find(bc => 
+      bc.id.toString() === candidate.blockchainId?.toString() || 
+      bc.id.toString() === candidate.candidateId?.toString() ||
+      bc.name.toLowerCase() === (candidate.name || `${candidate.firstName} ${candidate.lastName}`).toLowerCase()
+    );
+    
+    if (blockchainCandidate) {
+      return {
+        ...candidate,
+        voteCount: blockchainCandidate.voteCount,
+        blockchainData: blockchainCandidate
+      };
+    }
+    return candidate;
+  });
 
   const handleElectionChange = (e) => {
     setSelectedElection(e.target.value);
@@ -289,7 +344,7 @@ const ViewCandidates = () => {
 
   const renderGridView = () => (
     <Row>
-      {filteredCandidates.map(candidate => (
+      {mergedCandidates.map(candidate => (
         <Col key={candidate._id || candidate.id} md={4} className="mb-4">
           <Card className="h-100 shadow-sm candidate-card">
             <div className="text-center pt-3">
@@ -348,7 +403,7 @@ const ViewCandidates = () => {
               </p>
               <p className="text-muted small mb-3">
                 <FaCalendarAlt className="me-1" />
-                {candidate.electionType || 'General Election'}
+                {candidate.electionTitle || 'General Election'}
               </p>
               <Button 
                 variant="outline-primary" 
@@ -590,6 +645,19 @@ const ViewCandidates = () => {
         <h1 className="mb-4">Election Candidates</h1>
         
         {error && <Alert variant="danger">{error}</Alert>}
+        {blockchainError && (
+          <div className="alert alert-warning">
+            <FaEthereum className="me-2" />
+            {blockchainError}
+            <span className="ms-2 small">(Some blockchain features may be unavailable)</span>
+          </div>
+        )}
+        {blockchainLoading && (
+          <div className="alert alert-info">
+            <Spinner animation="border" size="sm" className="me-2" />
+            Loading blockchain data...
+          </div>
+        )}
         
         {/* Filters and Search */}
         <Card className="mb-4 shadow-sm">
@@ -650,7 +718,7 @@ const ViewCandidates = () => {
         {/* Compare button and badge */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <p className="text-muted mb-0">
-            Showing {filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? 's' : ''}
+            Showing {mergedCandidates.length} candidate{mergedCandidates.length !== 1 ? 's' : ''}
           </p>
           <div>
             {compareList.length > 0 && (
@@ -669,7 +737,7 @@ const ViewCandidates = () => {
           </div>
         </div>
         
-        {filteredCandidates.length === 0 ? (
+        {mergedCandidates.length === 0 ? (
           <Alert variant="info">
             {searchTerm || selectedElection !== 'all'
               ? 'No candidates match your search criteria.'
@@ -725,7 +793,7 @@ const ViewCandidates = () => {
                       )}
                       
                       <h5 className="mb-1">{selectedCandidate.partyName}</h5>
-                      <Badge bg="primary">{selectedCandidate.electionType || 'General Election'}</Badge>
+                      <Badge bg="primary">{selectedCandidate.electionTitle || 'General Election'}</Badge>
                     </div>
 
                     {/* Add a button to add/remove from comparison */}
@@ -754,7 +822,7 @@ const ViewCandidates = () => {
                         <Card.Body>
                           <Row>
                             <Col md={6}>
-                              <p className="mb-2"><strong>Election:</strong> {selectedCandidate.electionName}</p>
+                              <p className="mb-2"><strong>Election:</strong> {selectedCandidate.electionTitle}</p>
                               <p className="mb-2"><strong>Constituency:</strong> {selectedCandidate.constituency}</p>
                             </Col>
                             <Col md={6}>

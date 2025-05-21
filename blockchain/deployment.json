@@ -1,11 +1,31 @@
 {
-  "address": "0x1b0209326d4A985FAe8b399Ad2B743F78cffc8FD",
+  "address": "0x161e2757Cfa3e8956141030365797eeC8270a873",
   "abi": [
     {
       "inputs": [],
       "stateMutability": "nonpayable",
       "type": "constructor",
       "signature": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "candidateId",
+          "type": "uint256"
+        }
+      ],
+      "name": "CandidateAdded",
+      "type": "event",
+      "signature": "0xa072a1e90a5e808c6722a8b7c3457a422c2ee51d7b1a53dceb40bcb32586ac70"
     },
     {
       "anonymous": false,
@@ -161,6 +181,16 @@
           "type": "string"
         },
         {
+          "internalType": "string",
+          "name": "pincode",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "constituency",
+          "type": "string"
+        },
+        {
           "internalType": "uint256",
           "name": "voteCount",
           "type": "uint256"
@@ -194,6 +224,16 @@
         {
           "internalType": "string",
           "name": "description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "pincode",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "region",
           "type": "string"
         },
         {
@@ -253,6 +293,16 @@
           "type": "string"
         },
         {
+          "internalType": "string",
+          "name": "pincode",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "region",
+          "type": "string"
+        },
+        {
           "internalType": "uint256",
           "name": "startTime",
           "type": "uint256"
@@ -281,6 +331,105 @@
     {
       "inputs": [
         {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "name": "registeredVoterIds",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xa32ee090"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "voterIdByAddress",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xc0e183ff"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "name": "voterIdToAddress",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xdb6b47bd"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "voters",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "voterId",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "pincode",
+          "type": "string"
+        },
+        {
+          "internalType": "bool",
+          "name": "isApproved",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "registrationTime",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xa3ec138d"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "address",
           "name": "_voter",
           "type": "address"
@@ -295,6 +444,72 @@
     {
       "inputs": [
         {
+          "internalType": "address",
+          "name": "_voter",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "_voterId",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_pincode",
+          "type": "string"
+        }
+      ],
+      "name": "approveVoterWithId",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function",
+      "signature": "0x5a119fe4"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_voterId",
+          "type": "string"
+        }
+      ],
+      "name": "isVoterIdRegistered",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0x4c65df5d"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_voter",
+          "type": "address"
+        }
+      ],
+      "name": "getVoterIdByAddress",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0x1981976e"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "string",
           "name": "_title",
           "type": "string"
@@ -302,6 +517,106 @@
         {
           "internalType": "string",
           "name": "_description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_pincode",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_region",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_startTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_endTime",
+          "type": "uint256"
+        }
+      ],
+      "name": "createElectionBase",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function",
+      "signature": "0xd29551a0"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_party",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_slogan",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_pincode",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_constituency",
+          "type": "string"
+        }
+      ],
+      "name": "addCandidateToElection",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function",
+      "signature": "0x4c850c9a"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_title",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_pincode",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_region",
           "type": "string"
         },
         {
@@ -337,6 +652,16 @@
               "type": "string"
             },
             {
+              "internalType": "string",
+              "name": "pincode",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "constituency",
+              "type": "string"
+            },
+            {
               "internalType": "uint256",
               "name": "voteCount",
               "type": "uint256"
@@ -351,7 +676,7 @@
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function",
-      "signature": "0x3ec534d0"
+      "signature": "0xf921c45e"
     },
     {
       "inputs": [
@@ -459,6 +784,16 @@
               "type": "string"
             },
             {
+              "internalType": "string",
+              "name": "pincode",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "constituency",
+              "type": "string"
+            },
+            {
               "internalType": "uint256",
               "name": "voteCount",
               "type": "uint256"
@@ -473,6 +808,64 @@
       "type": "function",
       "constant": true,
       "signature": "0x4bd46448"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAllCandidates",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "candidateId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "party",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "slogan",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "pincode",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "constituency",
+              "type": "string"
+            },
+            {
+              "internalType": "uint256",
+              "name": "voteCount",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct VoteSure.Candidate[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xf9ded646"
     },
     {
       "inputs": [
@@ -499,6 +892,16 @@
             {
               "internalType": "string",
               "name": "description",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "pincode",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "region",
               "type": "string"
             },
             {
@@ -570,6 +973,16 @@
               "type": "string"
             },
             {
+              "internalType": "string",
+              "name": "pincode",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "constituency",
+              "type": "string"
+            },
+            {
               "internalType": "uint256",
               "name": "voteCount",
               "type": "uint256"
@@ -610,6 +1023,136 @@
       "type": "function",
       "constant": true,
       "signature": "0x9b541f76"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_voter",
+          "type": "address"
+        }
+      ],
+      "name": "getVoterDetails",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "string",
+              "name": "voterId",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "pincode",
+              "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isApproved",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint256",
+              "name": "registrationTime",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct VoteSure.Voter",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xba71bef0"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_voter",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "isVoterEligibleForElection",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0x7ffb65e2"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getElectionDetails",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "pincode",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "region",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "startTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "endTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "isActive",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "isEnded",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xf6049924"
     }
   ],
   "network": "development",
