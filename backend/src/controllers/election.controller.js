@@ -973,6 +973,7 @@ exports.getAllCandidates = async (req, res) => {
         manifesto: candidateObj.manifesto,
         education: candidateObj.education,
         experience: candidateObj.experience,
+        criminalRecord: candidateObj.criminalRecord || 'None',
         biography: candidateObj.biography,
         slogan: candidateObj.slogan,
         email: candidateObj.email,
@@ -1074,6 +1075,7 @@ exports.getCandidateDetails = async (req, res) => {
       manifesto: candidate.manifesto,
       education: candidate.education,
       experience: candidate.experience,
+      criminalRecord: candidate.criminalRecord || 'None',
       biography: candidate.biography,
       slogan: candidate.slogan,
       email: candidate.email,
@@ -1453,5 +1455,388 @@ exports.checkAndArchiveInactiveElections = async () => {
   } catch (error) {
     console.error('Error in archive inactive elections function:', error);
     return 0;
+  }
+};
+
+// Get active elections from remote database
+exports.getActiveElectionsRemote = async (req, res) => {
+  try {
+    console.log('Fetching active elections from remote database');
+    
+    // Import the remoteDb utility functions and schemas
+    const { 
+      RemoteElectionSchema, 
+      RemoteCandidateSchema, 
+      createRemoteConnection 
+    } = require('../utils/remoteDb.util');
+    
+    // Create connection to remote database
+    const remoteConnection = await createRemoteConnection();
+    
+    // Create models on the remote connection
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
+    
+    // Query for active elections
+    const activeElections = await RemoteElection.find({ 
+      isActive: true,
+      isArchived: false
+    });
+    
+    console.log(`Found ${activeElections.length} active elections in remote database`);
+    
+    // Get candidates for each election
+    const electionsWithCandidates = await Promise.all(activeElections.map(async (election) => {
+      // Find candidates that match this election's ID
+      const candidates = await RemoteCandidate.find({ electionId: election._id.toString() });
+      
+      console.log(`Found ${candidates.length} candidates for election ${election._id}`);
+      
+      // Format candidates to match the expected format
+      const formattedCandidates = candidates.map(candidate => ({
+        id: candidate._id.toString(),
+        name: `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`,
+        partyName: candidate.partyName,
+        partySymbol: candidate.partySymbol,
+        photoUrl: candidate.photoUrl,
+        constituency: candidate.constituency
+      }));
+      
+      // Return election with candidates
+      return {
+        _id: election._id.toString(),
+        title: election.title,
+        type: election.type || 'Other',
+        description: election.description,
+        region: election.region,
+        pincode: election.pincode,
+        startDate: election.startDate,
+        endDate: election.endDate,
+        isActive: election.isActive,
+        isArchived: election.isArchived,
+        totalVotes: election.totalVotes || 0,
+        createdAt: election.recordedAt,
+        updatedAt: election.recordedAt,
+        startedAt: election.startedAt,
+        candidates: formattedCandidates
+      };
+    }));
+    
+    // Close the remote connection
+    await remoteConnection.close();
+    console.log('Remote database connection closed');
+    
+    // Return the elections
+    res.status(200).json(electionsWithCandidates);
+    
+  } catch (error) {
+    console.error('Error fetching remote active elections:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Get remote candidate details
+exports.getRemoteCandidateDetails = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+    console.log(`Fetching details for remote candidate ID: ${candidateId}`);
+    
+    if (!candidateId || candidateId.length < 5) {
+      return res.status(400).json({ 
+        message: 'Invalid candidate ID format',
+        details: 'The provided candidate ID is not valid'
+      });
+    }
+    
+    // Import the remoteDb utility functions and schemas
+    const { 
+      RemoteCandidateSchema, 
+      createRemoteConnection 
+    } = require('../utils/remoteDb.util');
+    
+    // Create connection to remote database
+    const remoteConnection = await createRemoteConnection();
+    
+    // Create models on the remote connection
+    const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
+    
+    // Find remote candidate by ID
+    const candidate = await RemoteCandidate.findById(candidateId);
+    
+    if (!candidate) {
+      // Close the connection before returning
+      await remoteConnection.close();
+      return res.status(404).json({ message: 'Remote candidate not found' });
+    }
+    
+    console.log(`Found remote candidate: ${candidate.firstName} ${candidate.lastName}`);
+    
+    // Convert to a clean response object
+    const response = {
+      id: candidate._id,
+      _id: candidate._id,
+      firstName: candidate.firstName,
+      lastName: candidate.lastName,
+      middleName: candidate.middleName || '',
+      name: `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`,
+      age: candidate.age,
+      gender: candidate.gender,
+      dateOfBirth: candidate.dateOfBirth,
+      photoUrl: candidate.photoUrl,
+      partyName: candidate.partyName,
+      partySymbol: candidate.partySymbol,
+      constituency: candidate.constituency,
+      manifesto: candidate.manifesto || '',
+      education: candidate.education || '',
+      experience: candidate.experience || '',
+      criminalRecord: candidate.criminalRecord || 'None',
+      biography: candidate.biography || null,
+      slogan: candidate.slogan || null,
+      email: candidate.email,
+      voteCount: candidate.voteCount || 0,
+      electionId: candidate.electionId,
+      electionType: candidate.electionType
+    };
+    
+    // Close the remote connection
+    await remoteConnection.close();
+    console.log('Remote database connection closed');
+    
+    res.json({ candidate: response });
+  } catch (error) {
+    console.error('Get remote candidate details error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Get all remote candidates for an election
+exports.getRemoteCandidatesByElection = async (req, res) => {
+  try {
+    const { electionId } = req.params;
+    console.log(`Fetching remote candidates for election ID: ${electionId}`);
+    
+    if (!electionId || electionId.length < 5) {
+      return res.status(400).json({ 
+        message: 'Invalid election ID format',
+        details: 'The provided election ID is not valid'
+      });
+    }
+    
+    // Import the remoteDb utility functions and schemas
+    const { 
+      RemoteCandidateSchema, 
+      RemoteElectionSchema,
+      createRemoteConnection 
+    } = require('../utils/remoteDb.util');
+    
+    // Create connection to remote database
+    const remoteConnection = await createRemoteConnection();
+    
+    // Create models on the remote connection
+    const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    
+    // Find the election first to get additional details
+    const election = await RemoteElection.findById(electionId);
+    
+    if (!election) {
+      // Close the connection before returning
+      await remoteConnection.close();
+      return res.status(404).json({ message: 'Remote election not found' });
+    }
+    
+    // Find all candidates for this election
+    const candidates = await RemoteCandidate.find({ electionId: electionId });
+    
+    console.log(`Found ${candidates.length} remote candidates for election ${electionId}`);
+    
+    // Format candidates with consistent field names and additional details
+    const formattedCandidates = candidates.map(candidate => {
+      return {
+        id: candidate._id,
+        _id: candidate._id, // Include both for compatibility
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        middleName: candidate.middleName || '',
+        name: `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`,
+        age: candidate.age,
+        gender: candidate.gender,
+        dateOfBirth: candidate.dateOfBirth,
+        photoUrl: candidate.photoUrl,
+        partyName: candidate.partyName,
+        partySymbol: candidate.partySymbol,
+        constituency: candidate.constituency,
+        manifesto: candidate.manifesto,
+        education: candidate.education,
+        experience: candidate.experience,
+        criminalRecord: candidate.criminalRecord || 'None',
+        biography: candidate.biography,
+        slogan: candidate.slogan,
+        email: candidate.email,
+        voteCount: candidate.voteCount || 0,
+        electionId: candidate.electionId,
+        electionName: election.title,
+        electionType: candidate.electionType || election.type || 'General Election',
+        electionDescription: election.description,
+        electionStartDate: election.startDate,
+        electionEndDate: election.endDate,
+        electionPincode: election.pincode
+      };
+    });
+    
+    // Close the remote connection
+    await remoteConnection.close();
+    console.log('Remote database connection closed');
+    
+    // Group candidates by election for better organization
+    const electionGroup = {
+      electionId: election._id,
+      electionName: election.title,
+      electionType: election.type || 'General Election',
+      electionDescription: election.description,
+      electionStartDate: election.startDate,
+      electionEndDate: election.endDate,
+      electionPincode: election.pincode,
+      candidates: formattedCandidates
+    };
+    
+    res.json({ 
+      candidates: formattedCandidates,
+      election: electionGroup,
+      totalCandidates: formattedCandidates.length
+    });
+  } catch (error) {
+    console.error('Get remote candidates error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Get all remote candidates
+exports.getAllRemoteCandidates = async (req, res) => {
+  try {
+    console.log('Fetching all remote candidates');
+
+    // Import the remoteDb utility functions and schemas
+    const { 
+      RemoteCandidateSchema, 
+      RemoteElectionSchema,
+      createRemoteConnection 
+    } = require('../utils/remoteDb.util');
+    
+    // Create connection to remote database
+    const remoteConnection = await createRemoteConnection();
+    
+    // Create models on the remote connection
+    const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    
+    // Get all active elections (for filtering)
+    const activeElections = await RemoteElection.find({ 
+      isActive: true,
+      isArchived: false
+    });
+    
+    console.log(`Found ${activeElections.length} active remote elections`);
+    
+    // Get election IDs for filtering
+    const activeElectionIds = activeElections.map(election => election._id.toString());
+    
+    // Find all candidates from active elections
+    const candidates = await RemoteCandidate.find({
+      electionId: { $in: activeElectionIds }
+    });
+    
+    console.log(`Found ${candidates.length} remote candidates in active elections`);
+    
+    // Create a map of elections for quick lookup
+    const electionsMap = {};
+    activeElections.forEach(election => {
+      electionsMap[election._id.toString()] = {
+        id: election._id,
+        title: election.title,
+        type: election.type || 'General Election',
+        description: election.description,
+        startDate: election.startDate,
+        endDate: election.endDate,
+        pincode: election.pincode,
+        region: election.region
+      };
+    });
+    
+    // Format candidates with consistent field names and additional details
+    const formattedCandidates = candidates.map(candidate => {
+      const election = electionsMap[candidate.electionId];
+      return {
+        id: candidate._id,
+        _id: candidate._id, // Include both for compatibility
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        middleName: candidate.middleName || '',
+        name: `${candidate.firstName} ${candidate.middleName ? candidate.middleName + ' ' : ''}${candidate.lastName}`,
+        age: candidate.age,
+        gender: candidate.gender,
+        dateOfBirth: candidate.dateOfBirth,
+        photoUrl: candidate.photoUrl,
+        partyName: candidate.partyName,
+        partySymbol: candidate.partySymbol,
+        constituency: candidate.constituency,
+        manifesto: candidate.manifesto,
+        education: candidate.education,
+        experience: candidate.experience,
+        criminalRecord: candidate.criminalRecord || 'None',
+        biography: candidate.biography,
+        slogan: candidate.slogan,
+        email: candidate.email,
+        voteCount: candidate.voteCount || 0,
+        electionId: candidate.electionId,
+        electionName: election ? election.title : 'Unknown Election',
+        electionType: candidate.electionType || (election ? election.type : 'General Election'),
+        electionDescription: election ? election.description : '',
+        electionStartDate: election ? election.startDate : null,
+        electionEndDate: election ? election.endDate : null,
+        electionPincode: election ? election.pincode : null
+      };
+    });
+    
+    // Group candidates by election for better organization
+    const candidatesByElection = {};
+    formattedCandidates.forEach(candidate => {
+      if (!candidatesByElection[candidate.electionId]) {
+        const election = electionsMap[candidate.electionId];
+        if (election) {
+          candidatesByElection[candidate.electionId] = {
+            electionId: candidate.electionId,
+            electionName: election.title,
+            electionType: election.type,
+            electionDescription: election.description,
+            electionStartDate: election.startDate,
+            electionEndDate: election.endDate,
+            electionPincode: election.pincode,
+            candidates: []
+          };
+        }
+      }
+      
+      if (candidatesByElection[candidate.electionId]) {
+        candidatesByElection[candidate.electionId].candidates.push(candidate);
+      }
+    });
+    
+    // Convert to array format
+    const electionGroups = Object.values(candidatesByElection);
+    
+    // Close the remote connection
+    await remoteConnection.close();
+    console.log('Remote database connection closed');
+    
+    res.json({ 
+      candidates: formattedCandidates,
+      elections: electionGroups,
+      totalCandidates: formattedCandidates.length,
+      totalElections: electionGroups.length
+    });
+  } catch (error) {
+    console.error('Get all remote candidates error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 }; 

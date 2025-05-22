@@ -33,4 +33,16 @@ router.put(
   voterController.updateVoterProfile
 );
 
+// Cast vote route (protected route)
+router.post('/cast-vote', verifyToken, isVoter, voterController.castVote);
+
+// Record vote on blockchain route (protected route)
+router.post('/record-vote-blockchain', verifyToken, isVoter, voterController.recordVoteOnBlockchain);
+
+// Check if voter has already voted in the remote database (protected route)
+router.get('/check-remote-vote', verifyToken, isVoter, voterController.checkRemoteVote);
+
+// Upload vote recording (protected route)
+router.post('/upload-recording', verifyToken, isVoter, voterController.uploadRecording);
+
 module.exports = router; 

@@ -22,6 +22,10 @@ const ViewCandidates = () => {
   const [activeView, setActiveView] = useState('grid');
   const [compareList, setCompareList] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
+  const [isLoadingComparisonData, setIsLoadingComparisonData] = useState(false);
+  const [voterPincode, setVoterPincode] = useState(null);
+  const [votedElections, setVotedElections] = useState([]);
+  const [showVotedElections, setShowVotedElections] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -33,8 +37,24 @@ const ViewCandidates = () => {
         const token = localStorage.getItem('token');
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         
+        // First fetch voter profile to get pincode
+        let currentPincode = null;
+        try {
+          const profileResponse = await axios.get(`${API_URL}/voter/profile`, { headers });
+          console.log('Voter profile:', profileResponse.data);
+          
+          if (profileResponse.data && profileResponse.data.voter && profileResponse.data.voter.pincode) {
+            currentPincode = profileResponse.data.voter.pincode;
+            setVoterPincode(currentPincode);
+            console.log('Voter pincode:', currentPincode);
+          }
+        } catch (profileError) {
+          console.error('Error fetching voter profile:', profileError);
+          // Continue even if we can't get the profile
+        }
+        
         // Fetch all active elections (which already include candidates)
-        const electionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
+        const electionsResponse = await axios.get(`${API_URL}/elections/remote/active`, { headers });
         console.log('Active elections:', electionsResponse.data);
         
         // Handle different response formats
@@ -47,7 +67,28 @@ const ViewCandidates = () => {
           electionsData = [electionsResponse.data]; // Assume it's a single election object
         }
         
+        // Store all elections for dropdown filtering
         setElections(electionsData);
+        
+        // Check which elections the voter has already voted in
+        let votedElectionIds = [];
+        for (const election of electionsData) {
+          try {
+            console.log(`Checking if voter has voted in election ${election._id}`);
+            const voteCheckResponse = await axios.get(`${API_URL}/voter/check-remote-vote?electionId=${election._id}`, { headers });
+            
+            if (voteCheckResponse.data.hasVoted) {
+              console.log(`Voter has already voted in election ${election._id}`);
+              votedElectionIds.push(election._id);
+            }
+          } catch (voteCheckError) {
+            console.error(`Error checking if voted in election ${election._id}:`, voteCheckError);
+            // Continue checking other elections even if one fails
+          }
+        }
+        
+        setVotedElections(votedElectionIds);
+        console.log('Elections voter has already voted in:', votedElectionIds);
         
         // Extract candidates from elections
         let allCandidates = [];
@@ -55,24 +96,19 @@ const ViewCandidates = () => {
         
         // Process each election and extract its candidates
         electionsData.forEach(election => {
+          // Skip this election if the voter has already voted in it and we're not showing voted elections
+          const hasVotedInElection = votedElectionIds.includes(election._id);
+          
+          if (hasVotedInElection && !showVotedElections) {
+            console.log(`Skipping election ${election._id} as voter has already voted in it`);
+            return; // Skip to next election
+          }
+          
           if (election.candidates && Array.isArray(election.candidates)) {
-            // Add election to election groups
-            const electionGroup = {
-              electionId: election._id,
-              electionName: election.title || election.name,
-              electionType: election.type,
-              electionDescription: election.description,
-              electionStartDate: election.startDate,
-              electionEndDate: election.endDate,
-              electionPincode: election.pincode,
-              candidates: []
-            };
-            
-            // Process each candidate
-            election.candidates.forEach(candidate => {
-              // Enhance candidate with election info
-              const enhancedCandidate = {
-                ...candidate,
+            // Add election to election groups only if it matches voter's pincode
+            // or if no pincode is available (for backward compatibility)
+            if (!currentPincode || !election.pincode || election.pincode === currentPincode) {
+              const electionGroup = {
                 electionId: election._id,
                 electionName: election.title || election.name,
                 electionType: election.type,
@@ -80,25 +116,43 @@ const ViewCandidates = () => {
                 electionStartDate: election.startDate,
                 electionEndDate: election.endDate,
                 electionPincode: election.pincode,
-                photoUrl: formatImageUrl(candidate.photoUrl || candidate.image),
-                partySymbol: formatImageUrl(candidate.partySymbol)
+                hasVotedInElection: hasVotedInElection,
+                candidates: []
               };
               
-              // Add to all candidates array
-              allCandidates.push(enhancedCandidate);
+              // Process each candidate
+              election.candidates.forEach(candidate => {
+                // Enhance candidate with election info
+                const enhancedCandidate = {
+                  ...candidate,
+                  electionId: election._id,
+                  electionName: election.title || election.name,
+                  electionType: election.type,
+                  electionDescription: election.description,
+                  electionStartDate: election.startDate,
+                  electionEndDate: election.endDate,
+                  electionPincode: election.pincode,
+                  hasVotedInElection: hasVotedInElection,
+                  photoUrl: formatImageUrl(candidate.photoUrl || candidate.image),
+                  partySymbol: formatImageUrl(candidate.partySymbol)
+                };
+                
+                // Add to all candidates array
+                allCandidates.push(enhancedCandidate);
+                
+                // Add to this election's candidates
+                electionGroup.candidates.push(enhancedCandidate);
+              });
               
-              // Add to this election's candidates
-              electionGroup.candidates.push(enhancedCandidate);
-            });
-            
-            // Add this election group if it has candidates
-            if (electionGroup.candidates.length > 0) {
-              electionGroups.push(electionGroup);
+              // Add this election group if it has candidates
+              if (electionGroup.candidates.length > 0) {
+                electionGroups.push(electionGroup);
+              }
             }
           }
         });
         
-        console.log(`Extracted ${allCandidates.length} candidates from ${electionGroups.length} elections`);
+        console.log(`Extracted ${allCandidates.length} candidates from ${electionGroups.length} elections for pincode: ${currentPincode || 'all'}`);
         
         // Set the election groups and candidates
         setElectionGroups(electionGroups);
@@ -113,7 +167,7 @@ const ViewCandidates = () => {
     };
 
     fetchData();
-  }, []);
+  }, [showVotedElections]); // Run when showVotedElections changes
 
   // Filter candidates based on selected election and search term
   useEffect(() => {
@@ -128,15 +182,38 @@ const ViewCandidates = () => {
     }
     
     // Filter by search term
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(candidate => 
-        (candidate.firstName && candidate.firstName.toLowerCase().includes(term)) ||
-        (candidate.lastName && candidate.lastName.toLowerCase().includes(term)) ||
-        (candidate.name && candidate.name.toLowerCase().includes(term)) ||
-        (candidate.partyName && candidate.partyName.toLowerCase().includes(term)) ||
-        (candidate.constituency && candidate.constituency.toLowerCase().includes(term))
-      );
+    if (searchTerm.trim()) {
+      const term = searchTerm.trim().toLowerCase();
+      filtered = filtered.filter(candidate => {
+        // Create a full name from available name parts for better searching
+        const fullName = [
+          candidate.firstName || '',
+          candidate.middleName || '',
+          candidate.lastName || ''
+        ].join(' ').toLowerCase();
+        
+        // Use "name" field if available, otherwise check individual name components
+        const nameMatch = 
+          (candidate.name && candidate.name.toLowerCase().includes(term)) || 
+          fullName.includes(term) ||
+          (candidate.firstName && candidate.firstName.toLowerCase().includes(term)) ||
+          (candidate.middleName && candidate.middleName.toLowerCase().includes(term)) ||
+          (candidate.lastName && candidate.lastName.toLowerCase().includes(term));
+          
+        // Check other candidate fields
+        const partyMatch = candidate.partyName && candidate.partyName.toLowerCase().includes(term);
+        const constituencyMatch = candidate.constituency && candidate.constituency.toLowerCase().includes(term);
+        const electionMatch = 
+          (candidate.electionName && candidate.electionName.toLowerCase().includes(term)) ||
+          (candidate.electionType && candidate.electionType.toLowerCase().includes(term));
+        const manifestoMatch = candidate.manifesto && candidate.manifesto.toLowerCase().includes(term);
+        const educationMatch = candidate.education && candidate.education.toLowerCase().includes(term);
+        const experienceMatch = candidate.experience && candidate.experience.toLowerCase().includes(term);
+        
+        // Return true if any field matches
+        return nameMatch || partyMatch || constituencyMatch || electionMatch || 
+               manifestoMatch || educationMatch || experienceMatch;
+      });
     }
     
     setFilteredCandidates(filtered);
@@ -148,6 +225,10 @@ const ViewCandidates = () => {
 
   const handleSearch = (e) => {
     setSearchTerm(e.target.value);
+  };
+
+  const clearSearch = () => {
+    setSearchTerm('');
   };
 
   const handleCloseDetails = () => {
@@ -185,7 +266,7 @@ const ViewCandidates = () => {
         console.log(`Fetching details for candidate ID: ${apiCandidateId} from API`);
         
         // First try the direct candidate endpoint which gives the most complete details
-        const response = await axios.get(`${API_URL}/candidates/${apiCandidateId}`, { headers });
+        const response = await axios.get(`${API_URL}/candidates/remote/${apiCandidateId}`, { headers });
         console.log('Candidate details response:', response.data);
         
         // Handle different response formats
@@ -258,16 +339,144 @@ const ViewCandidates = () => {
     }
   };
 
+  // Function to load detailed data for candidates in the comparison list
+  const loadComparisonData = async () => {
+    try {
+      if (compareList.length === 0) return;
+      
+      setIsLoadingComparisonData(true);
+      console.log('Loading comparison data for candidates:', compareList);
+      
+      // Clone the current compare list to update
+      const updatedCompareList = [...compareList];
+      let hasUpdates = false;
+      
+      // Get auth headers
+      const token = localStorage.getItem('token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      
+      // Load detailed data for each candidate in the list
+      for (let i = 0; i < updatedCompareList.length; i++) {
+        const candidate = updatedCompareList[i];
+        const candidateId = candidate._id || candidate.id;
+        
+        if (!candidateId) {
+          console.error('Candidate is missing ID:', candidate);
+          continue;
+        }
+        
+        console.log(`Loading detailed data for candidate ID: ${candidateId}`);
+        
+        try {
+          // Fetch detailed candidate data from the remote API
+          const response = await axios.get(`${API_URL}/candidates/remote/${candidateId}`, { headers });
+          console.log(`Raw API response for candidate ${candidateId}:`, response.data);
+          
+          let updatedCandidate = { ...candidate };
+          let candidateData = null;
+          
+          // Handle different API response formats
+          if (response.data && response.data.candidate) {
+            // Format 1: { candidate: {...} }
+            candidateData = response.data.candidate;
+          } else if (response.data && (response.data._id || response.data.id)) {
+            // Format 2: Direct candidate object
+            candidateData = response.data;
+          }
+          
+          if (candidateData) {
+            console.log(`Extracted candidate data for ${candidateId}:`, candidateData);
+            
+            // Merge the detailed data with existing data
+            updatedCandidate = {
+              ...updatedCandidate,
+              ...candidateData,
+              // Ensure we have the correct ID (keep the original ID to maintain references)
+              _id: candidateId,
+              // Format images with helpers
+              photoUrl: formatImageUrl(candidateData.photoUrl || candidateData.image || updatedCandidate.photoUrl),
+              partySymbol: formatImageUrl(candidateData.partySymbol || updatedCandidate.partySymbol)
+            };
+            
+            // Update in our list
+            updatedCompareList[i] = updatedCandidate;
+            hasUpdates = true;
+            console.log(`Updated candidate ${candidateId} with detailed data`);
+          } else {
+            console.warn(`Could not extract candidate data from response for ${candidateId}`);
+          }
+        } catch (error) {
+          console.error(`Error loading detailed data for candidate ${candidateId}:`, error.message);
+        }
+      }
+      
+      // Update the compare list if we have new data
+      if (hasUpdates) {
+        console.log('Setting updated compare list:', updatedCompareList);
+        setCompareList(updatedCompareList);
+      } else {
+        console.log('No updates needed for compare list');
+      }
+    } catch (error) {
+      console.error('Error in loadComparisonData:', error);
+    } finally {
+      setIsLoadingComparisonData(false);
+    }
+  };
+  
+  // Handle opening the comparison modal
+  const handleOpenComparison = async () => {
+    if (compareList.length > 0) {
+      console.log('Opening comparison modal with', compareList.length, 'candidates');
+      setShowComparison(true);
+      // Load detailed data for candidates (await the function to complete)
+      await loadComparisonData();
+    } else {
+      alert('Please select at least one candidate to compare');
+    }
+  };
+
+  // Utility function to check if a candidate is in the comparison list
+  const isInCompareList = (candidate) => {
+    if (!candidate || (!candidate._id && !candidate.id)) {
+      return false;
+    }
+    
+    const candidateId = candidate._id || candidate.id;
+    return compareList.some(c => {
+      const cId = c._id || c.id;
+      return cId === candidateId;
+    });
+  };
+
   // Add handler for adding/removing candidates from comparison
   const toggleCompare = (candidate) => {
-    if (compareList.some(c => (c._id === candidate._id || c.id === candidate.id))) {
+    if (!candidate || (!candidate._id && !candidate.id)) {
+      console.error('Invalid candidate object for comparison');
+      return;
+    }
+    
+    // Create a new comparison check based on candidate ID
+    // This ensures we're using the correct unique identifier
+    const candidateId = candidate._id || candidate.id;
+    
+    // Check if this candidate is already in the comparison list
+    if (isInCompareList(candidate)) {
       // Remove from compare list
-      setCompareList(compareList.filter(c => 
-        (c._id !== candidate._id && c.id !== candidate.id)
-      ));
+      console.log(`Removing candidate ${candidateId} from comparison list`);
+      setCompareList(compareList.filter(c => {
+        const cId = c._id || c.id;
+        return cId !== candidateId;
+      }));
     } else if (compareList.length < 3) {
       // Add to compare list
-      setCompareList([...compareList, candidate]);
+      console.log(`Adding candidate ${candidateId} to comparison list`);
+      // Ensure we don't add duplicates
+      const newList = [...compareList];
+      if (!isInCompareList(candidate)) {
+        newList.push(candidate);
+        setCompareList(newList);
+      }
     } else {
       // Alert user they can only compare up to 3 candidates
       alert('You can compare up to 3 candidates at a time.');
@@ -316,12 +525,12 @@ const ViewCandidates = () => {
               )}
             </div>
             <Card.Body className="text-center">
-              <div className="d-flex justify-content-end mb-2">
+              <div className="d-flex justify-content-center mb-2">
                 <Form.Check 
                   type="checkbox"
                   id={`compare-${candidate._id || candidate.id}`}
                   label="Compare"
-                  checked={compareList.some(c => (c._id === candidate._id || c.id === candidate.id))}
+                  checked={isInCompareList(candidate)}
                   onChange={() => toggleCompare(candidate)}
                 />
               </div>
@@ -365,6 +574,86 @@ const ViewCandidates = () => {
     </Row>
   );
 
+  const renderFilterSection = () => (
+    <div className="mb-4">
+      <Row>
+        <Col md={4}>
+          <InputGroup>
+            <Form.Control 
+              type="text" 
+              placeholder="Search candidates by name, party, etc." 
+              value={searchTerm}
+              onChange={handleSearch}
+              aria-label="Search candidates"
+            />
+            {searchTerm && (
+              <Button 
+                variant="outline-secondary" 
+                onClick={clearSearch}
+              >
+                Clear
+              </Button>
+            )}
+            <InputGroup.Text>
+              <FaSearch />
+            </InputGroup.Text>
+          </InputGroup>
+          {filteredCandidates.length > 0 && searchTerm.trim() && (
+            <small className="text-muted">
+              Found {filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? 's' : ''}
+            </small>
+          )}
+        </Col>
+        <Col md={4}>
+          <Form.Group controlId="electionFilter">
+            <InputGroup>
+              <InputGroup.Text>
+                <FaFilter />
+              </InputGroup.Text>
+              <Form.Select 
+                value={selectedElection} 
+                onChange={handleElectionChange}
+                aria-label="Filter by election"
+              >
+                <option value="all">All Active Elections</option>
+                {electionGroups.map(election => (
+                  <option key={election.electionId} value={election.electionId}>
+                    {election.electionName}
+                    {election.electionPincode === voterPincode ? ' (Your Area)' : ''}
+                    {election.hasVotedInElection ? ' ✓' : ''}
+                  </option>
+                ))}
+              </Form.Select>
+            </InputGroup>
+          </Form.Group>
+        </Col>
+        <Col md={4} className="d-flex align-items-center">
+          <Form.Check 
+            type="switch"
+            id="toggle-voted-elections"
+            label="Show elections I've already voted in"
+            checked={showVotedElections}
+            onChange={(e) => setShowVotedElections(e.target.checked)}
+            className="ms-auto"
+          />
+        </Col>
+      </Row>
+      
+      {voterPincode && (
+        <Alert variant="info" className="mt-3 mb-0">
+          <FaMapMarkerAlt className="me-2" />
+          Showing elections for your area code: <strong>{voterPincode}</strong>
+          {votedElections.length > 0 && (
+            <span className="ms-2">
+              • You have voted in {votedElections.length} election{votedElections.length !== 1 ? 's' : ''}
+              {!showVotedElections && ` (hidden)`}
+            </span>
+          )}
+        </Alert>
+      )}
+    </div>
+  );
+
   const renderElectionTabs = () => (
     <Tab.Container defaultActiveKey="all">
       <Nav variant="tabs" className="mb-3">
@@ -375,29 +664,48 @@ const ViewCandidates = () => {
           <Nav.Item key={election.electionId}>
             <Nav.Link eventKey={election.electionId}>
               {election.electionName} ({election.candidates.length})
+              {election.electionPincode && election.electionPincode === voterPincode && (
+                <Badge bg="success" className="ms-2" pill>Your Area</Badge>
+              )}
+              {election.hasVotedInElection && (
+                <Badge bg="info" className="ms-1" pill>Voted</Badge>
+              )}
             </Nav.Link>
           </Nav.Item>
         ))}
       </Nav>
       <Tab.Content>
         <Tab.Pane eventKey="all">
+          {renderFilterSection()}
           {renderGridView()}
         </Tab.Pane>
         {electionGroups.map(election => (
           <Tab.Pane key={election.electionId} eventKey={election.electionId}>
-            <Alert variant="info" className="mb-3">
-              <h5>{election.electionName}</h5>
+            <Alert variant={election.hasVotedInElection ? "info" : "primary"} className="mb-3">
+              <h5>
+                {election.electionName}
+                {election.hasVotedInElection && (
+                  <Badge bg="info" className="ms-2">You've Already Voted</Badge>
+                )}
+              </h5>
               <p className="mb-1">{election.electionDescription}</p>
               <p className="small mb-0">
                 <strong>Type:</strong> {election.electionType} | 
                 <strong> Starts:</strong> {new Date(election.electionStartDate).toLocaleDateString()} | 
                 <strong> Ends:</strong> {new Date(election.electionEndDate).toLocaleDateString()}
+                {election.electionPincode && (
+                  <> | <strong> Area:</strong> <FaMapMarkerAlt className="ms-1 me-1" /> {election.electionPincode}
+                    {election.electionPincode === voterPincode && (
+                      <Badge bg="success" className="ms-1" pill>Your Area</Badge>
+                    )}
+                  </>
+                )}
               </p>
             </Alert>
             <Row>
               {election.candidates.map(candidate => (
                 <Col key={candidate._id || candidate.id} md={4} className="mb-4">
-                  <Card className="h-100 shadow-sm candidate-card">
+                  <Card className={`h-100 shadow-sm candidate-card ${election.hasVotedInElection ? 'border-info' : ''}`}>
                     <div className="text-center pt-3">
                       {candidate.photoUrl ? (
                         <div className="candidate-img-container mx-auto">
@@ -421,6 +729,15 @@ const ViewCandidates = () => {
                       )}
                     </div>
                     <Card.Body className="text-center">
+                      <div className="d-flex justify-content-center mb-2">
+                        <Form.Check 
+                          type="checkbox"
+                          id={`compare-tab-${candidate._id || candidate.id}`}
+                          label="Compare"
+                          checked={isInCompareList(candidate)}
+                          onChange={() => toggleCompare(candidate)}
+                        />
+                      </div>
                       <Card.Title>
                         {candidate.name || `${candidate.firstName} ${candidate.lastName}`}
                       </Card.Title>
@@ -465,24 +782,37 @@ const ViewCandidates = () => {
   const CandidateComparisonModal = () => (
     <Modal show={showComparison} onHide={() => setShowComparison(false)} size="xl">
       <Modal.Header closeButton>
-        <Modal.Title>Compare Candidates</Modal.Title>
+        <Modal.Title>Compare Candidates ({compareList.length})</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         {compareList.length === 0 ? (
           <Alert variant="info">
             Select candidates to compare by checking the "Compare" checkbox on candidate cards.
           </Alert>
+        ) : isLoadingComparisonData ? (
+          <div className="text-center p-4">
+            <Spinner animation="border" variant="primary" />
+            <p className="mt-2">Loading detailed candidate information...</p>
+          </div>
         ) : (
-          <div className="comparison-table">
+          <div className="comparison-table table-responsive">
             <table className="table table-bordered">
               <thead>
                 <tr>
                   <th>Attribute</th>
-                  {compareList.map(candidate => (
-                    <th key={candidate._id || candidate.id} className="text-center">
-                      {candidate.name || `${candidate.firstName} ${candidate.lastName}`}
-                    </th>
-                  ))}
+                  {compareList.map(candidate => {
+                    // Safely construct candidate name
+                    const firstName = candidate.firstName || '';
+                    const middleName = candidate.middleName ? candidate.middleName + ' ' : '';
+                    const lastName = candidate.lastName || '';
+                    const fullName = candidate.name || `${firstName} ${middleName}${lastName}`.trim();
+                    
+                    return (
+                      <th key={candidate._id || candidate.id} className="text-center">
+                        {fullName || 'Unknown Candidate'}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -493,7 +823,7 @@ const ViewCandidates = () => {
                       {candidate.photoUrl ? (
                         <img 
                           src={candidate.photoUrl} 
-                          alt={candidate.name} 
+                          alt={candidate.name || 'Candidate photo'} 
                           className="rounded-circle" 
                           style={{ width: '80px', height: '80px', objectFit: 'cover' }}
                           onError={(e) => { e.target.src = 'https://via.placeholder.com/80?text=No+Image'; }}
@@ -514,12 +844,12 @@ const ViewCandidates = () => {
                         {candidate.partySymbol && (
                           <img 
                             src={candidate.partySymbol} 
-                            alt={candidate.partyName} 
+                            alt={candidate.partyName || 'Party symbol'} 
                             style={{ width: '40px', height: '40px', marginBottom: '5px' }}
                             onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         )}
-                        <span className="badge bg-primary">{candidate.partyName}</span>
+                        <span className="badge bg-primary">{candidate.partyName || 'Unknown Party'}</span>
                       </div>
                     </td>
                   ))}
@@ -533,6 +863,14 @@ const ViewCandidates = () => {
                   ))}
                 </tr>
                 <tr>
+                  <td><strong>Election</strong></td>
+                  {compareList.map(candidate => (
+                    <td key={candidate._id || candidate.id} className="text-center">
+                      {candidate.electionName || candidate.electionType || 'Unknown Election'}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
                   <td><strong>Age</strong></td>
                   {compareList.map(candidate => (
                     <td key={candidate._id || candidate.id} className="text-center">
@@ -541,10 +879,20 @@ const ViewCandidates = () => {
                   ))}
                 </tr>
                 <tr>
+                  <td><strong>Gender</strong></td>
+                  {compareList.map(candidate => (
+                    <td key={candidate._id || candidate.id} className="text-center">
+                      {candidate.gender || 'Not specified'}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
                   <td><strong>Education</strong></td>
                   {compareList.map(candidate => (
                     <td key={candidate._id || candidate.id}>
-                      {candidate.education || 'Not specified'}
+                      <div className="comparison-content">
+                        {candidate.education || <span className="text-muted">None</span>}
+                      </div>
                     </td>
                   ))}
                 </tr>
@@ -552,7 +900,30 @@ const ViewCandidates = () => {
                   <td><strong>Experience</strong></td>
                   {compareList.map(candidate => (
                     <td key={candidate._id || candidate.id}>
-                      {candidate.experience || 'Not specified'}
+                      <div className="comparison-content">
+                        {candidate.experience || <span className="text-muted">None</span>}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td><strong>Criminal Record</strong></td>
+                  {compareList.map(candidate => (
+                    <td key={candidate._id || candidate.id}>
+                      <div className="comparison-content">
+                        {candidate.criminalRecord ? (
+                          <span className={
+                            candidate.criminalRecord.toLowerCase() === 'none' || 
+                            candidate.criminalRecord.toLowerCase() === 'no' || 
+                            candidate.criminalRecord.toLowerCase().includes('clean') ? 
+                            'text-success' : 'text-danger'
+                          }>
+                            {candidate.criminalRecord}
+                          </span>
+                        ) : (
+                          <span className="text-success">None reported</span>
+                        )}
+                      </div>
                     </td>
                   ))}
                 </tr>
@@ -560,7 +931,31 @@ const ViewCandidates = () => {
                   <td><strong>Manifesto</strong></td>
                   {compareList.map(candidate => (
                     <td key={candidate._id || candidate.id}>
-                      {candidate.manifesto || 'Not provided'}
+                      <div className="comparison-content" style={{maxHeight: '150px', overflow: 'auto'}}>
+                        {candidate.manifesto || <span className="text-muted">Not provided</span>}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td><strong>Slogan</strong></td>
+                  {compareList.map(candidate => (
+                    <td key={candidate._id || candidate.id} className="text-center">
+                      {candidate.slogan ? (
+                        <em>"{candidate.slogan}"</em>
+                      ) : (
+                        <span className="text-muted">No slogan</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td><strong>Achievements</strong></td>
+                  {compareList.map(candidate => (
+                    <td key={candidate._id || candidate.id}>
+                      <div className="comparison-content" style={{maxHeight: '100px', overflow: 'auto'}}>
+                        {candidate.achievements || <span className="text-muted">None listed</span>}
+                      </div>
                     </td>
                   ))}
                 </tr>
@@ -576,7 +971,7 @@ const ViewCandidates = () => {
         <Button 
           variant="danger" 
           onClick={() => setCompareList([])} 
-          disabled={compareList.length === 0}
+          disabled={compareList.length === 0 || isLoadingComparisonData}
         >
           Clear Comparison
         </Button>
@@ -594,58 +989,22 @@ const ViewCandidates = () => {
         {/* Filters and Search */}
         <Card className="mb-4 shadow-sm">
           <Card.Body>
-            <Row className="align-items-center">
-              <Col md={6} className="mb-3 mb-md-0">
-                <InputGroup>
-                  <InputGroup.Text>
-                    <FaSearch />
-                  </InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    placeholder="Search by name, party or constituency..."
-                    value={searchTerm}
-                    onChange={handleSearch}
-                  />
-                </InputGroup>
-              </Col>
-              <Col md={3}>
-                <InputGroup>
-                  <InputGroup.Text>
-                    <FaFilter />
-                  </InputGroup.Text>
-                  <Form.Select
-                    value={selectedElection}
-                    onChange={handleElectionChange}
-                  >
-                    <option value="all">All Active Elections</option>
-                    {elections.map(election => (
-                      <option key={election._id} value={election._id}>
-                        {election.title || election.name || 'Unnamed Election'}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </InputGroup>
-              </Col>
-              <Col md={3} className="d-flex justify-content-md-end mt-3 mt-md-0">
-                <div className="btn-group">
-                  <Button 
-                    variant={activeView === 'grid' ? 'primary' : 'outline-primary'} 
-                    onClick={() => setActiveView('grid')}
-                  >
-                    Grid View
-                  </Button>
-                  <Button 
-                    variant={activeView === 'election' ? 'primary' : 'outline-primary'} 
-                    onClick={() => setActiveView('election')}
-                    disabled={electionGroups.length === 0}
-                  >
-                    By Election
-                  </Button>
-                </div>
-              </Col>
-            </Row>
+            {renderFilterSection()}
           </Card.Body>
         </Card>
+        
+        {/* Election Area Info */}
+        {voterPincode && (
+          <Alert variant="info" className="mb-3">
+            <div className="d-flex align-items-center">
+              <FaMapMarkerAlt className="me-2" />
+              <span>
+                <strong>Your Area Code:</strong> {voterPincode} 
+                <span className="ms-2">(Elections are filtered to show those relevant to your area)</span>
+              </span>
+            </div>
+          </Alert>
+        )}
         
         {/* Compare button and badge */}
         <div className="d-flex justify-content-between align-items-center mb-3">
@@ -661,10 +1020,17 @@ const ViewCandidates = () => {
             <Button
               variant="info"
               size="sm"
-              onClick={() => setShowComparison(true)}
-              disabled={compareList.length === 0}
+              onClick={handleOpenComparison}
+              disabled={compareList.length === 0 || isLoadingComparisonData}
             >
-              Compare Selected
+              {isLoadingComparisonData ? (
+                <>
+                  <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
+                  Loading...
+                </>
+              ) : (
+                'Compare Selected'
+              )}
             </Button>
           </div>
         </div>
@@ -730,12 +1096,12 @@ const ViewCandidates = () => {
 
                     {/* Add a button to add/remove from comparison */}
                     <Button 
-                      variant={compareList.some(c => (c._id === selectedCandidate._id || c.id === selectedCandidate.id)) ? "secondary" : "outline-primary"}
+                      variant={isInCompareList(selectedCandidate) ? "secondary" : "outline-primary"}
                       size="sm"
                       className="w-100 mb-3"
                       onClick={() => toggleCompare(selectedCandidate)}
                     >
-                      {compareList.some(c => (c._id === selectedCandidate._id || c.id === selectedCandidate.id))
+                      {isInCompareList(selectedCandidate)
                         ? "Remove from Comparison"
                         : "Add to Comparison"
                       }
@@ -775,21 +1141,36 @@ const ViewCandidates = () => {
                           <h6 className="mb-0">Qualifications & Experience</h6>
                         </Card.Header>
                         <Card.Body>
-                          {selectedCandidate.education && (
+                          {selectedCandidate.education ? (
                             <p className="mb-2"><FaBookReader className="me-2" /><strong>Education:</strong> {selectedCandidate.education}</p>
+                          ) : (
+                            <p className="mb-2"><FaBookReader className="me-2" /><strong>Education:</strong> <span className="text-muted">None</span></p>
                           )}
                           
-                          {selectedCandidate.experience && (
+                          {selectedCandidate.experience ? (
                             <p className="mb-2"><FaHistory className="me-2" /><strong>Experience:</strong> {selectedCandidate.experience}</p>
+                          ) : (
+                            <p className="mb-2"><FaHistory className="me-2" /><strong>Experience:</strong> <span className="text-muted">None</span></p>
                           )}
                           
-                          {!selectedCandidate.education && !selectedCandidate.experience && (
-                            <p className="text-muted">No detailed qualification information available.</p>
+                          {selectedCandidate.criminalRecord ? (
+                            <p className="mb-2">
+                              <FaIdCard className="me-2" /><strong>Criminal Record:</strong> 
+                              <span className={
+                                selectedCandidate.criminalRecord.toLowerCase() === 'none' || 
+                                selectedCandidate.criminalRecord.toLowerCase() === 'no' ? 
+                                'text-success' : 'text-danger'
+                              }>
+                                {selectedCandidate.criminalRecord}
+                              </span>
+                            </p>
+                          ) : (
+                            <p className="mb-2"><FaIdCard className="me-2" /><strong>Criminal Record:</strong> <span className="text-success">None reported</span></p>
                           )}
                         </Card.Body>
                       </Card>
                       
-                      {selectedCandidate.manifesto && (
+                      {selectedCandidate.manifesto ? (
                         <Card className="mb-3">
                           <Card.Header className="bg-light">
                             <h6 className="mb-0"><FaCertificate className="me-2" />Manifesto</h6>
@@ -798,9 +1179,18 @@ const ViewCandidates = () => {
                             <p className="mb-0">{selectedCandidate.manifesto}</p>
                           </Card.Body>
                         </Card>
+                      ) : (
+                        <Card className="mb-3">
+                          <Card.Header className="bg-light">
+                            <h6 className="mb-0"><FaCertificate className="me-2" />Manifesto</h6>
+                          </Card.Header>
+                          <Card.Body>
+                            <p className="text-muted mb-0">No manifesto provided</p>
+                          </Card.Body>
+                        </Card>
                       )}
                       
-                      {selectedCandidate.biography && (
+                      {selectedCandidate.biography ? (
                         <Card className="mb-3">
                           <Card.Header className="bg-light">
                             <h6 className="mb-0">Biography</h6>
@@ -809,22 +1199,44 @@ const ViewCandidates = () => {
                             <p className="mb-0">{selectedCandidate.biography}</p>
                           </Card.Body>
                         </Card>
+                      ) : (
+                        <Card className="mb-3">
+                          <Card.Header className="bg-light">
+                            <h6 className="mb-0">Biography</h6>
+                          </Card.Header>
+                          <Card.Body>
+                            <p className="text-muted mb-0">No biography provided</p>
+                          </Card.Body>
+                        </Card>
                       )}
                       
-                      {selectedCandidate.slogan && (
+                      {selectedCandidate.slogan ? (
                         <div className="mt-3 p-3 bg-light rounded text-center">
                           <p className="fst-italic mb-0">"{selectedCandidate.slogan}"</p>
+                        </div>
+                      ) : (
+                        <div className="mt-3 p-3 bg-light rounded text-center">
+                          <p className="text-muted fst-italic mb-0">No campaign slogan</p>
                         </div>
                       )}
 
                       {/* Add achievements if available */}
-                      {selectedCandidate.achievements && (
+                      {selectedCandidate.achievements ? (
                         <Card className="mb-3 mt-3">
                           <Card.Header className="bg-light">
                             <h6 className="mb-0">Achievements</h6>
                           </Card.Header>
                           <Card.Body>
                             <p className="mb-0">{selectedCandidate.achievements}</p>
+                          </Card.Body>
+                        </Card>
+                      ) : (
+                        <Card className="mb-3 mt-3">
+                          <Card.Header className="bg-light">
+                            <h6 className="mb-0">Achievements</h6>
+                          </Card.Header>
+                          <Card.Body>
+                            <p className="text-muted mb-0">No achievements listed</p>
                           </Card.Body>
                         </Card>
                       )}

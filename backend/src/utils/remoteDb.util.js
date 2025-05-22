@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
 
 // Remote MongoDB Atlas connection string
-const REMOTE_MONGO_URI = 'mongodb://admin:secret@localhost:27018/test?authSource=admin';
+// Include additional query parameters for connection stability
+const REMOTE_MONGO_URI = process.env.REMOTE_MONGO_URI || 
+                         'mongodb://admin:secret@localhost:27018/test?authSource=admin&w=majority&readPreference=primary&retryWrites=true&directConnection=true';
 
 // Create schemas for remote database models
 const RemoteElectionSchema = new mongoose.Schema({
@@ -22,7 +24,9 @@ const RemoteElectionSchema = new mongoose.Schema({
   archivedAt: Date,
   blockchainStartTxHash: String,
   blockchainEndTxHash: String,
-  totalVotes: Number
+  totalVotes: { type: Number, default: 0 },
+  noneOfTheAboveVotes: { type: Number, default: 0 },
+  type: String
 });
 
 const RemoteCandidateSchema = new mongoose.Schema({
@@ -51,19 +55,86 @@ const RemoteCandidateSchema = new mongoose.Schema({
   isArchived: Boolean
 });
 
+// Create schema for remote vote records
+const RemoteVoteSchema = new mongoose.Schema({
+  voterId: String,
+  candidateId: String,
+  electionId: String,
+  isNoneOption: {
+    type: Boolean,
+    default: false
+  },
+  blockchainTxHash: {
+    type: String,
+    required: true
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now
+  },
+  verificationCode: String,
+  confirmed: {
+    type: Boolean,
+    default: true
+  },
+  recordingUrl: String, // URL to the vote recording
+  blockInfo: {
+    blockNumber: Number,
+    blockHash: String,
+    confirmations: { type: Number, default: 12 }
+  }
+});
+
 // Create a connection to the remote database
 const createRemoteConnection = async () => {
   try {
-    const remoteConnection = mongoose.createConnection(REMOTE_MONGO_URI, {
+    console.log('Creating connection to remote MongoDB database...');
+    
+    // Add connection options to make it more robust
+    const options = {
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      connectTimeoutMS: 10000, // 10 seconds timeout for connection
+      socketTimeoutMS: 45000,  // 45 seconds timeout for operations
+      serverSelectionTimeoutMS: 10000, // 10 seconds for server selection
+      heartbeatFrequencyMS: 10000, // 10 seconds for heartbeat frequency
+      maxPoolSize: 10, // Maximum number of connections in the pool
+      minPoolSize: 1, // Minimum number of connections in the pool
+    };
+    
+    // Create the connection
+    const remoteConnection = mongoose.createConnection(REMOTE_MONGO_URI, options);
+    
+    // Wait for the connection to be established
+    await new Promise((resolve, reject) => {
+      remoteConnection.once('open', () => {
+        console.log('Connected to remote MongoDB database successfully');
+        resolve();
+      });
+      
+      remoteConnection.once('error', (err) => {
+        console.error('Error establishing connection to remote MongoDB:', err);
+        reject(err);
+      });
     });
     
-    console.log('Connected to remote MongoDB Atlas database');
+    // Add event listeners for connection issues
+    remoteConnection.on('disconnected', () => {
+      console.warn('Remote MongoDB connection disconnected');
+    });
+    
+    remoteConnection.on('reconnected', () => {
+      console.log('Remote MongoDB connection reconnected');
+    });
+    
+    remoteConnection.on('error', (err) => {
+      console.error('Remote MongoDB connection error:', err);
+    });
+    
     return remoteConnection;
   } catch (error) {
-    console.error('Error connecting to remote MongoDB Atlas database:', error);
-    throw error;
+    console.error('Error connecting to remote MongoDB database:', error);
+    throw new Error(`Failed to connect to remote database: ${error.message}`);
   }
 };
 
@@ -210,5 +281,10 @@ const updateRemoteElectionArchived = async (election) => {
 module.exports = {
   updateRemoteElectionStarted,
   updateRemoteElectionEnded,
-  updateRemoteElectionArchived
+  updateRemoteElectionArchived,
+  RemoteElectionSchema,
+  RemoteCandidateSchema,
+  RemoteVoteSchema,
+  REMOTE_MONGO_URI,
+  createRemoteConnection
 }; 
