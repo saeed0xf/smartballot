@@ -770,7 +770,7 @@ const ViewCandidates = () => {
                   {compareList.map(candidate => (
                     <td key={candidate._id || candidate.id}>
                       <div className="comparison-content">
-                        {candidate.education || 'Not specified'}
+                        {candidate.education || <span className="text-muted">None</span>}
                       </div>
                     </td>
                   ))}
@@ -780,7 +780,7 @@ const ViewCandidates = () => {
                   {compareList.map(candidate => (
                     <td key={candidate._id || candidate.id}>
                       <div className="comparison-content">
-                        {candidate.experience || 'Not specified'}
+                        {candidate.experience || <span className="text-muted">None</span>}
                       </div>
                     </td>
                   ))}
@@ -791,13 +791,16 @@ const ViewCandidates = () => {
                     <td key={candidate._id || candidate.id}>
                       <div className="comparison-content">
                         {candidate.criminalRecord ? (
-                          <span className={candidate.criminalRecord.toLowerCase() === 'none' || 
-                                          candidate.criminalRecord.toLowerCase() === 'no' ? 
-                                          'text-success' : 'text-danger'}>
+                          <span className={
+                            candidate.criminalRecord.toLowerCase() === 'none' || 
+                            candidate.criminalRecord.toLowerCase() === 'no' || 
+                            candidate.criminalRecord.toLowerCase().includes('clean') ? 
+                            'text-success' : 'text-danger'
+                          }>
                             {candidate.criminalRecord}
                           </span>
                         ) : (
-                          'None reported'
+                          <span className="text-success">None reported</span>
                         )}
                       </div>
                     </td>
@@ -807,8 +810,30 @@ const ViewCandidates = () => {
                   <td><strong>Manifesto</strong></td>
                   {compareList.map(candidate => (
                     <td key={candidate._id || candidate.id}>
-                      <div className="comparison-content">
-                        {candidate.manifesto || 'Not provided'}
+                      <div className="comparison-content" style={{maxHeight: '150px', overflow: 'auto'}}>
+                        {candidate.manifesto || <span className="text-muted">Not provided</span>}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td><strong>Slogan</strong></td>
+                  {compareList.map(candidate => (
+                    <td key={candidate._id || candidate.id} className="text-center">
+                      {candidate.slogan ? (
+                        <em>"{candidate.slogan}"</em>
+                      ) : (
+                        <span className="text-muted">No slogan</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td><strong>Achievements</strong></td>
+                  {compareList.map(candidate => (
+                    <td key={candidate._id || candidate.id}>
+                      <div className="comparison-content" style={{maxHeight: '100px', overflow: 'auto'}}>
+                        {candidate.achievements || <span className="text-muted">None listed</span>}
                       </div>
                     </td>
                   ))}
@@ -1062,25 +1087,36 @@ const ViewCandidates = () => {
                           <h6 className="mb-0">Qualifications & Experience</h6>
                         </Card.Header>
                         <Card.Body>
-                          {selectedCandidate.education && (
+                          {selectedCandidate.education ? (
                             <p className="mb-2"><FaBookReader className="me-2" /><strong>Education:</strong> {selectedCandidate.education}</p>
+                          ) : (
+                            <p className="mb-2"><FaBookReader className="me-2" /><strong>Education:</strong> <span className="text-muted">None</span></p>
                           )}
                           
-                          {selectedCandidate.experience && (
+                          {selectedCandidate.experience ? (
                             <p className="mb-2"><FaHistory className="me-2" /><strong>Experience:</strong> {selectedCandidate.experience}</p>
+                          ) : (
+                            <p className="mb-2"><FaHistory className="me-2" /><strong>Experience:</strong> <span className="text-muted">None</span></p>
                           )}
                           
-                          {selectedCandidate.criminalRecord && (
-                            <p className="mb-2"><FaIdCard className="me-2" /><strong>Criminal Record:</strong> {selectedCandidate.criminalRecord}</p>
-                          )}
-                          
-                          {!selectedCandidate.education && !selectedCandidate.experience && !selectedCandidate.criminalRecord && (
-                            <p className="text-muted">No detailed qualification information available.</p>
+                          {selectedCandidate.criminalRecord ? (
+                            <p className="mb-2">
+                              <FaIdCard className="me-2" /><strong>Criminal Record:</strong> 
+                              <span className={
+                                selectedCandidate.criminalRecord.toLowerCase() === 'none' || 
+                                selectedCandidate.criminalRecord.toLowerCase() === 'no' ? 
+                                'text-success' : 'text-danger'
+                              }>
+                                {selectedCandidate.criminalRecord}
+                              </span>
+                            </p>
+                          ) : (
+                            <p className="mb-2"><FaIdCard className="me-2" /><strong>Criminal Record:</strong> <span className="text-success">None reported</span></p>
                           )}
                         </Card.Body>
                       </Card>
                       
-                      {selectedCandidate.manifesto && (
+                      {selectedCandidate.manifesto ? (
                         <Card className="mb-3">
                           <Card.Header className="bg-light">
                             <h6 className="mb-0"><FaCertificate className="me-2" />Manifesto</h6>
@@ -1089,9 +1125,18 @@ const ViewCandidates = () => {
                             <p className="mb-0">{selectedCandidate.manifesto}</p>
                           </Card.Body>
                         </Card>
+                      ) : (
+                        <Card className="mb-3">
+                          <Card.Header className="bg-light">
+                            <h6 className="mb-0"><FaCertificate className="me-2" />Manifesto</h6>
+                          </Card.Header>
+                          <Card.Body>
+                            <p className="text-muted mb-0">No manifesto provided</p>
+                          </Card.Body>
+                        </Card>
                       )}
                       
-                      {selectedCandidate.biography && (
+                      {selectedCandidate.biography ? (
                         <Card className="mb-3">
                           <Card.Header className="bg-light">
                             <h6 className="mb-0">Biography</h6>
@@ -1100,22 +1145,44 @@ const ViewCandidates = () => {
                             <p className="mb-0">{selectedCandidate.biography}</p>
                           </Card.Body>
                         </Card>
+                      ) : (
+                        <Card className="mb-3">
+                          <Card.Header className="bg-light">
+                            <h6 className="mb-0">Biography</h6>
+                          </Card.Header>
+                          <Card.Body>
+                            <p className="text-muted mb-0">No biography provided</p>
+                          </Card.Body>
+                        </Card>
                       )}
                       
-                      {selectedCandidate.slogan && (
+                      {selectedCandidate.slogan ? (
                         <div className="mt-3 p-3 bg-light rounded text-center">
                           <p className="fst-italic mb-0">"{selectedCandidate.slogan}"</p>
+                        </div>
+                      ) : (
+                        <div className="mt-3 p-3 bg-light rounded text-center">
+                          <p className="text-muted fst-italic mb-0">No campaign slogan</p>
                         </div>
                       )}
 
                       {/* Add achievements if available */}
-                      {selectedCandidate.achievements && (
+                      {selectedCandidate.achievements ? (
                         <Card className="mb-3 mt-3">
                           <Card.Header className="bg-light">
                             <h6 className="mb-0">Achievements</h6>
                           </Card.Header>
                           <Card.Body>
                             <p className="mb-0">{selectedCandidate.achievements}</p>
+                          </Card.Body>
+                        </Card>
+                      ) : (
+                        <Card className="mb-3 mt-3">
+                          <Card.Header className="bg-light">
+                            <h6 className="mb-0">Achievements</h6>
+                          </Card.Header>
+                          <Card.Body>
+                            <p className="text-muted mb-0">No achievements listed</p>
                           </Card.Body>
                         </Card>
                       )}

@@ -1997,21 +1997,36 @@ const CastVote = () => {
                           <h6 className="mb-0">Qualifications & Experience</h6>
                         </Card.Header>
                         <Card.Body>
-                          {viewingCandidate.education && (
+                          {viewingCandidate.education ? (
                             <p className="mb-2"><strong>Education:</strong> {viewingCandidate.education}</p>
+                          ) : (
+                            <p className="mb-2"><strong>Education:</strong> <span className="text-muted">None</span></p>
                           )}
                           
-                          {viewingCandidate.experience && (
+                          {viewingCandidate.experience ? (
                             <p className="mb-2"><strong>Experience:</strong> {viewingCandidate.experience}</p>
+                          ) : (
+                            <p className="mb-2"><strong>Experience:</strong> <span className="text-muted">None</span></p>
                           )}
                           
-                          {!viewingCandidate.education && !viewingCandidate.experience && (
-                            <p className="text-muted">No detailed qualification information available.</p>
+                          {viewingCandidate.criminalRecord ? (
+                            <p className="mb-2">
+                              <strong>Criminal Record:</strong> 
+                              <span className={
+                                viewingCandidate.criminalRecord.toLowerCase() === 'none' || 
+                                viewingCandidate.criminalRecord.toLowerCase() === 'no' ? 
+                                'text-success' : 'text-danger'
+                              }>
+                                {viewingCandidate.criminalRecord}
+                              </span>
+                            </p>
+                          ) : (
+                            <p className="mb-2"><strong>Criminal Record:</strong> <span className="text-success">None reported</span></p>
                           )}
                         </Card.Body>
                       </Card>
                       
-                      {viewingCandidate.manifesto && (
+                      {viewingCandidate.manifesto ? (
                         <Card className="mb-3">
                           <Card.Header className="bg-light">
                             <h6 className="mb-0">Manifesto</h6>
@@ -2020,6 +2035,21 @@ const CastVote = () => {
                             <p className="mb-0">{viewingCandidate.manifesto}</p>
                           </Card.Body>
                         </Card>
+                      ) : (
+                        <Card className="mb-3">
+                          <Card.Header className="bg-light">
+                            <h6 className="mb-0">Manifesto</h6>
+                          </Card.Header>
+                          <Card.Body>
+                            <p className="text-muted mb-0">No manifesto provided</p>
+                          </Card.Body>
+                        </Card>
+                      )}
+                      
+                      {viewingCandidate.slogan && (
+                        <div className="mt-3 p-3 bg-light rounded text-center">
+                          <p className="fst-italic mb-0">"{viewingCandidate.slogan}"</p>
+                        </div>
                       )}
                     </div>
                   </Col>
