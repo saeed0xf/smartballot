@@ -92,6 +92,13 @@ const CastVote = () => {
   const [viewingCandidate, setViewingCandidate] = useState(null);
   const [showCandidateDetailsModal, setShowCandidateDetailsModal] = useState(false);
   
+  // Add a new state variable after the other state declarations
+  const [confirmedVoteData, setConfirmedVoteData] = useState(null);
+  
+  // Add a new state to store the recording data for manual upload
+  const [recordingBlob, setRecordingBlob] = useState(null);
+  const [recordingBlobUrl, setRecordingBlobUrl] = useState(null);
+  
   // Initialize react-media-recorder
   const {
     status,
@@ -101,6 +108,7 @@ const CastVote = () => {
     clearBlobUrl,
     previewStream,
     error: recorderError
+    // Remove getBlob since it's not available
   } = useReactMediaRecorder({
     screen: {
       // Ensure entire screen is selected by suggesting display surface
@@ -126,7 +134,20 @@ const CastVote = () => {
       // Start webcam for face recording
       startFaceCam();
     },
-    onStop: (blobUrl, blob) => handleRecordingStop(blobUrl, blob),
+    onStop: (blobUrl, blob) => {
+      // Store the blob and URL for manual upload later
+      console.log('Recording stopped, storing blob for upload');
+      setRecordingBlob(blob);
+      setRecordingBlobUrl(blobUrl);
+      
+      // Store the recording in IndexedDB for persistence
+      if (blob) {
+        storeRecordingInIndexedDB(blob, blobUrl);
+      }
+      
+      // Also try the automatic upload
+      handleRecordingStop(blobUrl, blob);
+    },
     onError: (err) => {
       console.error('React Media Recorder error:', err);
       toast.error('Recording error: ' + (err?.message || 'Unknown error'));
@@ -135,6 +156,155 @@ const CastVote = () => {
       setIsRecordingActive(false);
     }
   });
+
+  // Function to store recording in IndexedDB
+  const storeRecordingInIndexedDB = async (blob, blobUrl) => {
+    try {
+      console.log('Storing recording in IndexedDB');
+      
+      // Create timestamp for unique ID
+      const timestamp = Date.now();
+      
+      // Open IndexedDB database
+      const request = indexedDB.open('VotesureRecordings', 1);
+      
+      // Create object store if it doesn't exist
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('recordings')) {
+          db.createObjectStore('recordings', { keyPath: 'id' });
+          console.log('Created recordings object store');
+        }
+      };
+      
+      request.onerror = (event) => {
+        console.error('Error opening IndexedDB:', event.target.error);
+        toast.error('Could not access local storage for recording');
+      };
+      
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        const transaction = db.transaction(['recordings'], 'readwrite');
+        const store = transaction.objectStore('recordings');
+        
+        // Create recording data with metadata
+        const recordingData = {
+          id: `recording-${timestamp}`,
+          blob: blob,
+          url: blobUrl,
+          timestamp: timestamp,
+          candidateId: selectedCandidate?._id || selectedCandidate?.id,
+          electionId: selectedCandidate?.electionId,
+          voterId: voterProfile?._id,
+          uploaded: false
+        };
+        
+        // Store in IndexedDB
+        const storeRequest = store.add(recordingData);
+        
+        storeRequest.onsuccess = () => {
+          console.log('Recording successfully stored in IndexedDB');
+          localStorage.setItem('pendingRecording', `recording-${timestamp}`);
+        };
+        
+        storeRequest.onerror = (event) => {
+          console.error('Error storing recording in IndexedDB:', event.target.error);
+        };
+        
+        transaction.oncomplete = () => {
+          db.close();
+        };
+      };
+    } catch (error) {
+      console.error('Error in storeRecordingInIndexedDB:', error);
+    }
+  };
+  
+  // Function to retrieve recording from IndexedDB
+  const getRecordingFromIndexedDB = async (recordingId) => {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('VotesureRecordings', 1);
+      
+      request.onerror = (event) => {
+        console.error('Error opening IndexedDB:', event.target.error);
+        reject(event.target.error);
+      };
+      
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        try {
+          const transaction = db.transaction(['recordings'], 'readonly');
+          const store = transaction.objectStore('recordings');
+          
+          // Get specific recording or the most recent one
+          const getRequest = recordingId 
+            ? store.get(recordingId)
+            : store.openCursor(null, 'prev'); // Get the last one
+          
+          getRequest.onsuccess = (event) => {
+            if (recordingId) {
+              // Direct get by ID
+              const recording = event.target.result;
+              resolve(recording);
+            } else {
+              // Get most recent via cursor
+              const cursor = event.target.result;
+              if (cursor) {
+                resolve(cursor.value);
+              } else {
+                resolve(null);
+              }
+            }
+          };
+          
+          getRequest.onerror = (event) => {
+            console.error('Error retrieving recording:', event.target.error);
+            reject(event.target.error);
+          };
+          
+          transaction.oncomplete = () => {
+            db.close();
+          };
+        } catch (error) {
+          console.error('Transaction error:', error);
+          db.close();
+          reject(error);
+        }
+      };
+    });
+  };
+
+  // Function to mark recording as uploaded in IndexedDB
+  const markRecordingAsUploaded = async (recordingId) => {
+    try {
+      const request = indexedDB.open('VotesureRecordings', 1);
+      
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        const transaction = db.transaction(['recordings'], 'readwrite');
+        const store = transaction.objectStore('recordings');
+        
+        // Get the recording first
+        const getRequest = store.get(recordingId);
+        
+        getRequest.onsuccess = (event) => {
+          const recording = event.target.result;
+          if (recording) {
+            recording.uploaded = true;
+            // Update the record
+            store.put(recording);
+            console.log('Recording marked as uploaded in IndexedDB');
+          }
+        };
+        
+        transaction.oncomplete = () => {
+          db.close();
+        };
+      };
+    } catch (error) {
+      console.error('Error marking recording as uploaded:', error);
+    }
+  };
   
   // Start webcam for face recording alongside screen recording
   const startFaceCam = async () => {
@@ -171,10 +341,11 @@ const CastVote = () => {
     }
   };
 
-  // Handle recording stop and upload video
+  // Update the handleRecordingStop function to make sure the file upload works correctly
   const handleRecordingStop = async (blobUrl, blob) => {
     try {
-      console.log('Recording stopped, cleaning up resources');
+      console.log('handleRecordingStop called with blob:', blob ? 'Blob exists' : 'No blob');
+      console.log('handleRecordingStop called with blobUrl:', blobUrl ? 'URL exists' : 'No URL');
       
       // Stop face cam - only when recording stops (which happens after vote is cast)
       if (faceCamStreamRef.current) {
@@ -196,15 +367,26 @@ const CastVote = () => {
         }
       }
       
-      // Safety checks
+      // Critical safety checks - don't proceed without blob
       if (!blob) {
         console.error('Recording blob is missing');
-        toast.error('Recording data is missing. Your vote was processed, but the recording may not be saved.');
-        return;
+        if (recordingBlob) {
+          console.log('Using recordingBlob from state instead');
+          blob = recordingBlob;
+        } else {
+          toast.error('Recording data is missing. Your vote was processed, but the recording may not be saved.');
+          return;
+        }
       }
       
-      if (!selectedCandidate) {
-        console.error('No selected candidate found when stopping recording');
+      console.log('Blob type:', blob.type);
+      console.log('Blob size:', blob.size, 'bytes');
+      
+      // Use confirmedVoteData if available (from handleConfirmVote), otherwise fall back to selectedCandidate
+      const voteData = confirmedVoteData || selectedCandidate;
+      
+      if (!voteData) {
+        console.error('No vote data found when stopping recording');
         toast.error('Could not identify selected candidate for recording. Your vote was processed, but the recording may not be saved.');
         return;
       }
@@ -216,43 +398,94 @@ const CastVote = () => {
       }
       
       console.log('Recording stopped, blob URL:', blobUrl);
-      console.log('Blob size:', blob.size, 'bytes');
+      console.log('Using vote data for recording:', voteData);
+      console.log('Vote data ID:', voteData._id || voteData.id);
+      console.log('Vote data election ID:', voteData.electionId);
       
       // Get blockchain transaction data if available
-      const txHash = blockchainTxData?.txHash || localStorage.getItem('lastVoteTransaction')?.txHash || '';
+      let txHash = '';
+      try {
+        if (blockchainTxData?.txHash) {
+          console.log('Using blockchainTxData txHash:', blockchainTxData.txHash);
+          txHash = blockchainTxData.txHash;
+        } else if (localStorage.getItem('lastVoteTransaction')) {
+          const lastVoteTransaction = JSON.parse(localStorage.getItem('lastVoteTransaction'));
+          txHash = lastVoteTransaction.txHash || '';
+          console.log('Using lastVoteTransaction txHash:', txHash);
+        }
+      } catch (e) {
+        console.error('Error parsing lastVoteTransaction:', e);
+      }
       
       // Create a file from the blob with a unique name including transaction hash
       const timestamp = Date.now();
       const randomId = Math.floor(Math.random() * 10000);
       // Include transaction hash in the filename for easier tracking
-      const fileName = `vote-recording-${timestamp}-${randomId}-${voterProfile._id}-${selectedCandidate.electionId}-${txHash.substring(0, 8)}.webm`;
+      const fileName = `vote-recording-${timestamp}-${randomId}-${voterProfile._id}-${voteData.electionId}-${txHash ? txHash.substring(0, 8) : 'notx'}.webm`;
       
-      console.log('Creating file:', fileName);
-      const file = new File([blob], fileName, { 
-        type: 'video/webm',
-      });
+      console.log('Creating file with name:', fileName);
       
+      // Create the file object
+      let file;
+      try {
+        file = new File([blob], fileName, { 
+          type: blob.type || 'video/webm',
+        });
+        console.log('File created successfully:', file.name, 'size:', file.size);
+      } catch (fileError) {
+        console.error('Error creating File object:', fileError);
+        // Try an alternative approach if File constructor fails
+        try {
+          // Create a Blob with proper MIME type if needed
+          const properBlob = new Blob([blob], { type: 'video/webm' });
+          file = new File([properBlob], fileName, { type: 'video/webm' });
+          console.log('File created with alternative method:', file.name, 'size:', file.size);
+        } catch (altFileError) {
+          console.error('Alternative file creation also failed:', altFileError);
+          toast.error('Failed to prepare recording file. Technical error: ' + altFileError.message);
+          return;
+        }
+      }
+      
+      // Create form data object
       const formData = new FormData();
-      formData.append('recording', file);
-      formData.append('voterId', voterProfile._id);
-      formData.append('electionId', selectedCandidate.electionId);
-      formData.append('candidateId', selectedCandidate._id || selectedCandidate.id);
-      formData.append('voteTimestamp', new Date().toISOString());
-      formData.append('txHash', txHash); // Include transaction hash for linking with vote record
-      formData.append('targetFolder', 'voter-recording'); // Specify the target folder
+      
+      // Add all necessary data to FormData
+      try {
+        formData.append('recording', file);
+        formData.append('voterId', voterProfile._id);
+        formData.append('electionId', voteData.electionId);
+        formData.append('candidateId', voteData._id || voteData.id);
+        formData.append('voteTimestamp', new Date().toISOString());
+        formData.append('txHash', txHash); 
+        formData.append('targetFolder', 'voter-recording');
+        
+        // Debug FormData contents
+        console.log('FormData created with the following entries:');
+        for (let [key, value] of formData.entries()) {
+          console.log(`FormData entry - ${key}:`, typeof value === 'object' ? `${value.name}, size: ${value.size}` : value);
+        }
+      } catch (formDataError) {
+        console.error('Error creating FormData:', formDataError);
+        toast.error('Failed to prepare form data for upload: ' + formDataError.message);
+        return;
+      }
       
       const token = localStorage.getItem('token');
+      // Important: Do NOT set Content-Type header for FormData - browser will set it with boundary
       const headers = token ? { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'multipart/form-data'
+        'Authorization': `Bearer ${token}`
       } : {};
       
-      console.log('Uploading recording...');
-      toast.info('Uploading your voting record...');
+      console.log('Preparing to upload recording...');
+      console.log('API URL for upload:', `${API_URL}/voter/upload-recording`);
+      console.log('Headers:', headers);
+      
+      toast.info('Preparing to upload your voting record...');
       
       // Upload to server with timeout and retry logic
       let uploadAttempts = 0;
-      const maxAttempts = 2;
+      const maxAttempts = 3; // Increased from 2 to 3
       let uploadSuccess = false;
       
       while (uploadAttempts < maxAttempts && !uploadSuccess) {
@@ -260,14 +493,30 @@ const CastVote = () => {
           uploadAttempts++;
           console.log(`Upload attempt ${uploadAttempts} of ${maxAttempts}`);
           
+          // Log right before the axios call
+          console.log(`Making axios POST request to upload recording - attempt ${uploadAttempts}`);
+          
+          toast.info(`Uploading recording (attempt ${uploadAttempts}/${maxAttempts})...`);
+          
           const uploadResponse = await axios.post(
             `${API_URL}/voter/upload-recording`, 
             formData, 
             { 
               headers,
-              timeout: 30000, // 30 second timeout
+              timeout: 60000, // 60 second timeout
+              onUploadProgress: (progressEvent) => {
+                const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                console.log(`Upload progress: ${percentCompleted}%`);
+                if (percentCompleted % 25 === 0) { // Log at 0%, 25%, 50%, 75%, 100%
+                  toast.info(`Upload progress: ${percentCompleted}%`);
+                }
+              }
             }
           );
+          
+          console.log('Upload response received:', uploadResponse);
+          console.log('Upload response status:', uploadResponse.status);
+          console.log('Upload response data:', uploadResponse.data);
           
           // Update the vote record with the recording URL
           const recordingUrl = uploadResponse.data?.recordingUrl || uploadResponse.data?.path;
@@ -278,18 +527,26 @@ const CastVote = () => {
             
             try {
               // Update both the local and remote vote records with the recording URL
-              await axios.post(`${API_URL}/voter/update-vote-recording`, {
+              console.log('Updating vote record with recording URL');
+              const updateResponse = await axios.post(`${API_URL}/voter/update-vote-recording`, {
                 voterId: voterProfile._id,
-                electionId: selectedCandidate.electionId,
+                electionId: voteData.electionId,
                 recordingUrl,
-                txHash: txHash, // Include transaction hash to find the vote in remote DB
+                txHash: txHash,
                 updateRemote: true // Flag to indicate that the remote DB should be updated too
-              }, { headers: { 'Authorization': `Bearer ${token}` } });
+              }, { 
+                headers: { 'Authorization': `Bearer ${token}` },
+                timeout: 30000
+              });
               
+              console.log('Update response:', updateResponse.data);
               console.log('Vote records updated with recording URL in both local and remote databases');
               toast.success('Vote recording saved successfully');
             } catch (updateErr) {
               console.error('Error updating vote with recording URL:', updateErr);
+              if (updateErr.response) {
+                console.error('Server response:', updateErr.response.data);
+              }
               toast.warning('Vote recorded, but linking recording to vote failed.');
             }
           } else {
@@ -299,11 +556,20 @@ const CastVote = () => {
         } catch (uploadErr) {
           console.error(`Upload attempt ${uploadAttempts} failed:`, uploadErr);
           
+          // Log more details about the error
+          if (uploadErr.response) {
+            console.error('Error Response:', uploadErr.response.status, uploadErr.response.data);
+          } else if (uploadErr.request) {
+            console.error('No response received:', uploadErr.request);
+          } else {
+            console.error('Error setting up request:', uploadErr.message);
+          }
+          
           if (uploadAttempts < maxAttempts) {
             console.log('Retrying upload...');
             toast.info('Retrying upload...');
-            // Wait 2 seconds before retry
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Wait 3 seconds before retry (increased from 2)
+            await new Promise(resolve => setTimeout(resolve, 3000));
           } else {
             console.error('All upload attempts failed');
             toast.error('Failed to upload recording after multiple attempts.');
@@ -322,7 +588,7 @@ const CastVote = () => {
       
     } catch (err) {
       console.error('Error in recording process:', err);
-      toast.error('Failed to upload recording. Please contact support.');
+      toast.error('Failed to upload recording. Please contact support with the following error: ' + (err.message || 'Unknown error'));
     }
   };
 
@@ -945,10 +1211,60 @@ const CastVote = () => {
   // Add new state for blockchain transaction data
   const [blockchainTxData, setBlockchainTxData] = useState(null);
 
+  // Update uploadRecordingManually to use IndexedDB
+  const uploadRecordingManually = async () => {
+    console.log('Manually uploading recording');
+    
+    try {
+      // Get recording ID from localStorage or use most recent
+      const recordingId = localStorage.getItem('pendingRecording');
+      console.log('Looking for recording with ID:', recordingId);
+      
+      // Retrieve recording from IndexedDB
+      const recordingData = await getRecordingFromIndexedDB(recordingId);
+      
+      if (!recordingData || !recordingData.blob) {
+        // Fall back to state variables if IndexedDB fails
+        if (recordingBlob) {
+          console.log('Using recording blob from state');
+          await handleRecordingStop(recordingBlobUrl, recordingBlob);
+        } else {
+          console.error('No recording data available for upload');
+          toast.error('Recording data is missing. Your vote was processed, but the recording could not be saved.');
+        }
+        return;
+      }
+      
+      console.log('Retrieved recording from IndexedDB:', recordingData.id);
+      
+      // Use the handleRecordingStop function with the retrieved blob
+      await handleRecordingStop(recordingData.url, recordingData.blob);
+      
+      // Mark recording as uploaded if successful
+      await markRecordingAsUploaded(recordingData.id);
+      
+    } catch (error) {
+      console.error('Error in uploadRecordingManually:', error);
+      toast.error('Failed to upload recording: ' + error.message);
+    }
+  };
+
   // Update handleConfirmVote to store the blockchain transaction data
   const handleConfirmVote = async () => {
     try {
       setSubmitting(true);
+      
+      // Store the current selected candidate for use in handleRecordingStop
+      // This ensures the recording has access to the candidate data even if state changes
+      if (selectedCandidate) {
+        console.log('Storing confirmed vote data for recording:', selectedCandidate);
+        setConfirmedVoteData({...selectedCandidate});
+      } else {
+        console.error('No selected candidate when confirming vote');
+        toast.error('Please select a candidate before confirming your vote.');
+        setSubmitting(false);
+        return; // Exit early if no candidate is selected
+      }
       
       // Show animation for blockchain recording
       setShowBlockchainAnimation(true);
@@ -987,6 +1303,7 @@ const CastVote = () => {
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Call the blockchain recording endpoint (this will handle everything)
+      let voteWasSuccessful = false;
       try {
         console.log('Calling blockchain recording endpoint:', `${API_URL}/voter/record-vote-blockchain`);
         const blockchainResponse = await axios.post(`${API_URL}/voter/record-vote-blockchain`, payload, { 
@@ -995,6 +1312,7 @@ const CastVote = () => {
         });
         
         console.log('Vote transaction confirmed on blockchain:', blockchainResponse.data);
+        voteWasSuccessful = true;
         
         // Store blockchain data in state to display in the modal
         if (blockchainResponse.data.blockchainData) {
@@ -1008,12 +1326,8 @@ const CastVote = () => {
             verificationCode: blockchainResponse.data.blockchainData.verificationCode
           }));
           
-          // Stop recording immediately after successful vote
-          if (isRecordingActive) {
-            console.log('Stopping recording after successful vote');
-            stopRecording();
-            setIsRecordingActive(false);
-          }
+          // Wait a longer time (1 second) to make sure confirmedVoteData is set before stopping recording
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (blockchainError) {
         console.error('Error in blockchain recording endpoint:', blockchainError);
@@ -1078,22 +1392,50 @@ const CastVote = () => {
       // One more short delay
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Stop recording after successful vote
+      // Make sure to handle the stopping of recording BEFORE hiding animations or redirecting
       if (isRecordingActive) {
+        console.log('About to stop recording with confirmed vote data:', confirmedVoteData);
+        
+        // Make sure we have vote data before stopping recording
+        if (!confirmedVoteData) {
+          console.log('confirmedVoteData not set yet, setting it again before stopping recording');
+          setConfirmedVoteData({...selectedCandidate});
+          // Wait for state to update
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        // Actually stop the recording
+        console.log('Stopping recording now...');
         stopRecording();
         setIsRecordingActive(false);
+        
+        // Wait for the recording to be stored in IndexedDB (3 seconds)
+        console.log('Waiting for recording to be stored in IndexedDB...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Explicitly upload the recording 
+        console.log('Explicitly uploading recording from IndexedDB...');
+        await uploadRecordingManually();
+        
+        // Wait for handleRecordingStop to complete (5 seconds should be enough)
+        console.log('Waiting for recording upload to complete...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
       
-      // Hide animation
+      // Hide animation after recording has been processed
       setShowBlockchainAnimation(false);
       
-      toast.success('Your vote has been successfully recorded on the blockchain!');
+      if (voteWasSuccessful) {
+        toast.success('Your vote has been successfully recorded on the blockchain!');
+      }
+      
       setShowConfirmModal(false);
       
-      // Redirect after a short delay to allow the recording to be processed
+      // Redirect after recording has been handled and uploaded
+      console.log('Recording process complete, redirecting to verification page...');
       setTimeout(() => {
-      navigate('/voter/verify');
-      }, 2000);
+        navigate('/voter/verify');
+      }, 5000); // 5 seconds to ensure the user sees the success message
       
     } catch (err) {
       console.error('Error recording vote:', err);

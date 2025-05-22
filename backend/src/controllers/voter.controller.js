@@ -992,31 +992,62 @@ exports.checkRemoteVote = async (req, res) => {
 // Upload vote recording
 exports.uploadRecording = async (req, res) => {
   try {
+    console.log('uploadRecording called with request:', {
+      files: req.files ? Object.keys(req.files) : 'No files',
+      body: req.body,
+      headers: req.headers ? 'Headers present' : 'No headers'
+    });
+    
     // Check if file exists in request
     if (!req.files || !req.files.recording) {
+      console.error('No recording file found in request');
       return res.status(400).json({ message: 'No recording file uploaded' });
     }
     
     const { voterId, electionId, candidateId, voteTimestamp, txHash, targetFolder } = req.body;
     
     if (!voterId || !electionId) {
+      console.error('Missing required parameters:', { voterId, electionId });
       return res.status(400).json({ message: 'Voter ID and Election ID are required' });
     }
     
     // Get the uploaded file
     const recordingFile = req.files.recording;
+    console.log('Recording file received:', {
+      name: recordingFile.name,
+      size: recordingFile.size,
+      mimetype: recordingFile.mimetype,
+      tempFilePath: recordingFile.tempFilePath
+    });
     
     // Create the target directory structure
     const baseDir = path.join(__dirname, '../../uploads');
     const targetDir = path.join(baseDir, targetFolder || 'voter-recording');
     
-    // Ensure directories exist
-    if (!fs.existsSync(baseDir)) {
-      fs.mkdirSync(baseDir, { recursive: true });
-    }
+    console.log('Directory paths:', { baseDir, targetDir });
     
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
+    // Ensure directories exist with proper permissions
+    try {
+      if (!fs.existsSync(baseDir)) {
+        console.log(`Creating base directory: ${baseDir}`);
+        fs.mkdirSync(baseDir, { recursive: true, mode: 0o755 });
+      }
+      
+      if (!fs.existsSync(targetDir)) {
+        console.log(`Creating target directory: ${targetDir}`);
+        fs.mkdirSync(targetDir, { recursive: true, mode: 0o755 });
+      }
+      
+      // Check directory permissions
+      const baseDirStats = fs.statSync(baseDir);
+      const targetDirStats = fs.statSync(targetDir);
+      console.log('Directory permissions:', {
+        baseDir: baseDirStats.mode.toString(8),
+        targetDir: targetDirStats.mode.toString(8)
+      });
+    } catch (dirError) {
+      console.error('Error creating directories:', dirError);
+      return res.status(500).json({ message: 'Error creating upload directories', error: dirError.message });
     }
     
     // Generate a unique filename
@@ -1027,8 +1058,24 @@ exports.uploadRecording = async (req, res) => {
     
     const uploadPath = path.join(targetDir, filename);
     
+    console.log(`Moving temp file from ${recordingFile.tempFilePath} to ${uploadPath}`);
+    
     // Move the file to the target directory
-    await recordingFile.mv(uploadPath);
+    try {
+      await recordingFile.mv(uploadPath);
+      console.log('File moved successfully');
+      
+      // Verify file exists and is readable
+      const fileStats = fs.statSync(uploadPath);
+      console.log('Uploaded file stats:', {
+        size: fileStats.size,
+        permissions: fileStats.mode.toString(8),
+        exists: fs.existsSync(uploadPath)
+      });
+    } catch (moveError) {
+      console.error('Error moving file:', moveError);
+      return res.status(500).json({ message: 'Error moving uploaded file', error: moveError.message });
+    }
     
     // Generate a URL for the recording
     const recordingUrl = `/uploads/${targetFolder || 'voter-recording'}/${filename}`;
