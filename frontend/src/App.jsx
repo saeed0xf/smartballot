@@ -50,7 +50,7 @@ function App() {
         <Route path="/admin/voters" element={<AdminRoute><ApproveVoters /></AdminRoute>} />
         <Route path="/admin/candidates" element={<AdminRoute><ManageCandidates /></AdminRoute>} />
         <Route path="/admin/election" element={<AdminRoute><ManageElection /></AdminRoute>} />
-        <Route path="/admin/archived-elections" element={<AdminRoute><ArchivedElections /></AdminRoute>} />
+        {/* <Route path="/admin/archived-elections" element={<AdminRoute><ArchivedElections /></AdminRoute>} /> */}
         
         {/* Officer Routes */}
         <Route path="/officer" element={<OfficerRoute><OfficerDashboard /></OfficerRoute>} />

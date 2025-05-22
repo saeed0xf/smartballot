@@ -1733,7 +1733,7 @@ const CastVote = () => {
   return (
     <Layout>
       <Container className="py-4">
-        <h1 className="mb-4">Cast Your Vote</h1>
+        <h1 className="mb-4 text-white">Cast Your Vote</h1>
         
         {error && <Alert variant="danger">{error}</Alert>}
         

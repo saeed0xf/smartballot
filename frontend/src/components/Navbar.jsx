@@ -105,9 +105,9 @@ const AppNavbar = () => {
       <Nav.Link as={Link} to="/admin/election" className="d-flex align-items-center">
         <FaVoteYea className="me-1" /> Election
       </Nav.Link>
-      <Nav.Link as={Link} to="/admin/archived-elections" className="d-flex align-items-center">
+      {/* <Nav.Link as={Link} to="/admin/archived-elections" className="d-flex align-items-center">
         <FaArchive className="me-1" /> Archives
-      </Nav.Link>
+      </Nav.Link> */}
       <Button variant="outline-danger" onClick={handleLogout} className="ms-2 d-flex align-items-center">
         <FaSignOutAlt className="me-1" /> Logout
       </Button>
