@@ -9,12 +9,18 @@ const voteSchema = new mongoose.Schema({
   candidate: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Candidate',
-    required: true
+    required: function() {
+      return !this.isNoneOption;
+    }
   },
   election: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Election',
     required: true
+  },
+  isNoneOption: {
+    type: Boolean,
+    default: false
   },
   blockchainTxHash: {
     type: String,
