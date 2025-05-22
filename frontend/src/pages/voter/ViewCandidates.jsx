@@ -150,15 +150,38 @@ const ViewCandidates = () => {
     }
     
     // Filter by search term
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(candidate => 
-        (candidate.firstName && candidate.firstName.toLowerCase().includes(term)) ||
-        (candidate.lastName && candidate.lastName.toLowerCase().includes(term)) ||
-        (candidate.name && candidate.name.toLowerCase().includes(term)) ||
-        (candidate.partyName && candidate.partyName.toLowerCase().includes(term)) ||
-        (candidate.constituency && candidate.constituency.toLowerCase().includes(term))
-      );
+    if (searchTerm.trim()) {
+      const term = searchTerm.trim().toLowerCase();
+      filtered = filtered.filter(candidate => {
+        // Create a full name from available name parts for better searching
+        const fullName = [
+          candidate.firstName || '',
+          candidate.middleName || '',
+          candidate.lastName || ''
+        ].join(' ').toLowerCase();
+        
+        // Use "name" field if available, otherwise check individual name components
+        const nameMatch = 
+          (candidate.name && candidate.name.toLowerCase().includes(term)) || 
+          fullName.includes(term) ||
+          (candidate.firstName && candidate.firstName.toLowerCase().includes(term)) ||
+          (candidate.middleName && candidate.middleName.toLowerCase().includes(term)) ||
+          (candidate.lastName && candidate.lastName.toLowerCase().includes(term));
+          
+        // Check other candidate fields
+        const partyMatch = candidate.partyName && candidate.partyName.toLowerCase().includes(term);
+        const constituencyMatch = candidate.constituency && candidate.constituency.toLowerCase().includes(term);
+        const electionMatch = 
+          (candidate.electionName && candidate.electionName.toLowerCase().includes(term)) ||
+          (candidate.electionType && candidate.electionType.toLowerCase().includes(term));
+        const manifestoMatch = candidate.manifesto && candidate.manifesto.toLowerCase().includes(term);
+        const educationMatch = candidate.education && candidate.education.toLowerCase().includes(term);
+        const experienceMatch = candidate.experience && candidate.experience.toLowerCase().includes(term);
+        
+        // Return true if any field matches
+        return nameMatch || partyMatch || constituencyMatch || electionMatch || 
+               manifestoMatch || educationMatch || experienceMatch;
+      });
     }
     
     setFilteredCandidates(filtered);
@@ -170,6 +193,10 @@ const ViewCandidates = () => {
 
   const handleSearch = (e) => {
     setSearchTerm(e.target.value);
+  };
+
+  const clearSearch = () => {
+    setSearchTerm('');
   };
 
   const handleCloseDetails = () => {
@@ -824,11 +851,26 @@ const ViewCandidates = () => {
                   </InputGroup.Text>
                   <Form.Control
                     type="text"
-                    placeholder="Search by name, party or constituency..."
+                    placeholder="Search by name, party, constituency, education..."
                     value={searchTerm}
                     onChange={handleSearch}
+                    aria-label="Search candidates"
                   />
+                  {searchTerm && (
+                    <Button 
+                      variant="outline-secondary" 
+                      onClick={clearSearch}
+                      aria-label="Clear search"
+                    >
+                      ✕
+                    </Button>
+                  )}
                 </InputGroup>
+                {searchTerm && (
+                  <div className="small text-muted mt-1">
+                    Search results: {filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? 's' : ''}
+                  </div>
+                )}
               </Col>
               <Col md={3}>
                 <InputGroup>
