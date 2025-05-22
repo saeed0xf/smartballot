@@ -77,6 +77,7 @@ const RemoteVoteSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  recordingUrl: String, // URL to the vote recording
   blockInfo: {
     blockNumber: Number,
     blockHash: String,

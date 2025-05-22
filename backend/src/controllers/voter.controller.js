@@ -740,10 +740,12 @@ exports.recordVoteOnBlockchain = async (req, res) => {
         timestamp: new Date(),
         verificationCode: verificationCode,
         confirmed: true,
+        recordingUrl: null, // Will be updated after recording is uploaded
         blockInfo: blockInfo
       });
       
-      await blockchainVote.save();
+      // Save the vote record first
+      const savedVote = await blockchainVote.save();
       console.log(`Vote transaction recorded on blockchain with hash: ${blockchainTxHash}`);
       
       if (remoteElection) {
@@ -756,19 +758,67 @@ exports.recordVoteOnBlockchain = async (req, res) => {
         
         // If not "None of the above", update remote candidate vote count
         if (!isNoneOption) {
-          // Find remote candidate by originalCandidateId
-          const remoteCandidate = await RemoteCandidate.findOne({ originalCandidateId: candidateId });
+          // Get the candidateId directly from the saved vote record for consistency
+          const voteRecordCandidateId = savedVote.candidateId;
+          console.log(`Using candidate ID from vote record: ${voteRecordCandidateId}`);
+          
+          // Use our comprehensive helper to find the candidate
+          const remoteCandidate = await findRemoteCandidateForVoting(
+            remoteConnection, 
+            remoteElection, 
+            candidateId, 
+            candidate
+          );
           
           if (remoteCandidate) {
-            console.log(`Found candidate on blockchain with ID: ${remoteCandidate._id}`);
+            console.log(`Found candidate in remote database: ${remoteCandidate._id}`);
+            console.log(`Current vote count: ${remoteCandidate.voteCount || 0}`);
             
-            // Increment vote count in remote candidate
-            remoteCandidate.voteCount = (remoteCandidate.voteCount || 0) + 1;
-            await remoteCandidate.save();
-            console.log(`Updated candidate vote count to ${remoteCandidate.voteCount} on blockchain`);
+            try {
+              // First try standard approach to update vote count
+              remoteCandidate.voteCount = (remoteCandidate.voteCount || 0) + 1;
+              await remoteCandidate.save();
+              console.log(`Updated candidate vote count to ${remoteCandidate.voteCount} on blockchain using standard approach`);
+            } catch (updateError) {
+              console.error('Error updating candidate vote count using standard approach:', updateError);
+              
+              // Fallback: Try direct atomic update operation if standard approach fails
+              try {
+                console.log(`Attempting direct atomic update for candidate ${remoteCandidate._id}`);
+                const updateResult = await RemoteCandidate.updateOne(
+                  { _id: remoteCandidate._id },
+                  { $inc: { voteCount: 1 } }
+                );
+                
+                if (updateResult.modifiedCount > 0) {
+                  console.log(`Successfully updated candidate vote count using atomic operation`);
+                } else {
+                  console.warn(`Atomic update operation did not modify any documents`);
+                  
+                  // Last resort: Force direct update with raw MongoDB command
+                  try {
+                    const collection = remoteConnection.collection('candidates');
+                    const forcedUpdateResult = await collection.updateOne(
+                      { _id: remoteCandidate._id },
+                      { $inc: { voteCount: 1 } }
+                    );
+                    
+                    if (forcedUpdateResult.modifiedCount > 0) {
+                      console.log(`Successfully force-updated candidate vote count using raw collection command`);
+                    } else {
+                      console.error(`Failed to update candidate vote count even with force update`);
+                    }
+                  } catch (forceError) {
+                    console.error('Error with force update:', forceError);
+                  }
+                }
+              } catch (atomicError) {
+                console.error('Error with atomic update operation:', atomicError);
+              }
+            }
           } else if (candidate) {
-            // If remote candidate not found, create a new one with vote count
-            console.log(`Candidate not found on blockchain for ID: ${candidateId}, creating new record`);
+            // If remote candidate not found, create a new one with vote count of 1
+            console.log(`No matching candidate found in remote database, creating new record`);
             
             const newRemoteCandidate = new RemoteCandidate({
               firstName: candidate?.firstName || '',
@@ -787,16 +837,21 @@ exports.recordVoteOnBlockchain = async (req, res) => {
               criminalRecord: candidate?.criminalRecord || '',
               photoUrl: candidate?.photoUrl || '',
               partySymbol: candidate?.partySymbol || '',
-              voteCount: 1,
-              originalCandidateId: candidateId,
+              voteCount: 1, // Start with vote count of 1
+              originalCandidateId: candidateId, // Store original ID for future reference
               recordedAt: new Date()
             });
             
-            await newRemoteCandidate.save();
-            console.log(`Created new candidate on blockchain with ID: ${newRemoteCandidate._id} and vote count: 1`);
+            const savedCandidate = await newRemoteCandidate.save();
+            console.log(`Created new candidate on blockchain with ID: ${savedCandidate._id} and vote count: 1`);
+            
+            // Update the vote record with the new candidate ID for consistency
+            savedVote.candidateId = savedCandidate._id.toString();
+            await savedVote.save();
+            console.log(`Updated vote record with new candidate ID: ${savedCandidate._id}`);
           } else {
             // We don't have candidate information, but we can still record the vote
-            console.log(`No candidate information available for ID: ${candidateId}, recording vote only`);
+            console.log(`No candidate information available, vote recorded without updating candidate`);
           }
         } else if (isNoneOption) {
           console.log('Vote cast for "None of the above", updating blockchain records');
@@ -868,6 +923,8 @@ exports.checkRemoteVote = async (req, res) => {
   
   try {
     const userId = req.user.id;
+    // Get the election ID from query params
+    const { electionId } = req.query;
     
     // Find voter profile
     const voter = await Voter.findOne({ user: userId });
@@ -883,14 +940,24 @@ exports.checkRemoteVote = async (req, res) => {
     // Create models on the remote connection
     const RemoteVote = remoteConnection.model('Vote', remoteDb.RemoteVoteSchema);
     
-    // Check if the voter has cast any votes in the remote database
-    const existingRemoteVote = await RemoteVote.findOne({ voterId: voter._id.toString() });
+    let query = { voterId: voter._id.toString() };
+    
+    // If election ID is provided, check for vote in that specific election
+    if (electionId) {
+      console.log(`Checking if voter ${voter._id} has voted in specific election ${electionId}`);
+      query.electionId = electionId;
+    } else {
+      console.log(`Checking if voter ${voter._id} has voted in any election`);
+    }
+    
+    // Check if the voter has cast any votes in the remote database based on query
+    const existingRemoteVote = await RemoteVote.findOne(query);
     
     // Close the remote connection
     await remoteConnection.close();
     
     if (existingRemoteVote) {
-      console.log(`Found existing vote in remote database for voter ${voter._id}`);
+      console.log(`Found existing vote in remote database for voter ${voter._id}${electionId ? ` in election ${electionId}` : ''}`);
       return res.json({ 
         hasVoted: true, 
         voteInfo: {
@@ -919,5 +986,264 @@ exports.checkRemoteVote = async (req, res) => {
       message: 'Error checking vote status in remote database',
       error: error.message
     });
+  }
+};
+
+// Upload vote recording
+exports.uploadRecording = async (req, res) => {
+  try {
+    // Check if file exists in request
+    if (!req.files || !req.files.recording) {
+      return res.status(400).json({ message: 'No recording file uploaded' });
+    }
+    
+    const { voterId, electionId, candidateId, voteTimestamp, txHash, targetFolder } = req.body;
+    
+    if (!voterId || !electionId) {
+      return res.status(400).json({ message: 'Voter ID and Election ID are required' });
+    }
+    
+    // Get the uploaded file
+    const recordingFile = req.files.recording;
+    
+    // Create the target directory structure
+    const baseDir = path.join(__dirname, '../../uploads');
+    const targetDir = path.join(baseDir, targetFolder || 'voter-recording');
+    
+    // Ensure directories exist
+    if (!fs.existsSync(baseDir)) {
+      fs.mkdirSync(baseDir, { recursive: true });
+    }
+    
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    
+    // Generate a unique filename
+    const timestamp = Date.now();
+    const filename = txHash 
+      ? `vote-${voterId}-${electionId}-${txHash.substring(0, 8)}-${timestamp}.webm`
+      : `vote-${voterId}-${electionId}-${timestamp}.webm`;
+    
+    const uploadPath = path.join(targetDir, filename);
+    
+    // Move the file to the target directory
+    await recordingFile.mv(uploadPath);
+    
+    // Generate a URL for the recording
+    const recordingUrl = `/uploads/${targetFolder || 'voter-recording'}/${filename}`;
+    
+    // Log the upload
+    console.log(`Recording uploaded to ${uploadPath}`);
+    console.log(`Recording URL: ${recordingUrl}`);
+    
+    // Return the recording URL
+    res.status(200).json({
+      message: 'Recording uploaded successfully',
+      recordingUrl,
+      path: recordingUrl
+    });
+    
+  } catch (error) {
+    console.error('Error uploading recording:', error);
+    res.status(500).json({ message: 'Error uploading recording', error: error.message });
+  }
+};
+
+// Update vote record with recording URL
+exports.updateVoteRecording = async (req, res) => {
+  let remoteConnection = null;
+  
+  try {
+    const { voterId, electionId, recordingUrl, txHash, updateRemote } = req.body;
+    
+    if (!voterId || !electionId || !recordingUrl) {
+      return res.status(400).json({ message: 'Voter ID, Election ID and Recording URL are required' });
+    }
+    
+    // Find and update the vote in the local database
+    const Vote = mongoose.model('Vote');
+    
+    const localVote = await Vote.findOne({ 
+      voter: voterId, 
+      election: electionId 
+    });
+    
+    if (localVote) {
+      localVote.recordingUrl = recordingUrl;
+      await localVote.save();
+      console.log(`Updated local vote record with recording URL: ${recordingUrl}`);
+    } else {
+      console.log(`No local vote record found for voter ${voterId} in election ${electionId}`);
+    }
+    
+    // If updateRemote flag is set, also update the vote in the remote database
+    if (updateRemote) {
+      // Establish connection to remote database
+      const remoteDb = require('../utils/remoteDb.util');
+      console.log('Connecting to remote database to update vote recording...');
+      remoteConnection = await remoteDb.createRemoteConnection();
+      
+      // Create model on the remote connection
+      const RemoteVote = remoteConnection.model('Vote', remoteDb.RemoteVoteSchema);
+      
+      // Try to find the vote record in the remote database
+      let query = { voterId: voterId.toString() };
+      
+      // If we have the transaction hash, use it for a more precise lookup
+      if (txHash) {
+        query.blockchainTxHash = txHash;
+      } else {
+        // Otherwise, use the election ID
+        query.electionId = electionId;
+      }
+      
+      const remoteVote = await RemoteVote.findOne(query);
+      
+      if (remoteVote) {
+        // Update the remote vote record with the recording URL
+        remoteVote.recordingUrl = recordingUrl;
+        await remoteVote.save();
+        console.log(`Updated remote vote record with recording URL: ${recordingUrl}`);
+      } else {
+        console.log(`No remote vote record found with query:`, query);
+      }
+      
+      // Close the remote connection
+      await remoteConnection.close();
+      console.log('Remote database connection closed');
+    }
+    
+    res.status(200).json({
+      message: 'Vote record updated with recording URL',
+      localUpdated: !!localVote,
+      remoteUpdated: updateRemote ? true : false
+    });
+    
+  } catch (error) {
+    console.error('Error updating vote with recording URL:', error);
+    
+    // Make sure to close the connection in case of errors
+    if (remoteConnection) {
+      try {
+        await remoteConnection.close();
+      } catch (closeError) {
+        console.error('Error closing remote connection:', closeError);
+      }
+    }
+    
+    res.status(500).json({ 
+      message: 'Error updating vote with recording URL',
+      error: error.message
+    });
+  }
+};
+
+// Find candidate in remote database using multiple strategies
+const findRemoteCandidateForVoting = async (remoteConnection, remoteElection, candidateId, candidate) => {
+  try {
+    const RemoteCandidate = remoteConnection.model('Candidate', require('../utils/remoteDb.util').RemoteCandidateSchema);
+    
+    // Strategy 1: Direct MongoDB ID lookup (if the candidateId is a valid MongoDB ID)
+    let remoteCandidate;
+    try {
+      if (mongoose.Types.ObjectId.isValid(candidateId)) {
+        console.log(`Attempting direct ID lookup for candidate: ${candidateId}`);
+        remoteCandidate = await RemoteCandidate.findById(candidateId);
+        if (remoteCandidate) {
+          console.log(`Found candidate by direct ID lookup: ${remoteCandidate._id}`);
+          return remoteCandidate;
+        }
+      }
+    } catch (directIdError) {
+      console.error('Error with direct ID lookup:', directIdError);
+    }
+    
+    // Strategy 2: Match by originalCandidateId exact match
+    try {
+      console.log(`Trying exact originalCandidateId match: ${candidateId}`);
+      remoteCandidate = await RemoteCandidate.findOne({ originalCandidateId: candidateId });
+      if (remoteCandidate) {
+        console.log(`Found candidate by exact originalCandidateId match: ${remoteCandidate._id}`);
+        return remoteCandidate;
+      }
+    } catch (exactMatchError) {
+      console.error('Error with exact match lookup:', exactMatchError);
+    }
+    
+    // Strategy 3: Match by originalCandidateId with regex (for timestamp suffix)
+    try {
+      // Escape special regex characters
+      const escapedCandidateId = candidateId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      console.log(`Trying regex match for originalCandidateId: ${escapedCandidateId}`);
+      
+      remoteCandidate = await RemoteCandidate.findOne({ 
+        originalCandidateId: { $regex: new RegExp('^' + escapedCandidateId) }
+      });
+      
+      if (remoteCandidate) {
+        console.log(`Found candidate by regex originalCandidateId match: ${remoteCandidate._id}`);
+        return remoteCandidate;
+      }
+    } catch (regexError) {
+      console.error('Error with regex search:', regexError);
+    }
+    
+    // Strategy 4: Match by electionId and candidate name fields (if candidate data available)
+    if (candidate) {
+      try {
+        console.log(`Trying to match by name and election: ${candidate.firstName} ${candidate.lastName}`);
+        
+        const candidateQuery = {
+          electionId: remoteElection ? remoteElection._id.toString() : null,
+          firstName: candidate.firstName,
+          lastName: candidate.lastName
+        };
+        
+        // If party name exists, add it to the query for more precise matching
+        if (candidate.partyName) {
+          candidateQuery.partyName = candidate.partyName;
+        }
+        
+        // Only include electionId in query if we have a remote election
+        if (!remoteElection) {
+          delete candidateQuery.electionId;
+        }
+        
+        remoteCandidate = await RemoteCandidate.findOne(candidateQuery);
+        
+        if (remoteCandidate) {
+          console.log(`Found candidate by name and election match: ${remoteCandidate._id}`);
+          return remoteCandidate;
+        }
+      } catch (nameMatchError) {
+        console.error('Error with name matching:', nameMatchError);
+      }
+    }
+    
+    // Strategy 5: Check all candidates in the election and log them for debugging
+    if (remoteElection) {
+      try {
+        console.log(`No matches found. Listing all candidates in election ${remoteElection._id} for debugging:`);
+        const allCandidates = await RemoteCandidate.find({ electionId: remoteElection._id.toString() });
+        
+        if (allCandidates.length > 0) {
+          allCandidates.forEach((c, index) => {
+            console.log(`Candidate ${index + 1}/${allCandidates.length}: ID=${c._id}, originalCandidateId=${c.originalCandidateId}, name=${c.firstName} ${c.lastName}, party=${c.partyName}`);
+          });
+        } else {
+          console.log(`No candidates found in election ${remoteElection._id}`);
+        }
+      } catch (listError) {
+        console.error('Error listing candidates:', listError);
+      }
+    }
+    
+    // No match found after trying all strategies
+    console.log(`No matching candidate found after trying all strategies`);
+    return null;
+  } catch (error) {
+    console.error('Error in findRemoteCandidateForVoting:', error);
+    return null;
   }
 }; 

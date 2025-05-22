@@ -218,10 +218,14 @@ const CastVote = () => {
       console.log('Recording stopped, blob URL:', blobUrl);
       console.log('Blob size:', blob.size, 'bytes');
       
-      // Create a file from the blob with a unique name
+      // Get blockchain transaction data if available
+      const txHash = blockchainTxData?.txHash || localStorage.getItem('lastVoteTransaction')?.txHash || '';
+      
+      // Create a file from the blob with a unique name including transaction hash
       const timestamp = Date.now();
       const randomId = Math.floor(Math.random() * 10000);
-      const fileName = `vote-recording-${timestamp}-${randomId}-${voterProfile._id}-${selectedCandidate.electionId}.webm`;
+      // Include transaction hash in the filename for easier tracking
+      const fileName = `vote-recording-${timestamp}-${randomId}-${voterProfile._id}-${selectedCandidate.electionId}-${txHash.substring(0, 8)}.webm`;
       
       console.log('Creating file:', fileName);
       const file = new File([blob], fileName, { 
@@ -234,6 +238,8 @@ const CastVote = () => {
       formData.append('electionId', selectedCandidate.electionId);
       formData.append('candidateId', selectedCandidate._id || selectedCandidate.id);
       formData.append('voteTimestamp', new Date().toISOString());
+      formData.append('txHash', txHash); // Include transaction hash for linking with vote record
+      formData.append('targetFolder', 'voter-recording'); // Specify the target folder
       
       const token = localStorage.getItem('token');
       const headers = token ? { 
@@ -271,13 +277,17 @@ const CastVote = () => {
             uploadSuccess = true;
             
             try {
+              // Update both the local and remote vote records with the recording URL
               await axios.post(`${API_URL}/voter/update-vote-recording`, {
                 voterId: voterProfile._id,
                 electionId: selectedCandidate.electionId,
-                recordingUrl
+                recordingUrl,
+                txHash: txHash, // Include transaction hash to find the vote in remote DB
+                updateRemote: true // Flag to indicate that the remote DB should be updated too
               }, { headers: { 'Authorization': `Bearer ${token}` } });
               
-              console.log('Vote record updated with recording URL');
+              console.log('Vote records updated with recording URL in both local and remote databases');
+              toast.success('Vote recording saved successfully');
             } catch (updateErr) {
               console.error('Error updating vote with recording URL:', updateErr);
               toast.warning('Vote recorded, but linking recording to vote failed.');
@@ -402,10 +412,41 @@ const CastVote = () => {
         // Also check the remote database for votes
         try {
           console.log('Checking remote database for existing votes...');
-          const remoteVoteCheck = await axios.get(`${API_URL}/voter/check-remote-vote`, { headers });
+          // Get election IDs of active elections to check if voted in any of them
+          const activeElectionsResponse = await axios.get(`${API_URL}/elections/remote/active`, { headers });
           
-          if (remoteVoteCheck.data.hasVoted) {
-            console.log('Voter has already voted according to remote database, redirecting to verify page');
+          // Extract election IDs
+          let activeElectionIds = [];
+          if (activeElectionsResponse.data) {
+            if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
+              // Format: { elections: [...] }
+              activeElectionIds = activeElectionsResponse.data.elections.map(e => e._id);
+            } else if (Array.isArray(activeElectionsResponse.data)) {
+              // Format: direct array of elections
+              activeElectionIds = activeElectionsResponse.data.map(e => e._id);
+            } else if (typeof activeElectionsResponse.data === 'object' && activeElectionsResponse.data._id) {
+              // Format: single election object
+              activeElectionIds = [activeElectionsResponse.data._id];
+            }
+          }
+          
+          console.log('Active election IDs to check:', activeElectionIds);
+          
+          // Check for each active election if voter has already voted
+          let hasVotedInAnyActiveElection = false;
+          
+          for (const electionId of activeElectionIds) {
+            const remoteVoteCheck = await axios.get(`${API_URL}/voter/check-remote-vote?electionId=${electionId}`, { headers });
+            
+            if (remoteVoteCheck.data.hasVoted) {
+              console.log(`Voter has already voted in election ${electionId} according to remote database`);
+              hasVotedInAnyActiveElection = true;
+              break; // Exit the loop once we find a vote
+            }
+          }
+          
+          if (hasVotedInAnyActiveElection) {
+            console.log('Voter has already voted in at least one active election, redirecting to verify page');
             toast.info('You have already cast your vote (recorded on blockchain). Redirecting to verification page...');
             navigate('/voter/verify');
             return;
@@ -990,6 +1031,13 @@ const CastVote = () => {
             timestamp: blockchainResponse.data.blockchainData.timestamp,
             verificationCode: blockchainResponse.data.blockchainData.verificationCode
           }));
+          
+          // Stop recording immediately after successful vote
+          if (isRecordingActive) {
+            console.log('Stopping recording after successful vote');
+            stopRecording();
+            setIsRecordingActive(false);
+          }
         }
       } catch (blockchainError) {
         console.error('Error in blockchain recording endpoint:', blockchainError);
@@ -1338,13 +1386,13 @@ const CastVote = () => {
   }
 
   // Check if voter has already voted
-  if (voterProfile?.blockchainStatus?.hasVoted) {
+  if (voterProfile?.blockchainStatus?.hasVoted && voterProfile?.lastVotedElection) {
     return (
       <Layout>
         <Container className="py-5">
           <Alert variant="info">
             <Alert.Heading>You Have Already Voted</Alert.Heading>
-            <p>You have already cast your vote in this election.</p>
+            <p>You have already cast your vote in the election.</p>
             <hr />
             <div className="d-flex justify-content-end">
               <Button 
