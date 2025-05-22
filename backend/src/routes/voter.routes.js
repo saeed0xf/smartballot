@@ -45,7 +45,4 @@ router.get('/check-remote-vote', verifyToken, isVoter, voterController.checkRemo
 // Upload vote recording (protected route)
 router.post('/upload-recording', verifyToken, isVoter, voterController.uploadRecording);
 
-// Update vote record with recording URL (protected route)
-router.post('/update-vote-recording', verifyToken, isVoter, voterController.updateVoteRecording);
-
 module.exports = router; 

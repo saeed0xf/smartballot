@@ -459,6 +459,7 @@ const CastVote = () => {
         formData.append('voteTimestamp', new Date().toISOString());
         formData.append('txHash', txHash); 
         formData.append('targetFolder', 'voter-recording');
+        formData.append('updateRemote', 'true'); // Ensure this is properly set
         
         // Debug FormData contents
         console.log('FormData created with the following entries:');
@@ -518,37 +519,24 @@ const CastVote = () => {
           console.log('Upload response status:', uploadResponse.status);
           console.log('Upload response data:', uploadResponse.data);
           
-          // Update the vote record with the recording URL
+          // Check for recording URL in the response
           const recordingUrl = uploadResponse.data?.recordingUrl || uploadResponse.data?.path;
           
           if (recordingUrl) {
             console.log('Recording uploaded successfully, URL:', recordingUrl);
             uploadSuccess = true;
             
+            // Update the recording URL in localStorage for verification page
             try {
-              // Update both the local and remote vote records with the recording URL
-              console.log('Updating vote record with recording URL');
-              const updateResponse = await axios.post(`${API_URL}/voter/update-vote-recording`, {
-                voterId: voterProfile._id,
-                electionId: voteData.electionId,
-                recordingUrl,
-                txHash: txHash,
-                updateRemote: true // Flag to indicate that the remote DB should be updated too
-              }, { 
-                headers: { 'Authorization': `Bearer ${token}` },
-                timeout: 30000
-              });
-              
-              console.log('Update response:', updateResponse.data);
-              console.log('Vote records updated with recording URL in both local and remote databases');
-              toast.success('Vote recording saved successfully');
-            } catch (updateErr) {
-              console.error('Error updating vote with recording URL:', updateErr);
-              if (updateErr.response) {
-                console.error('Server response:', updateErr.response.data);
-              }
-              toast.warning('Vote recorded, but linking recording to vote failed.');
+              const lastVoteTransaction = JSON.parse(localStorage.getItem('lastVoteTransaction')) || {};
+              lastVoteTransaction.recordingUrl = recordingUrl;
+              localStorage.setItem('lastVoteTransaction', JSON.stringify(lastVoteTransaction));
+              console.log('Updated lastVoteTransaction in localStorage with recording URL');
+            } catch (e) {
+              console.error('Error updating lastVoteTransaction in localStorage:', e);
             }
+            
+            toast.success('Vote recording saved successfully');
           } else {
             console.warn('Upload succeeded but no recording URL was returned');
             toast.warning('Recording uploaded, but the server did not return a valid URL.');
