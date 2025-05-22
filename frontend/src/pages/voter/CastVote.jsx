@@ -401,62 +401,7 @@ const CastVote = () => {
         const voterData = profileResponse.data.voter;
         setVoterProfile(voterData);
         
-        // Check if the voter has already voted in the local database
-        if (voterData?.hasVoted || voterData?.blockchainStatus?.hasVoted) {
-          console.log('Voter has already voted according to local database, redirecting to verify page');
-          toast.info('You have already cast your vote in this election.');
-          navigate('/voter/verify');
-          return;
-        }
-        
-        // Also check the remote database for votes
-        try {
-          console.log('Checking remote database for existing votes...');
-          // Get election IDs of active elections to check if voted in any of them
-          const activeElectionsResponse = await axios.get(`${API_URL}/elections/remote/active`, { headers });
-          
-          // Extract election IDs
-          let activeElectionIds = [];
-          if (activeElectionsResponse.data) {
-            if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
-              // Format: { elections: [...] }
-              activeElectionIds = activeElectionsResponse.data.elections.map(e => e._id);
-            } else if (Array.isArray(activeElectionsResponse.data)) {
-              // Format: direct array of elections
-              activeElectionIds = activeElectionsResponse.data.map(e => e._id);
-            } else if (typeof activeElectionsResponse.data === 'object' && activeElectionsResponse.data._id) {
-              // Format: single election object
-              activeElectionIds = [activeElectionsResponse.data._id];
-            }
-          }
-          
-          console.log('Active election IDs to check:', activeElectionIds);
-          
-          // Check for each active election if voter has already voted
-          let hasVotedInAnyActiveElection = false;
-          
-          for (const electionId of activeElectionIds) {
-            const remoteVoteCheck = await axios.get(`${API_URL}/voter/check-remote-vote?electionId=${electionId}`, { headers });
-            
-            if (remoteVoteCheck.data.hasVoted) {
-              console.log(`Voter has already voted in election ${electionId} according to remote database`);
-              hasVotedInAnyActiveElection = true;
-              break; // Exit the loop once we find a vote
-            }
-          }
-          
-          if (hasVotedInAnyActiveElection) {
-            console.log('Voter has already voted in at least one active election, redirecting to verify page');
-            toast.info('You have already cast your vote (recorded on blockchain). Redirecting to verification page...');
-            navigate('/voter/verify');
-            return;
-          }
-        } catch (remoteCheckError) {
-          // Just log the error but continue - we'll rely on the server-side check during voting
-          console.error('Error checking remote votes:', remoteCheckError);
-        }
-        
-        // Fetch active elections with candidates using the correct API per documentation
+        // Fetch all active elections (which already include candidates)
         try {
           console.log('Fetching active elections from remote API...');
           const activeElectionsResponse = await axios.get(`${API_URL}/elections/remote/active`, { headers });
@@ -468,7 +413,7 @@ const CastVote = () => {
           if (activeElectionsResponse.data) {
             if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
               // Format: { elections: [...] }
-            electionsData = activeElectionsResponse.data.elections;
+              electionsData = activeElectionsResponse.data.elections;
             } else if (Array.isArray(activeElectionsResponse.data)) {
               // Format: direct array of elections
               electionsData = activeElectionsResponse.data;
@@ -491,11 +436,42 @@ const CastVote = () => {
             setLoading(false);
             return;
           }
+
+          // Instead of checking if voted in ANY active election, just store which elections the voter has voted in
+          // We'll filter these out from the available candidates later
+          let votedElectionIds = [];
+
+          // Check remote database for votes in each active election
+          for (const election of electionsData) {
+            try {
+              console.log(`Checking if voter has voted in election ${election._id}`);
+              const voteCheckResponse = await axios.get(`${API_URL}/voter/check-remote-vote?electionId=${election._id}`, { headers });
+              
+              if (voteCheckResponse.data.hasVoted) {
+                console.log(`Voter has already voted in election ${election._id} according to remote database`);
+                votedElectionIds.push(election._id);
+              }
+            } catch (voteCheckError) {
+              console.error(`Error checking if voted in election ${election._id}:`, voteCheckError);
+              // Continue checking other elections even if one fails
+            }
+          }
+
+          // Filter out elections where the voter has already voted
+          const availableElections = electionsData.filter(election => !votedElectionIds.includes(election._id));
           
-          // Extract all candidates from the active elections
+          if (availableElections.length === 0) {
+            // If voter has voted in ALL active elections, then redirect to verify page
+            console.log('Voter has already voted in all active elections, redirecting to verify page');
+            toast.info('You have already cast your vote in all active elections. Redirecting to verification page...');
+            navigate('/voter/verify');
+            return;
+          }
+          
+          // Extract all candidates from the available elections
           let allCandidates = [];
           
-          electionsData.forEach(election => {
+          availableElections.forEach(election => {
             console.log(`Processing election: ${election.title || election.name}, ID: ${election._id}`);
             
             // Check if election has candidates property and it's an array
@@ -533,11 +509,11 @@ const CastVote = () => {
             }
           });
           
-          console.log(`Total candidates from all elections: ${allCandidates.length}`);
+          console.log(`Total candidates from available elections: ${allCandidates.length}`);
           
           // Add "None of the above" option if we have active elections
-          if (allCandidates.length > 0 && electionsData.length > 0) {
-            const firstElection = electionsData[0];
+          if (allCandidates.length > 0 && availableElections.length > 0) {
+            const firstElection = availableElections[0];
             const noneOption = {
               _id: 'none-of-the-above',
               id: 'none-of-the-above',
@@ -564,8 +540,8 @@ const CastVote = () => {
           
           if (allCandidates.length === 0) {
             setError('No candidates found for any active election.');
-        }
-      } catch (err) {
+          }
+        } catch (err) {
           console.error('Error fetching active elections:', err);
           const errorMsg = err.response?.data?.message || err.message || 'Unknown error';
           console.error('Error details:', errorMsg);

@@ -24,6 +24,8 @@ const ViewCandidates = () => {
   const [showComparison, setShowComparison] = useState(false);
   const [isLoadingComparisonData, setIsLoadingComparisonData] = useState(false);
   const [voterPincode, setVoterPincode] = useState(null);
+  const [votedElections, setVotedElections] = useState([]);
+  const [showVotedElections, setShowVotedElections] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -68,12 +70,40 @@ const ViewCandidates = () => {
         // Store all elections for dropdown filtering
         setElections(electionsData);
         
+        // Check which elections the voter has already voted in
+        let votedElectionIds = [];
+        for (const election of electionsData) {
+          try {
+            console.log(`Checking if voter has voted in election ${election._id}`);
+            const voteCheckResponse = await axios.get(`${API_URL}/voter/check-remote-vote?electionId=${election._id}`, { headers });
+            
+            if (voteCheckResponse.data.hasVoted) {
+              console.log(`Voter has already voted in election ${election._id}`);
+              votedElectionIds.push(election._id);
+            }
+          } catch (voteCheckError) {
+            console.error(`Error checking if voted in election ${election._id}:`, voteCheckError);
+            // Continue checking other elections even if one fails
+          }
+        }
+        
+        setVotedElections(votedElectionIds);
+        console.log('Elections voter has already voted in:', votedElectionIds);
+        
         // Extract candidates from elections
         let allCandidates = [];
         const electionGroups = [];
         
         // Process each election and extract its candidates
         electionsData.forEach(election => {
+          // Skip this election if the voter has already voted in it and we're not showing voted elections
+          const hasVotedInElection = votedElectionIds.includes(election._id);
+          
+          if (hasVotedInElection && !showVotedElections) {
+            console.log(`Skipping election ${election._id} as voter has already voted in it`);
+            return; // Skip to next election
+          }
+          
           if (election.candidates && Array.isArray(election.candidates)) {
             // Add election to election groups only if it matches voter's pincode
             // or if no pincode is available (for backward compatibility)
@@ -86,6 +116,7 @@ const ViewCandidates = () => {
                 electionStartDate: election.startDate,
                 electionEndDate: election.endDate,
                 electionPincode: election.pincode,
+                hasVotedInElection: hasVotedInElection,
                 candidates: []
               };
               
@@ -101,6 +132,7 @@ const ViewCandidates = () => {
                   electionStartDate: election.startDate,
                   electionEndDate: election.endDate,
                   electionPincode: election.pincode,
+                  hasVotedInElection: hasVotedInElection,
                   photoUrl: formatImageUrl(candidate.photoUrl || candidate.image),
                   partySymbol: formatImageUrl(candidate.partySymbol)
                 };
@@ -135,7 +167,7 @@ const ViewCandidates = () => {
     };
 
     fetchData();
-  }, []); // Empty dependency array to run only on mount
+  }, [showVotedElections]); // Run when showVotedElections changes
 
   // Filter candidates based on selected election and search term
   useEffect(() => {
@@ -542,6 +574,86 @@ const ViewCandidates = () => {
     </Row>
   );
 
+  const renderFilterSection = () => (
+    <div className="mb-4">
+      <Row>
+        <Col md={4}>
+          <InputGroup>
+            <Form.Control 
+              type="text" 
+              placeholder="Search candidates by name, party, etc." 
+              value={searchTerm}
+              onChange={handleSearch}
+              aria-label="Search candidates"
+            />
+            {searchTerm && (
+              <Button 
+                variant="outline-secondary" 
+                onClick={clearSearch}
+              >
+                Clear
+              </Button>
+            )}
+            <InputGroup.Text>
+              <FaSearch />
+            </InputGroup.Text>
+          </InputGroup>
+          {filteredCandidates.length > 0 && searchTerm.trim() && (
+            <small className="text-muted">
+              Found {filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? 's' : ''}
+            </small>
+          )}
+        </Col>
+        <Col md={4}>
+          <Form.Group controlId="electionFilter">
+            <InputGroup>
+              <InputGroup.Text>
+                <FaFilter />
+              </InputGroup.Text>
+              <Form.Select 
+                value={selectedElection} 
+                onChange={handleElectionChange}
+                aria-label="Filter by election"
+              >
+                <option value="all">All Active Elections</option>
+                {electionGroups.map(election => (
+                  <option key={election.electionId} value={election.electionId}>
+                    {election.electionName}
+                    {election.electionPincode === voterPincode ? ' (Your Area)' : ''}
+                    {election.hasVotedInElection ? ' ✓' : ''}
+                  </option>
+                ))}
+              </Form.Select>
+            </InputGroup>
+          </Form.Group>
+        </Col>
+        <Col md={4} className="d-flex align-items-center">
+          <Form.Check 
+            type="switch"
+            id="toggle-voted-elections"
+            label="Show elections I've already voted in"
+            checked={showVotedElections}
+            onChange={(e) => setShowVotedElections(e.target.checked)}
+            className="ms-auto"
+          />
+        </Col>
+      </Row>
+      
+      {voterPincode && (
+        <Alert variant="info" className="mt-3 mb-0">
+          <FaMapMarkerAlt className="me-2" />
+          Showing elections for your area code: <strong>{voterPincode}</strong>
+          {votedElections.length > 0 && (
+            <span className="ms-2">
+              • You have voted in {votedElections.length} election{votedElections.length !== 1 ? 's' : ''}
+              {!showVotedElections && ` (hidden)`}
+            </span>
+          )}
+        </Alert>
+      )}
+    </div>
+  );
+
   const renderElectionTabs = () => (
     <Tab.Container defaultActiveKey="all">
       <Nav variant="tabs" className="mb-3">
@@ -555,18 +667,27 @@ const ViewCandidates = () => {
               {election.electionPincode && election.electionPincode === voterPincode && (
                 <Badge bg="success" className="ms-2" pill>Your Area</Badge>
               )}
+              {election.hasVotedInElection && (
+                <Badge bg="info" className="ms-1" pill>Voted</Badge>
+              )}
             </Nav.Link>
           </Nav.Item>
         ))}
       </Nav>
       <Tab.Content>
         <Tab.Pane eventKey="all">
+          {renderFilterSection()}
           {renderGridView()}
         </Tab.Pane>
         {electionGroups.map(election => (
           <Tab.Pane key={election.electionId} eventKey={election.electionId}>
-            <Alert variant="info" className="mb-3">
-              <h5>{election.electionName}</h5>
+            <Alert variant={election.hasVotedInElection ? "info" : "primary"} className="mb-3">
+              <h5>
+                {election.electionName}
+                {election.hasVotedInElection && (
+                  <Badge bg="info" className="ms-2">You've Already Voted</Badge>
+                )}
+              </h5>
               <p className="mb-1">{election.electionDescription}</p>
               <p className="small mb-0">
                 <strong>Type:</strong> {election.electionType} | 
@@ -584,7 +705,7 @@ const ViewCandidates = () => {
             <Row>
               {election.candidates.map(candidate => (
                 <Col key={candidate._id || candidate.id} md={4} className="mb-4">
-                  <Card className="h-100 shadow-sm candidate-card">
+                  <Card className={`h-100 shadow-sm candidate-card ${election.hasVotedInElection ? 'border-info' : ''}`}>
                     <div className="text-center pt-3">
                       {candidate.photoUrl ? (
                         <div className="candidate-img-container mx-auto">
@@ -868,74 +989,7 @@ const ViewCandidates = () => {
         {/* Filters and Search */}
         <Card className="mb-4 shadow-sm">
           <Card.Body>
-            <Row className="align-items-center">
-              <Col md={6} className="mb-3 mb-md-0">
-                <InputGroup>
-                  <InputGroup.Text>
-                    <FaSearch />
-                  </InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    placeholder="Search by name, party, constituency, education..."
-                    value={searchTerm}
-                    onChange={handleSearch}
-                    aria-label="Search candidates"
-                  />
-                  {searchTerm && (
-                    <Button 
-                      variant="outline-secondary" 
-                      onClick={clearSearch}
-                      aria-label="Clear search"
-                    >
-                      ✕
-                    </Button>
-                  )}
-                </InputGroup>
-                {searchTerm && (
-                  <div className="small text-muted mt-1">
-                    Search results: {filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? 's' : ''}
-                  </div>
-                )}
-              </Col>
-              <Col md={3}>
-                <InputGroup>
-                  <InputGroup.Text>
-                    <FaFilter />
-                  </InputGroup.Text>
-                  <Form.Select
-                    value={selectedElection}
-                    onChange={handleElectionChange}
-                  >
-                    <option value="all">All Active Elections</option>
-                    {elections
-                      .filter(election => !voterPincode || !election.pincode || election.pincode === voterPincode)
-                      .map(election => (
-                        <option key={election._id} value={election._id}>
-                          {election.title || election.name || 'Unnamed Election'}
-                          {election.pincode && election.pincode === voterPincode ? ' (Your Area)' : ''}
-                        </option>
-                      ))}
-                  </Form.Select>
-                </InputGroup>
-              </Col>
-              <Col md={3} className="d-flex justify-content-md-end mt-3 mt-md-0">
-                <div className="btn-group">
-                  <Button 
-                    variant={activeView === 'grid' ? 'primary' : 'outline-primary'} 
-                    onClick={() => setActiveView('grid')}
-                  >
-                    Grid View
-                  </Button>
-                  <Button 
-                    variant={activeView === 'election' ? 'primary' : 'outline-primary'} 
-                    onClick={() => setActiveView('election')}
-                    disabled={electionGroups.length === 0}
-                  >
-                    By Election
-                  </Button>
-                </div>
-              </Col>
-            </Row>
+            {renderFilterSection()}
           </Card.Body>
         </Card>
         
