@@ -390,9 +390,9 @@ const CastVote = () => {
         
         // Fetch active elections with candidates using the correct API per documentation
         try {
-          console.log('Fetching active elections...');
-          const activeElectionsResponse = await axios.get(`${API_URL}/elections/active`, { headers });
-          console.log('Active elections response:', activeElectionsResponse.data);
+          console.log('Fetching active elections from remote API...');
+          const activeElectionsResponse = await axios.get(`${API_URL}/elections/remote/active`, { headers });
+          console.log('Remote active elections response:', activeElectionsResponse.data);
           
           // Safeguard against various API response formats
           let electionsData = [];
@@ -1020,13 +1020,13 @@ const CastVote = () => {
       const token = localStorage.getItem('token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       
-      // Try primary candidate endpoint first
+      // Try primary remote candidate endpoint first
       try {
         const apiCandidateId = candidateId.toString();
-        console.log(`Fetching from candidate endpoint: ${API_URL}/candidates/${apiCandidateId}`);
+        console.log(`Fetching from remote candidate endpoint: ${API_URL}/candidates/remote/${apiCandidateId}`);
         
-        const response = await axios.get(`${API_URL}/candidates/${apiCandidateId}`, { headers });
-        console.log('Candidate details response:', response.data);
+        const response = await axios.get(`${API_URL}/candidates/remote/${apiCandidateId}`, { headers });
+        console.log('Remote candidate details response:', response.data);
         
         if (response.data && response.data.candidate) {
           // Update with the detailed info
@@ -1046,12 +1046,12 @@ const CastVote = () => {
           }));
         }
       } catch (apiError) {
-        console.error('Error fetching from primary candidate endpoint:', apiError);
+        console.error('Error fetching from primary remote candidate endpoint:', apiError);
         
         // Try fallback endpoint
         try {
-          console.log(`Trying fallback endpoint: ${API_URL}/election/candidates/${candidateId}`);
-          const fallbackResponse = await axios.get(`${API_URL}/election/candidates/${candidateId}`, { headers });
+          console.log(`Trying remote fallback endpoint: ${API_URL}/election/candidates/remote/${candidateId}`);
+          const fallbackResponse = await axios.get(`${API_URL}/election/candidates/remote/${candidateId}`, { headers });
           
           if (fallbackResponse.data && fallbackResponse.data.candidate) {
             setViewingCandidate(prevCandidate => ({
@@ -1062,8 +1062,26 @@ const CastVote = () => {
             }));
           }
         } catch (fallbackError) {
-          console.error('Error fetching from fallback endpoint:', fallbackError);
-          // We already set the basic candidate above, so no need to do anything here
+          console.error('Error fetching from remote fallback endpoint:', fallbackError);
+          
+          // Try the regular (non-remote) endpoints as a last resort
+          try {
+            console.log(`Trying standard endpoint: ${API_URL}/candidates/${candidateId}`);
+            const standardResponse = await axios.get(`${API_URL}/candidates/${candidateId}`, { headers });
+            
+            if (standardResponse.data && (standardResponse.data.candidate || standardResponse.data._id)) {
+              const candidateData = standardResponse.data.candidate || standardResponse.data;
+              setViewingCandidate(prevCandidate => ({
+                ...prevCandidate,
+                ...candidateData,
+                photoUrl: getImageUrl(candidateData.photoUrl || candidateData.image),
+                partySymbol: getImageUrl(candidateData.partySymbol)
+              }));
+            }
+          } catch (standardError) {
+            console.error('Error fetching from standard endpoint:', standardError);
+            // We already set the basic candidate above, so no need to do anything here
+          }
         }
       }
     } catch (error) {
