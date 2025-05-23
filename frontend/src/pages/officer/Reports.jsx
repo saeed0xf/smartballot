@@ -374,6 +374,24 @@ const Reports = () => {
           ]);
         });
         
+        // Add None of the Above row if it has votes
+        if (reportData.election.noneOfTheAboveVotes > 0) {
+          const noneOfTheAbovePercentage = reportData.election.totalVotes > 0 
+            ? ((reportData.election.noneOfTheAboveVotes / reportData.election.totalVotes) * 100).toFixed(2) 
+            : 0;
+            
+          candidatesData.push([
+            reportData.candidates.length + 1,
+            'None of the Above',
+            'N/A',
+            reportData.election.noneOfTheAboveVotes,
+            `${noneOfTheAbovePercentage}%`,
+            'N/A',
+            'N/A',
+            'N/A'
+          ]);
+        }
+        
         const candidatesSheet = XLSX.utils.aoa_to_sheet(candidatesData);
         XLSX.utils.book_append_sheet(wb, candidatesSheet, 'Candidates');
       }
@@ -472,7 +490,7 @@ const Reports = () => {
       // Add Election Details sheet
       if (reportData.elections.length > 0) {
         const electionDetailsData = [
-          ['Election Title', 'Start Date', 'End Date', 'Total Votes', 'Region', 'Status']
+          ['Election Title', 'Start Date', 'End Date', 'Total Votes', 'Region', 'Status', 'None of the Above Votes']
         ];
         
         reportData.elections.forEach(election => {
@@ -482,7 +500,8 @@ const Reports = () => {
             formatDate(election.endDate),
             election.totalVotes || 0,
             election.region || 'N/A',
-            election.isActive ? 'Active' : 'Completed'
+            election.isActive ? 'Active' : 'Completed',
+            election.noneOfTheAboveVotes || 0
           ]);
         });
         
@@ -510,16 +529,18 @@ const Reports = () => {
             [''],
             ['Election-by-Election Performance'],
             [''],
-            ['Election Title', 'Votes', 'Percentage', 'Total Election Votes', 'Date']
+            ['Election Title', 'Votes', 'Percentage', 'Total Election Votes', 'None of the Above Votes', 'Date']
           ];
           
           // Add each election performance
           candidate.elections.forEach(election => {
+            const electionDetails = reportData.elections.find(e => e._id === election.id);
             candidateDetailData.push([
               election.title || 'N/A',
               election.votes || 0,
               `${election.percentage ? election.percentage.toFixed(2) : 0}%`,
               election.totalVotes || 0,
+              electionDetails?.noneOfTheAboveVotes || 0,
               formatDate(reportData.elections.find(e => e._id === election.id)?.startDate) || 'N/A'
             ]);
           });
@@ -529,7 +550,7 @@ const Reports = () => {
         }
       });
       
-      // Add Comparative Analysis sheet
+      // Add Comparative Analysis sheet with None of the Above
       const comparativeData = [
         ['Comparative Candidate Analysis'],
         [''],
@@ -558,6 +579,18 @@ const Reports = () => {
         comparativeData.push(row);
       });
       
+      // Add None of the Above row
+      const noneRow = ['None of the Above'];
+      recentElections.forEach(election => {
+        if (election.noneOfTheAboveVotes && election.totalVotes) {
+          const percentage = ((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2);
+          noneRow.push(`${percentage}%`);
+        } else {
+          noneRow.push('0.00%');
+        }
+      });
+      comparativeData.push(noneRow);
+      
       const comparativeSheet = XLSX.utils.aoa_to_sheet(comparativeData);
       XLSX.utils.book_append_sheet(wb, comparativeSheet, 'Comparative Analysis');
     }
@@ -578,8 +611,8 @@ const Reports = () => {
     
     if (reportType === 'election' && reportData.election) {
       // Create CSV for election report
-      csvContent = 'Title,Description,Start Date,End Date,Total Votes,Voter Turnout,Status\n';
-      csvContent += `"${reportData.election.title || 'N/A'}","${reportData.election.description || 'N/A'}","${formatDate(reportData.election.startDate)}","${formatDate(reportData.election.endDate)}",${reportData.election.totalVotes || 0},"${reportData.election.voterTurnout || 'N/A'}","${reportData.election.isActive ? 'Active' : 'Completed'}"\n\n`;
+      csvContent = 'Title,Description,Start Date,End Date,Total Votes,Voter Turnout,Status,None of the Above Votes\n';
+      csvContent += `"${reportData.election.title || 'N/A'}","${reportData.election.description || 'N/A'}","${formatDate(reportData.election.startDate)}","${formatDate(reportData.election.endDate)}",${reportData.election.totalVotes || 0},"${reportData.election.voterTurnout || 'N/A'}","${reportData.election.isActive ? 'Active' : 'Completed'}",${reportData.election.noneOfTheAboveVotes || 0}\n\n`;
       
       if (reportData.candidates && reportData.candidates.length > 0) {
         csvContent += 'Rank,Name,Party,Votes,Percentage,Gender,Age,Constituency\n';
@@ -588,6 +621,15 @@ const Reports = () => {
           const name = `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim();
           csvContent += `${index + 1},"${name}","${candidate.partyName || 'Independent'}",${candidate.votes || 0},"${candidate.percentage || 0}%","${candidate.gender || 'N/A'}","${candidate.age || 'N/A'}","${candidate.constituency || 'N/A'}"\n`;
         });
+        
+        // Add None of the Above row if it has votes
+        if (reportData.election.noneOfTheAboveVotes > 0) {
+          const noneOfTheAbovePercentage = reportData.election.totalVotes > 0 
+            ? ((reportData.election.noneOfTheAboveVotes / reportData.election.totalVotes) * 100).toFixed(2) 
+            : 0;
+            
+          csvContent += `${reportData.candidates.length + 1},"None of the Above","N/A",${reportData.election.noneOfTheAboveVotes},"${noneOfTheAbovePercentage}%","N/A","N/A","N/A"\n`;
+        }
       }
       
       fileName = `${reportData.election.title.replace(/\s+/g, '_')}_Report_${new Date().toISOString().split('T')[0]}.csv`;
@@ -599,10 +641,10 @@ const Reports = () => {
       fileName = `Voter_Participation_Report_${new Date().toISOString().split('T')[0]}.csv`;
     } else if ((reportType === 'date-range' || reportType === 'regional') && reportData.elections) {
       // Create CSV for elections list
-      csvContent = 'Title,Description,Start Date,End Date,Status,Total Votes,Voter Turnout,Region,Pincode\n';
+      csvContent = 'Title,Description,Start Date,End Date,Status,Total Votes,Voter Turnout,Region,Pincode,None of the Above Votes\n';
       
       reportData.elections.forEach(election => {
-        csvContent += `"${election.title || 'N/A'}","${election.description || 'N/A'}","${formatDate(election.startDate)}","${formatDate(election.endDate)}","${election.isActive ? 'Active' : 'Completed'}",${election.totalVotes || 0},"${election.voterTurnout || 'N/A'}","${election.region || 'N/A'}","${election.pincode || 'N/A'}"\n`;
+        csvContent += `"${election.title || 'N/A'}","${election.description || 'N/A'}","${formatDate(election.startDate)}","${formatDate(election.endDate)}","${election.isActive ? 'Active' : 'Completed'}",${election.totalVotes || 0},"${election.voterTurnout || 'N/A'}","${election.region || 'N/A'}","${election.pincode || 'N/A'}",${election.noneOfTheAboveVotes || 0}\n`;
       });
       
       fileName = `${getReportName().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
@@ -623,21 +665,21 @@ const Reports = () => {
       });
       
       csvContent += '\nELECTIONS INCLUDED\n';
-      csvContent += 'Election Title,Start Date,End Date,Total Votes,Region,Status\n';
+      csvContent += 'Election Title,Start Date,End Date,Total Votes,Region,Status,None of the Above Votes\n';
       
       reportData.elections.forEach(election => {
-        csvContent += `"${election.title || 'N/A'}","${formatDate(election.startDate)}","${formatDate(election.endDate)}",${election.totalVotes || 0},"${election.region || 'N/A'}","${election.isActive ? 'Active' : 'Completed'}"\n`;
+        csvContent += `"${election.title || 'N/A'}","${formatDate(election.startDate)}","${formatDate(election.endDate)}",${election.totalVotes || 0},"${election.region || 'N/A'}","${election.isActive ? 'Active' : 'Completed'}",${election.noneOfTheAboveVotes || 0}\n`;
       });
       
       // Third section: Detailed candidate performance by election
       csvContent += '\nDETAILED CANDIDATE PERFORMANCE BY ELECTION\n';
-      csvContent += 'Candidate,Party,Election,Votes,Percentage,Election Total Votes\n';
+      csvContent += 'Candidate,Party,Election,Votes,Percentage,Election Total Votes,None of the Above Votes\n';
       
       reportData.candidates.forEach(candidate => {
         if (candidate.elections && candidate.elections.length > 0) {
           candidate.elections.forEach(election => {
             const electionDetails = reportData.elections.find(e => e._id === election.id);
-            csvContent += `"${candidate.name}","${candidate.party}","${election.title || 'N/A'}",${election.votes || 0},${election.percentage ? election.percentage.toFixed(2) : 0}%,${election.totalVotes || 0}\n`;
+            csvContent += `"${candidate.name}","${candidate.party}","${election.title || 'N/A'}",${election.votes || 0},${election.percentage ? election.percentage.toFixed(2) : 0}%,${election.totalVotes || 0},${electionDetails?.noneOfTheAboveVotes || 0}\n`;
           });
         }
       });
@@ -1462,6 +1504,22 @@ const Reports = () => {
                                 </td>
                               </tr>
                             )}
+                            
+                            {/* None of the Above row */}
+                            {reportData.election.noneOfTheAboveVotes > 0 && (
+                              <tr>
+                                <td>{reportData.candidates.length + 1}</td>
+                                <td><strong>None of the Above</strong></td>
+                                <td>N/A</td>
+                                <td>
+                                  <Badge bg="warning" text="dark">
+                                    {reportData.election.noneOfTheAboveVotes} 
+                                    ({reportData.election.totalVotes > 0 ? 
+                                      ((reportData.election.noneOfTheAboveVotes / reportData.election.totalVotes) * 100).toFixed(2) : 0}%)
+                                  </Badge>
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </Table>
                       ) : (
@@ -1728,11 +1786,7 @@ const Reports = () => {
             left: 0;
             right: 0;
             bottom: 0;
-            background-image: 
-              linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
-              linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
-              linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%),
-              linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%);
+            background-image: none;
             background-size: 10px 10px;
             opacity: 0.3;
             z-index: 1;
@@ -1746,8 +1800,7 @@ const Reports = () => {
             left: 0;
             right: 0;
             bottom: 0;
-            background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
-            background-size: 15px 15px;
+            background-image: none;
             opacity: 0.2;
             z-index: 1;
           }
@@ -1801,9 +1854,7 @@ const Reports = () => {
             left: 0;
             right: 0;
             bottom: 0;
-            background-image: 
-              linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
-              linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%);
+            background-image: none;
             background-size: 10px 10px;
             opacity: 0.3;
             z-index: 1;
@@ -1914,7 +1965,7 @@ const Reports = () => {
           
           /* Blockchain hash style */
           .hash-style {
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             background-color: rgba(0, 0, 0, 0.1);
             padding: 0.2rem 0.5rem;
             border-radius: 4px;
@@ -1960,9 +2011,7 @@ const Reports = () => {
             left: 0;
             right: 0;
             bottom: 0;
-            background-image: 
-              linear-gradient(90deg, rgba(255, 255, 255, 0.5) 25%, transparent 25%),
-              linear-gradient(90deg, transparent 75%, rgba(255, 255, 255, 0.5) 75%);
+            background-image: none;
             background-size: 8px 1px;
           }
           
@@ -1993,7 +2042,7 @@ const Reports = () => {
           
           /* Blockchain badge styling */
           .blockchain-type-badge {
-            font-family: "Courier New", monospace;
+            font-family: monospace;
             font-weight: 600;
             letter-spacing: 0.5px;
             position: relative;
@@ -2059,10 +2108,7 @@ const Reports = () => {
             left: 0;
             right: 0;
             bottom: 0;
-            background-image: 
-              radial-gradient(circle at 25px 25px, rgba(255, 255, 255, 0.1) 1px, transparent 2px),
-              linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-              linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-image: none;
             background-size: 50px 50px, 25px 25px, 25px 25px;
             pointer-events: none;
             z-index: -1;
