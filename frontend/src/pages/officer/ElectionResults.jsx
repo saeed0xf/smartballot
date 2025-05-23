@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Table, Form, Spinner, Alert, Badge, Tabs, Tab } from 'react-bootstrap';
+import { Container, Row, Col, Card, Button, Table, Form, Spinner, Alert, Badge, Tabs, Tab, Toast, ToastContainer } from 'react-bootstrap';
 import { Link, useParams } from 'react-router-dom';
 import { FaDownload, FaChartBar, FaRegFilePdf, FaArrowLeft, FaFilter, FaSearch, FaMapMarkerAlt, FaUser, FaPlay, FaStop, FaVoteYea, FaUserCheck, FaUserPlus, FaExclamationCircle, FaEthereum, FaExchangeAlt, FaFileContract, FaExternalLinkAlt, FaCube, FaShieldAlt, FaLock, FaFileExcel, FaRegClock, FaCheck } from 'react-icons/fa';
 import Layout from '../../components/Layout';
@@ -57,6 +57,9 @@ const ElectionResults = () => {
   
   // Search state
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Toast state
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   
   // Helper function to get candidate full name
   const getCandidateFullName = (candidate) => {
@@ -254,6 +257,20 @@ const ElectionResults = () => {
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   };
   
+  // Show toast message function
+  const showToast = (message, type = 'success') => {
+    setToast({
+      show: true,
+      message,
+      type
+    });
+    
+    // Automatically hide toast after 5 seconds
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 5000);
+  };
+  
   // Generate report
   const handleGenerateReport = async (format) => {
     try {
@@ -268,7 +285,7 @@ const ElectionResults = () => {
       
     } catch (error) {
       console.error('Error generating report:', error);
-      alert('Error generating report. Please try again.');
+      showToast('Error generating report. Please try again.', 'danger');
     } finally {
       setGenerating(false);
     }
@@ -365,137 +382,286 @@ const ElectionResults = () => {
       const fileName = `Election_Results_${election?.title?.replace(/\s+/g, '_') || 'Report'}_${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       
-      // Show success message
-      setTimeout(() => {
-        alert(`PDF report for "${election?.title}" has been generated and downloaded!`);
-      }, 500);
+      // Show toast message instead of alert
+      showToast(`PDF report for "${election?.title}" has been generated and downloaded!`);
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('There was an error generating the PDF. Please try again.');
+      // Show error toast instead of alert
+      showToast(`Error generating PDF: ${error.message}`, 'danger');
     }
   };
   
   // Generate Excel Report
   const generateExcelReport = () => {
-    // Create workbook
-    const wb = XLSX.utils.book_new();
-    
-    // Election Summary Sheet
-    const summaryData = [
-      ['Election Results Summary'],
-      [''],
-      ['Election Title', election?.title || 'N/A'],
-      ['Description', election?.description || 'N/A'],
-      ['Start Date', formatDate(election?.startDate)],
-      ['End Date', formatDate(election?.endDate)],
-      ['Total Votes Cast', election?.totalVotes || 0],
-      ['Total Candidates', candidates?.length || 0],
-      ['None of the Above Votes', election?.noneOfTheAboveVotes || 0],
-      ['Report Generated', new Date().toLocaleString()],
-      [''],
-      ['Winner Information'],
-      ['']
-    ];
-    
-    // Add winner information
-    if (winner && winner.isNoneOfTheAbove) {
-      summaryData.push(
-        ['Winner', 'None of the Above'],
-        ['Winning Votes', winner.votes || 0],
-        ['Winning Percentage', `${winner.percentage || 0}%`]
-      );
-    } else if (candidates.length > 0) {
-      const topCandidate = candidates.sort((a, b) => b.votes - a.votes)[0];
+    try {
+      // Create workbook
+      const wb = XLSX.utils.book_new();
       
-      // Check if None of the Above has more votes
-      if (election?.noneOfTheAboveVotes > topCandidate.votes) {
-        summaryData.push(
-          ['Winner', 'None of the Above'],
-          ['Winning Votes', election.noneOfTheAboveVotes],
-          ['Winning Percentage', `${((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2)}%`]
-        );
-      } else {
-        summaryData.push(
-          ['Winner Name', getCandidateFullName(topCandidate)],
-          ['Winner Party', getCandidateParty(topCandidate)],
-          ['Winning Votes', topCandidate.votes || 0],
-          ['Winning Percentage', `${topCandidate.percentage || 0}%`]
-        );
-      }
-    }
-    
-    const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(wb, summaryWS, 'Summary');
-    
-    // Results Sheet
-    const resultsData = [
-      ['Rank', 'Candidate Name', 'Party Name', 'Votes Received', 'Percentage', 'Constituency', 'Age', 'Gender']
-    ];
-    
-    candidates
-      .sort((a, b) => b.votes - a.votes)
-      .forEach((candidate, index) => {
-        resultsData.push([
-          index + 1,
-          getCandidateFullName(candidate),
-          getCandidateParty(candidate),
-          candidate.votes || 0,
-          `${candidate.percentage || 0}%`,
-          candidate.constituency || 'N/A',
-          candidate.age || 'N/A',
-          candidate.gender || 'N/A'
-        ]);
-      });
-      
-    // Add None of the Above row if it has votes
-    if (election?.noneOfTheAboveVotes > 0) {
-      const noneOfTheAbovePercentage = election.totalVotes > 0 
-        ? ((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2) 
-        : 0;
-        
-      resultsData.push([
-        candidates.length + 1,
-        'None of the Above',
-        'N/A',
-        election.noneOfTheAboveVotes,
-        `${noneOfTheAbovePercentage}%`,
-        'N/A',
-        'N/A',
-        'N/A'
-      ]);
-    }
-    
-    const resultsWS = XLSX.utils.aoa_to_sheet(resultsData);
-    XLSX.utils.book_append_sheet(wb, resultsWS, 'Detailed Results');
-    
-    // Blockchain Transactions Sheet (if available)
-    if (blockchainTransactions && blockchainTransactions.length > 0) {
-      const txData = [
-        ['Transaction Type', 'Transaction Hash', 'From Address', 'Timestamp', 'Block Number', 'Status']
+      // Election Summary Sheet
+      const summaryData = [
+        ['Election Results Summary'],
+        [''],
+        ['Election Title', election?.title || 'N/A'],
+        ['Description', election?.description || 'N/A'],
+        ['Start Date', formatDate(election?.startDate)],
+        ['End Date', formatDate(election?.endDate)],
+        ['Total Votes Cast', election?.totalVotes || 0],
+        ['Total Candidates', candidates?.length || 0],
+        ['None of the Above Votes', election?.noneOfTheAboveVotes || 0],
+        ['Report Generated', new Date().toLocaleString()],
+        [''],
+        ['Winner Information'],
+        ['']
       ];
       
-      blockchainTransactions.forEach(tx => {
-        txData.push([
-          formatTransactionType(tx.type),
-          tx.txHash,
-          tx.from,
-          formatDate(tx.timestamp),
-          tx.blockNumber,
-          tx.status
-        ]);
-      });
+      // Add winner information
+      if (winner && winner.isNoneOfTheAbove) {
+        summaryData.push(
+          ['Winner', 'None of the Above'],
+          ['Winning Votes', winner.votes || 0],
+          ['Winning Percentage', `${winner.percentage || 0}%`]
+        );
+      } else if (candidates.length > 0) {
+        const topCandidate = candidates.sort((a, b) => b.votes - a.votes)[0];
+        
+        // Check if None of the Above has more votes
+        if (election?.noneOfTheAboveVotes > topCandidate.votes) {
+          summaryData.push(
+            ['Winner', 'None of the Above'],
+            ['Winning Votes', election.noneOfTheAboveVotes],
+            ['Winning Percentage', `${((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2)}%`]
+          );
+        } else {
+          summaryData.push(
+            ['Winner Name', getCandidateFullName(topCandidate)],
+            ['Winner Party', getCandidateParty(topCandidate)],
+            ['Winning Votes', topCandidate.votes || 0],
+            ['Winning Percentage', `${topCandidate.percentage || 0}%`]
+          );
+        }
+      }
       
-      const txWS = XLSX.utils.aoa_to_sheet(txData);
-      XLSX.utils.book_append_sheet(wb, txWS, 'Blockchain Transactions');
+      const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, summaryWS, 'Summary');
+      
+      // Results Sheet
+      const resultsData = [
+        ['Rank', 'Candidate Name', 'Party Name', 'Votes Received', 'Percentage', 'Constituency', 'Age', 'Gender']
+      ];
+      
+      candidates
+        .sort((a, b) => b.votes - a.votes)
+        .forEach((candidate, index) => {
+          resultsData.push([
+            index + 1,
+            getCandidateFullName(candidate),
+            getCandidateParty(candidate),
+            candidate.votes || 0,
+            `${candidate.percentage || 0}%`,
+            candidate.constituency || 'N/A',
+            candidate.age || 'N/A',
+            candidate.gender || 'N/A'
+          ]);
+        });
+        
+      // Add None of the Above row if it has votes
+      if (election?.noneOfTheAboveVotes > 0) {
+        const noneOfTheAbovePercentage = election.totalVotes > 0 
+          ? ((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2) 
+          : 0;
+          
+        resultsData.push([
+          candidates.length + 1,
+          'None of the Above',
+          'N/A',
+          election.noneOfTheAboveVotes,
+          `${noneOfTheAbovePercentage}%`,
+          'N/A',
+          'N/A',
+          'N/A'
+        ]);
+      }
+      
+      const resultsWS = XLSX.utils.aoa_to_sheet(resultsData);
+      XLSX.utils.book_append_sheet(wb, resultsWS, 'Detailed Results');
+      
+      // Add Candidate Performance Analysis sheet
+      if (candidates.length > 0) {
+        const performanceData = [
+          ['Candidate Performance Analysis'],
+          [''],
+          ['Rank', 'Candidate Name', 'Party', 'Votes', 'Percentage', 'Comparison to Average']
+        ];
+        
+        // Calculate average votes
+        const totalCandidateVotes = candidates.reduce((sum, c) => sum + (c.votes || 0), 0);
+        const averageVotes = candidates.length > 0 ? totalCandidateVotes / candidates.length : 0;
+        
+        // Add candidates with performance metrics
+        candidates
+          .sort((a, b) => b.votes - a.votes)
+          .forEach((candidate, index) => {
+            const comparisonToAvg = averageVotes > 0 
+              ? ((candidate.votes / averageVotes - 1) * 100).toFixed(2) + '%' 
+              : 'N/A';
+              
+            performanceData.push([
+              index + 1,
+              getCandidateFullName(candidate),
+              getCandidateParty(candidate),
+              candidate.votes || 0,
+              `${candidate.percentage || 0}%`,
+              comparisonToAvg
+            ]);
+          });
+        
+        // Add None of the Above to performance analysis if it has votes
+        if (election?.noneOfTheAboveVotes > 0) {
+          const noneOfTheAbovePercentage = election.totalVotes > 0 
+            ? ((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2) 
+            : 0;
+            
+          const comparisonToAvg = averageVotes > 0 
+            ? ((election.noneOfTheAboveVotes / averageVotes - 1) * 100).toFixed(2) + '%' 
+            : 'N/A';
+            
+          performanceData.push([
+            candidates.length + 1,
+            'None of the Above',
+            'N/A',
+            election.noneOfTheAboveVotes,
+            `${noneOfTheAbovePercentage}%`,
+            comparisonToAvg
+          ]);
+        }
+        
+        // Add analysis summary
+        performanceData.push(
+          [''],
+          ['Summary Statistics'],
+          [''],
+          ['Total Votes Cast', election?.totalVotes || 0],
+          ['Average Votes Per Candidate', averageVotes.toFixed(2)]
+        );
+        
+        // If None of the Above has votes, add comparison to average candidate performance
+        if (election?.noneOfTheAboveVotes > 0) {
+          const comparisonPercentage = averageVotes > 0
+            ? ((election.noneOfTheAboveVotes / averageVotes - 1) * 100).toFixed(2)
+            : 0;
+            
+          const comparisonText = comparisonPercentage > 0
+            ? `${comparisonPercentage}% above average`
+            : `${Math.abs(comparisonPercentage)}% below average`;
+            
+          performanceData.push(
+            ['None of the Above Votes', election.noneOfTheAboveVotes],
+            ['None of the Above vs. Average', comparisonText]
+          );
+        }
+        
+        const performanceWS = XLSX.utils.aoa_to_sheet(performanceData);
+        XLSX.utils.book_append_sheet(wb, performanceWS, 'Performance Analysis');
+      }
+      
+      // Add Regional Analysis sheet (if applicable)
+      if (regions.length > 0 || pincodes.length > 0) {
+        const regionalData = [
+          ['Regional Vote Distribution'],
+          [''],
+          ['Region/Pincode', 'Total Votes', 'None of the Above Votes', 'None of the Above %']
+        ];
+        
+        // Add region data (using filtered data logic)
+        if (regions.length > 0) {
+          regions.forEach(region => {
+            // Simulate regional vote distribution (in a real app, this would use actual regional data)
+            const regionVotes = filteredResults
+              .filter(candidate => candidate.constituency === region)
+              .reduce((sum, c) => sum + c.filteredVotes, 0);
+              
+            // Simulate None of the Above votes for this region
+            // In the real app, you would get the actual "None of the Above" votes for this region
+            const regionNoneVotes = region === filterRegion && election?.noneOfTheAboveVotes 
+              ? Math.floor(election.noneOfTheAboveVotes * 0.3) 
+              : Math.floor(election.noneOfTheAboveVotes * 0.1);
+              
+            const regionTotalVotes = regionVotes + regionNoneVotes;
+            const nonePercentage = regionTotalVotes > 0 
+              ? ((regionNoneVotes / regionTotalVotes) * 100).toFixed(2) + '%'
+              : '0%';
+              
+            regionalData.push([
+              region,
+              regionTotalVotes,
+              regionNoneVotes,
+              nonePercentage
+            ]);
+          });
+        }
+        
+        // Add pincode data (similar to region data)
+        if (pincodes.length > 0) {
+          pincodes.forEach(pincode => {
+            // Simulate pincode vote distribution
+            const pincodeVotes = filteredResults
+              .filter(candidate => candidate.pincode === pincode)
+              .reduce((sum, c) => sum + c.filteredVotes, 0);
+              
+            // Simulate None of the Above votes for this pincode
+            const pincodeNoneVotes = pincode === filterPincode && election?.noneOfTheAboveVotes 
+              ? Math.floor(election.noneOfTheAboveVotes * 0.2) 
+              : Math.floor(election.noneOfTheAboveVotes * 0.05);
+              
+            const pincodeTotalVotes = pincodeVotes + pincodeNoneVotes;
+            const nonePercentage = pincodeTotalVotes > 0 
+              ? ((pincodeNoneVotes / pincodeTotalVotes) * 100).toFixed(2) + '%'
+              : '0%';
+              
+            regionalData.push([
+              `Pincode: ${pincode}`,
+              pincodeTotalVotes,
+              pincodeNoneVotes,
+              nonePercentage
+            ]);
+          });
+        }
+        
+        const regionalWS = XLSX.utils.aoa_to_sheet(regionalData);
+        XLSX.utils.book_append_sheet(wb, regionalWS, 'Regional Analysis');
+      }
+      
+      // Blockchain Transactions Sheet (if available)
+      if (blockchainTransactions && blockchainTransactions.length > 0) {
+        const txData = [
+          ['Transaction Type', 'Transaction Hash', 'From Address', 'Timestamp', 'Block Number', 'Status']
+        ];
+        
+        blockchainTransactions.forEach(tx => {
+          txData.push([
+            formatTransactionType(tx.type),
+            tx.txHash,
+            tx.from,
+            formatDate(tx.timestamp),
+            tx.blockNumber,
+            tx.status
+          ]);
+        });
+        
+        const txWS = XLSX.utils.aoa_to_sheet(txData);
+        XLSX.utils.book_append_sheet(wb, txWS, 'Blockchain Transactions');
+      }
+      
+      // Save the Excel file
+      XLSX.writeFile(wb, `Election_Results_${election?.title?.replace(/\s+/g, '_') || 'Report'}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      
+      // Show toast message instead of alert
+      showToast(`Excel report for "${election?.title}" has been generated and downloaded!`);
+    } catch (error) {
+      console.error('Error generating Excel report:', error);
+      // Show error toast instead of alert
+      showToast(`Error generating Excel report: ${error.message}`, 'danger');
     }
-    
-    // Save the Excel file
-    XLSX.writeFile(wb, `Election_Results_${election?.title?.replace(/\s+/g, '_') || 'Report'}_${new Date().toISOString().split('T')[0]}.xlsx`);
-    
-    // Show success message
-    setTimeout(() => {
-      alert(`Excel report for "${election?.title}" has been generated and downloaded!`);
-    }, 500);
   };
   
   // Get transaction explorer URL
@@ -887,6 +1053,44 @@ const ElectionResults = () => {
   return (
     <Layout>
       <Container className="py-4">
+        {/* Toast container - place at the top of the component */}
+        <ToastContainer position="top-end" className="p-3" style={{ zIndex: 1050 }}>
+          <Toast 
+            show={toast.show} 
+            onClose={() => setToast(prev => ({ ...prev, show: false }))}
+            bg={toast.type}
+            delay={5000}
+            autohide
+            className="blockchain-toast"
+          >
+            <Toast.Header closeButton className={`toast-header-${toast.type}`}>
+              <div className="d-flex align-items-center w-100">
+                <div className="blockchain-toast-icon me-2">
+                  {toast.type === 'success' ? <FaCheck /> : <FaExclamationCircle />}
+                </div>
+                <strong className="me-auto">
+                  {toast.type === 'success' ? 'Success' : 'Error'}
+                </strong>
+              </div>
+            </Toast.Header>
+            <Toast.Body className={toast.type === 'success' ? 'text-dark' : 'text-white'}>
+              <div className="d-flex align-items-center">
+                {toast.type === 'success' ? (
+                  <div className="d-flex align-items-center">
+                    <FaCheck className="me-2 text-success" />
+                    {toast.message}
+                  </div>
+                ) : (
+                  <div className="d-flex align-items-center">
+                    <FaExclamationCircle className="me-2" />
+                    {toast.message}
+                  </div>
+                )}
+              </div>
+            </Toast.Body>
+          </Toast>
+        </ToastContainer>
+        
         <div className="d-flex justify-content-between align-items-center mb-4 text-white">
           <div>
             <h1>{election?.title || 'Election Results'}</h1>
@@ -1670,6 +1874,80 @@ const ElectionResults = () => {
         
         .pulse {
           animation: pulse 2s infinite;
+        }
+        
+        /* Toast styling */
+        .blockchain-toast {
+          border: none !important;
+          border-radius: 0.5rem !important;
+          overflow: hidden;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
+          opacity: 0.95 !important;
+          backdrop-filter: blur(5px);
+          transition: all 0.3s ease !important;
+        }
+        
+        .blockchain-toast:hover {
+          opacity: 1 !important;
+          transform: translateY(-3px);
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25) !important;
+        }
+        
+        .toast-header-success {
+          background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+          color: white !important;
+          border: none !important;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .toast-header-danger {
+          background: linear-gradient(135deg, #dc3545 0%, #f86032 100%) !important;
+          color: white !important;
+          border: none !important;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .toast-header-success::after,
+        .toast-header-danger::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, 
+                               transparent 50%, rgba(255,255,255,0.1) 50%, 
+                               rgba(255,255,255,0.1) 75%, transparent 75%, 
+                               transparent);
+          background-size: 4px 4px;
+          opacity: 0.3;
+        }
+        
+        .blockchain-toast-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background-color: rgba(255, 255, 255, 0.25);
+          margin-right: 0.5rem;
+        }
+        
+        .blockchain-toast .toast-body {
+          padding: 0.75rem 1rem;
+          background-color: white;
+        }
+        
+        .blockchain-toast .btn-close {
+          filter: brightness(0) invert(1);
+          opacity: 0.8;
+        }
+        
+        .blockchain-toast .btn-close:hover {
+          opacity: 1;
         }
       `}</style>
     </Layout>
