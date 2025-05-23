@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Form, Spinner, Alert, Badge, Table, Tabs, Tab, ListGroup, Modal } from 'react-bootstrap';
+import { Container, Row, Col, Card, Button, Form, Spinner, Alert, Badge, Table, Tabs, Tab, ListGroup, Modal, Toast, ToastContainer } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaDownload, FaChartBar, FaFilePdf, FaFileExcel, FaFileAlt, FaArrowLeft, FaFilter, FaCalendarAlt, FaUsers, FaUserCheck, FaChartPie, FaMapMarkerAlt, FaSearch, FaCubes, FaHistory } from 'react-icons/fa';
+import { FaDownload, FaChartBar, FaFilePdf, FaFileExcel, FaFileAlt, FaArrowLeft, FaFilter, FaCalendarAlt, FaUsers, FaUserCheck, FaChartPie, FaMapMarkerAlt, FaSearch, FaCubes, FaHistory, FaCheck, FaExclamationCircle } from 'react-icons/fa';
 import Layout from '../../components/Layout';
 import axios from 'axios';
 import env from '../../utils/env';
@@ -30,6 +30,7 @@ const Reports = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reportData, setReportData] = useState(null);
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   
   // Fetch elections from remote database and load saved reports from localStorage
   useEffect(() => {
@@ -272,6 +273,20 @@ const Reports = () => {
     }
   };
   
+  // Show toast message function
+  const showToast = (message, type = 'success') => {
+    setToast({
+      show: true,
+      message,
+      type
+    });
+    
+    // Automatically hide toast after 5 seconds
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 5000);
+  };
+  
   // Generate report in the selected format
   const generateReport = () => {
     setIsGenerating(true);
@@ -318,12 +333,13 @@ const Reports = () => {
       // Switch to history tab
       setActiveTab('history');
       
-      // Show success message
-      alert(`Report "${newReport.name}" has been generated successfully!`);
+      // Show toast message instead of alert
+      showToast(`Report "${newReport.name}" has been generated successfully!`);
       
     } catch (error) {
       console.error('Error generating report:', error);
-      alert(`Error generating report: ${error.message}`);
+      // Show error toast instead of alert
+      showToast(`Error generating report: ${error.message}`, 'danger');
       setIsGenerating(false);
     }
   };
@@ -977,7 +993,8 @@ const Reports = () => {
       }
     } catch (error) {
       console.error('Error downloading report:', error);
-      alert(`Error downloading report: ${error.message}`);
+      // Show error toast instead of alert
+      showToast(`Error downloading report: ${error.message}`, 'danger');
       setLoading(false);
     }
   };
@@ -1004,6 +1021,44 @@ const Reports = () => {
   return (
     <Layout>
       <Container className="py-4">
+        {/* Add Toast container at the top of the component */}
+        <ToastContainer position="top-end" className="p-3" style={{ zIndex: 1050 }}>
+          <Toast 
+            show={toast.show} 
+            onClose={() => setToast(prev => ({ ...prev, show: false }))}
+            bg={toast.type}
+            delay={5000}
+            autohide
+            className="blockchain-toast"
+          >
+            <Toast.Header closeButton className={`toast-header-${toast.type}`}>
+              <div className="d-flex align-items-center w-100">
+                <div className="blockchain-toast-icon me-2">
+                  {toast.type === 'success' ? <FaCheck /> : <FaExclamationCircle />}
+                </div>
+                <strong className="me-auto">
+                  {toast.type === 'success' ? 'Success' : 'Error'}
+                </strong>
+              </div>
+            </Toast.Header>
+            <Toast.Body className={toast.type === 'success' ? 'text-dark' : 'text-white'}>
+              <div className="d-flex align-items-center">
+                {toast.type === 'success' ? (
+                  <div className="d-flex align-items-center">
+                    <FaCheck className="me-2 text-success" />
+                    {toast.message}
+                  </div>
+                ) : (
+                  <div className="d-flex align-items-center">
+                    <FaExclamationCircle className="me-2" />
+                    {toast.message}
+                  </div>
+                )}
+              </div>
+            </Toast.Body>
+          </Toast>
+        </ToastContainer>
+        
         <div className="d-flex justify-content-between align-items-center mb-4 text-white">
           <div>
             <h1 className="blockchain-title">Reports Center</h1>
@@ -1051,7 +1106,7 @@ const Reports = () => {
                           <option value="date-range">Date Range Report</option>
                           <option value="regional">Regional Report</option>
                           <option value="voter-participation">Voter Participation Report</option>
-                          <option value="candidate-performance">Candidate Performance Report</option>
+                          {/* <option value="candidate-performance">Candidate Performance Report</option> */}
                         </Form.Select>
                       </Form.Group>
                       
@@ -2112,6 +2167,80 @@ const Reports = () => {
             background-size: 50px 50px, 25px 25px, 25px 25px;
             pointer-events: none;
             z-index: -1;
+          }
+          
+          /* Toast styling */
+          .blockchain-toast {
+            border: none !important;
+            border-radius: 0.5rem !important;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
+            opacity: 0.95 !important;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease !important;
+          }
+          
+          .blockchain-toast:hover {
+            opacity: 1 !important;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25) !important;
+          }
+          
+          .toast-header-success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+            color: white !important;
+            border: none !important;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .toast-header-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #f86032 100%) !important;
+            color: white !important;
+            border: none !important;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .toast-header-success::after,
+          .toast-header-danger::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, 
+                                         transparent 50%, rgba(255,255,255,0.1) 50%, 
+                                         rgba(255,255,255,0.1) 75%, transparent 75%, 
+                                         transparent);
+            background-size: 4px 4px;
+            opacity: 0.3;
+          }
+          
+          .blockchain-toast-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.25);
+            margin-right: 0.5rem;
+          }
+          
+          .blockchain-toast .toast-body {
+            padding: 0.75rem 1rem;
+            background-color: white;
+          }
+          
+          .blockchain-toast .btn-close {
+            filter: brightness(0) invert(1);
+            opacity: 0.8;
+          }
+          
+          .blockchain-toast .btn-close:hover {
+            opacity: 1;
           }
         `}</style>
       </Container>
