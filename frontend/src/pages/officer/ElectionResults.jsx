@@ -819,8 +819,8 @@ const ElectionResults = () => {
                 <Col md={6}>
                   <p><strong>Description:</strong> {election?.description}</p>
                   <p><strong>Period:</strong> {formatDate(election?.startDate)} to {formatDate(election?.endDate)}</p>
-                  <p><strong>Status:</strong> <Badge bg={election?.status === 'active' ? 'success' : 'secondary'}>
-                    {election?.status === 'active' ? 'Active' : 'Completed'}
+                  <p><strong>Status:</strong> <Badge bg={election?.isActive ? 'success' : 'secondary'}>
+                    {election?.isActive ? 'Active' : 'Completed'}
                   </Badge></p>
                 </Col>
                 <Col md={6}>
@@ -1107,7 +1107,7 @@ const ElectionResults = () => {
                         <tr>
                           <th>Type</th>
                           <th>Transaction Hash</th>
-                            <th>From Address</th>
+                            {/* <th>From Address</th> */}
                           <th>Timestamp</th>
                             <th>Block #</th>
                             <th>Status</th>
@@ -1129,11 +1129,11 @@ const ElectionResults = () => {
                                 {formatWalletAddress(tx.txHash)}
                                 </code>
                             </td>
-                            <td className="align-middle">
+                            {/* <td className="align-middle">
                                 <code className="wallet-address">
                               {formatWalletAddress(tx.from)}
                                 </code>
-                            </td>
+                            </td> */}
                             <td className="align-middle">
                                 <div>
                               {formatDate(tx.timestamp)}
