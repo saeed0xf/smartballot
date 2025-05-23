@@ -474,13 +474,37 @@ const ElectionResults = () => {
   
   // Add this function to filter elections based on search term
   const getFilteredElections = () => {
-    if (!searchTerm.trim()) return elections;
+    if (!searchTerm.trim()) {
+      // If no search term, just sort by active status (active first)
+      return [...elections].sort((a, b) => {
+        // Sort by active status first
+        if (a.isActive && !b.isActive) return -1;
+        if (!a.isActive && b.isActive) return 1;
+        
+        // If both have same active status, sort by start date (newest first)
+        const aDate = new Date(a.startDate || 0);
+        const bDate = new Date(b.startDate || 0);
+        return bDate - aDate;
+      });
+    }
     
-    return elections.filter(election => 
-      election.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      election.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      election.region?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // If there's a search term, filter and then sort
+    return elections
+      .filter(election => 
+        election.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        election.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        election.region?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        // Sort by active status first
+        if (a.isActive && !b.isActive) return -1;
+        if (!a.isActive && b.isActive) return 1;
+        
+        // If both have same active status, sort by start date (newest first)
+        const aDate = new Date(a.startDate || 0);
+        const bDate = new Date(b.startDate || 0);
+        return bDate - aDate;
+      });
   };
   
   // Render loading state
@@ -591,10 +615,14 @@ const ElectionResults = () => {
               </div>
               
               <div className="elections-grid p-4">
+                {/* Get filtered and sorted elections with active ones first */}
                 {getFilteredElections().map((election) => (
-                  <Card key={election._id} className="election-card h-100 border-0 shadow-sm">
+                  <Card 
+                    key={election._id} 
+                    className={`election-card h-100 border-0 shadow-sm ${election.isActive ? 'active-election' : ''}`}
+                  >
                     <div className="position-relative">
-                      <div className="blockchain-card-header p-3 pb-5 text-white">
+                      <div className={`blockchain-card-header p-3 pb-5 text-white ${election.isActive ? 'active-header' : ''}`}>
                         <Badge 
                           className="election-status-badge py-2 px-3"
                           bg={election.isActive ? 'success' : 'secondary'}
@@ -637,13 +665,6 @@ const ElectionResults = () => {
                               <strong>Region:</strong> {election.region || 'National'}
                             </div>
                           </div>
-                          
-                          {/* <div className="detail-item d-flex align-items-center">
-                            <FaCube className="text-muted me-2" />
-                            <div className="small">
-                              <strong>Blockchain ID:</strong> #{election._id?.substring(0, 8)}
-                            </div>
-                          </div> */}
                         </div>
                       </Card.Body>
                       
@@ -688,6 +709,18 @@ const ElectionResults = () => {
             border-radius: 0.375rem 0.375rem 0 0;
           }
           
+          .active-header {
+            background: linear-gradient(135deg, #38ef7d 0%, #11998e 100%);
+          }
+          
+          .active-election {
+            transform: scale(1.02);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
+            border: 2px solid rgba(56, 239, 125, 0.3) !important;
+            z-index: 1;
+            position: relative;
+          }
+          
           .blockchain-card-stats {
             margin-top: -30px;
             border-radius: 0.5rem;
@@ -721,8 +754,9 @@ const ElectionResults = () => {
           
           .elections-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
             gap: 1.5rem;
+            width: 100%;
           }
           
           .election-card {
@@ -1430,6 +1464,7 @@ const ElectionResults = () => {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
           gap: 1.5rem;
+          width: 100%;
         }
         
         .election-card {
