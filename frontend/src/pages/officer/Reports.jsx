@@ -161,6 +161,92 @@ const Reports = () => {
           };
           break;
           
+        case 'candidate-performance':
+          // For candidate performance, fetch all elections and aggregate candidate data
+          const electionsResponse = await axios.get(
+            `${API_URL}/officer/elections/all`,
+            { headers }
+          );
+          
+          // Initialize aggregated data structure
+          const candidatePerformanceData = {
+            elections: electionsResponse.data.elections || [],
+            candidates: []
+          };
+          
+          // Fetch detailed information for each election to get candidate data
+          const candidatesMap = new Map();
+          
+          // Process only up to 5 most recent elections for performance reasons
+          const recentElections = candidatePerformanceData.elections
+            .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))
+            .slice(0, 5);
+          
+          // Fetch candidate data for each election
+          for (const election of recentElections) {
+            try {
+              const electionDetailsResponse = await axios.get(
+                `${API_URL}/officer/elections/${election._id}/results`,
+                { headers }
+              );
+              
+              if (electionDetailsResponse.data.candidates && 
+                  electionDetailsResponse.data.candidates.length > 0) {
+                
+                // Add election info to each candidate
+                electionDetailsResponse.data.candidates.forEach(candidate => {
+                  const candidateKey = `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim();
+                  
+                  if (candidatesMap.has(candidateKey)) {
+                    // Update existing candidate data
+                    const existingData = candidatesMap.get(candidateKey);
+                    existingData.totalVotes += candidate.votes || 0;
+                    existingData.elections.push({
+                      id: election._id,
+                      title: election.title,
+                      votes: candidate.votes || 0,
+                      percentage: candidate.percentage || 0,
+                      totalVotes: election.totalVotes || 0
+                    });
+                    
+                    // Update averages and max values
+                    existingData.avgPercentage = existingData.elections.reduce((sum, e) => sum + e.percentage, 0) / existingData.elections.length;
+                    existingData.maxPercentage = Math.max(existingData.maxPercentage, candidate.percentage || 0);
+                    existingData.totalElections = existingData.elections.length;
+                  } else {
+                    // Create new candidate entry
+                    candidatesMap.set(candidateKey, {
+                      name: candidateKey,
+                      party: candidate.partyName || 'Independent',
+                      gender: candidate.gender || 'N/A',
+                      age: candidate.age || 'N/A',
+                      totalVotes: candidate.votes || 0,
+                      avgPercentage: candidate.percentage || 0,
+                      maxPercentage: candidate.percentage || 0,
+                      totalElections: 1,
+                      elections: [{
+                        id: election._id,
+                        title: election.title,
+                        votes: candidate.votes || 0,
+                        percentage: candidate.percentage || 0,
+                        totalVotes: election.totalVotes || 0
+                      }]
+                    });
+                  }
+                });
+              }
+            } catch (error) {
+              console.error(`Error fetching details for election ${election._id}:`, error);
+            }
+          }
+          
+          // Convert map to array and sort by total votes
+          candidatePerformanceData.candidates = Array.from(candidatesMap.values())
+            .sort((a, b) => b.totalVotes - a.totalVotes);
+          
+          data = candidatePerformanceData;
+          break;
+          
         default:
           break;
       }
@@ -328,6 +414,62 @@ const Reports = () => {
       
       const electionsSheet = XLSX.utils.aoa_to_sheet(electionsData);
       XLSX.utils.book_append_sheet(wb, electionsSheet, 'Elections');
+    } else if (reportType === 'candidate-performance' && reportData.candidates) {
+      // Add Candidate Performance Summary sheet
+      const summaryData = [
+        ['Candidate Performance Analytics Report'],
+        [''],
+        ['Generated On', formatDate(new Date())],
+        ['Total Candidates Analyzed', reportData.candidates.length.toString()],
+        ['Elections Analyzed', reportData.elections.length.toString()],
+        ['']
+      ];
+      
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+      
+      // Add Candidate Performance sheet
+      const candidatePerformanceData = [
+        ['Rank', 'Candidate Name', 'Party', 'Total Votes', 'Avg Vote %', 'Max Vote %', 'Elections Contested', 'Gender', 'Age']
+      ];
+      
+      reportData.candidates.forEach((candidate, index) => {
+        candidatePerformanceData.push([
+          index + 1,
+          candidate.name,
+          candidate.party,
+          candidate.totalVotes,
+          candidate.avgPercentage ? `${candidate.avgPercentage.toFixed(2)}%` : '0%',
+          candidate.maxPercentage ? `${candidate.maxPercentage.toFixed(2)}%` : '0%',
+          candidate.totalElections,
+          candidate.gender,
+          candidate.age
+        ]);
+      });
+      
+      const performanceSheet = XLSX.utils.aoa_to_sheet(candidatePerformanceData);
+      XLSX.utils.book_append_sheet(wb, performanceSheet, 'Candidate Performance');
+      
+      // Add Election Details sheet
+      if (reportData.elections.length > 0) {
+        const electionDetailsData = [
+          ['Election Title', 'Start Date', 'End Date', 'Total Votes', 'Region', 'Status']
+        ];
+        
+        reportData.elections.forEach(election => {
+          electionDetailsData.push([
+            election.title || 'N/A',
+            formatDate(election.startDate),
+            formatDate(election.endDate),
+            election.totalVotes || 0,
+            election.region || 'N/A',
+            election.isActive ? 'Active' : 'Completed'
+          ]);
+        });
+        
+        const electionsSheet = XLSX.utils.aoa_to_sheet(electionDetailsData);
+        XLSX.utils.book_append_sheet(wb, electionsSheet, 'Elections');
+      }
     }
     
     // Generate filename
@@ -374,6 +516,15 @@ const Reports = () => {
       });
       
       fileName = `${getReportName().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    } else if (reportType === 'candidate-performance' && reportData.candidates) {
+      // Create CSV for candidate performance report
+      csvContent = 'Rank,Candidate Name,Party,Total Votes,Avg Vote %,Max Vote %,Elections Contested,Gender,Age\n';
+      
+      reportData.candidates.forEach((candidate, index) => {
+        csvContent += `${index + 1},"${candidate.name}","${candidate.party}",${candidate.totalVotes},${candidate.avgPercentage ? candidate.avgPercentage.toFixed(2) : 0}%,${candidate.maxPercentage ? candidate.maxPercentage.toFixed(2) : 0}%,${candidate.totalElections},"${candidate.gender}","${candidate.age}"\n`;
+      });
+      
+      fileName = `Candidate_Performance_Report_${new Date().toISOString().split('T')[0]}.csv`;
     }
     
     // Create and download the CSV file
@@ -476,7 +627,7 @@ const Reports = () => {
         return 'This report offers comprehensive data on voter engagement, demographic breakdowns, turnout rates by region, and comparison with previous elections.';
       
       case 'candidate-performance':
-        return 'This report analyzes candidate performance across various demographics, regions, and other metrics to provide insights into voting patterns.';
+        return 'This report analyzes candidate performance across multiple elections, showing voting trends, comparative performance metrics, and election history for each candidate.';
       
       default:
         return 'Election report with detailed analytics and statistics.';
@@ -1074,6 +1225,105 @@ const Reports = () => {
                     ) : (
                       <p className="text-muted">No elections found for the selected criteria</p>
                     )}
+                  </div>
+                )}
+                
+                {reportType === 'candidate-performance' && reportData.candidates && (
+                  <div className="mb-4">
+                    <Card className="border-0 shadow-sm mb-3">
+                      <Card.Header className="bg-light">
+                        <h6 className="mb-0">Candidate Performance Analytics</h6>
+                      </Card.Header>
+                      <Card.Body>
+                        <Row className="text-center mb-3">
+                          <Col xs={6} md={3} className="mb-3">
+                            <div className="border rounded p-3">
+                              <h5 className="mb-1">{reportData.candidates.length}</h5>
+                              <p className="text-muted small mb-0">Candidates Analyzed</p>
+                            </div>
+                          </Col>
+                          <Col xs={6} md={3} className="mb-3">
+                            <div className="border rounded p-3">
+                              <h5 className="mb-1">{reportData.elections.length}</h5>
+                              <p className="text-muted small mb-0">Elections Covered</p>
+                            </div>
+                          </Col>
+                          <Col xs={6} md={3} className="mb-3">
+                            <div className="border rounded p-3">
+                              <h5 className="mb-1">
+                                {reportData.candidates.length > 0 ? 
+                                  reportData.candidates[0].name : 'N/A'}
+                              </h5>
+                              <p className="text-muted small mb-0">Top Performer</p>
+                            </div>
+                          </Col>
+                          <Col xs={6} md={3} className="mb-3">
+                            <div className="border rounded p-3">
+                              <h5 className="mb-1">
+                                {reportData.candidates.length > 0 ?
+                                  reportData.candidates.reduce((max, c) => 
+                                    Math.max(max, c.totalVotes), 0) : 0}
+                              </h5>
+                              <p className="text-muted small mb-0">Highest Vote Count</p>
+                            </div>
+                          </Col>
+                        </Row>
+                      </Card.Body>
+                    </Card>
+                    
+                    <div className="mb-3">
+                      <h6 className="mb-2">Top Candidates by Total Votes</h6>
+                      {reportData.candidates && reportData.candidates.length > 0 ? (
+                        <Table responsive size="sm" className="border">
+                          <thead className="table-light">
+                            <tr>
+                              <th>Rank</th>
+                              <th>Name</th>
+                              <th>Party</th>
+                              <th>Total Votes</th>
+                              <th>Avg %</th>
+                              <th>Elections</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reportData.candidates.slice(0, 5).map((candidate, index) => (
+                              <tr key={index}>
+                                <td>{index + 1}</td>
+                                <td>{candidate.name}</td>
+                                <td>{candidate.party}</td>
+                                <td>{candidate.totalVotes}</td>
+                                <td>
+                                  <Badge bg="primary">
+                                    {candidate.avgPercentage ? 
+                                      `${candidate.avgPercentage.toFixed(2)}%` : '0%'}
+                                  </Badge>
+                                </td>
+                                <td>{candidate.totalElections}</td>
+                              </tr>
+                            ))}
+                            {reportData.candidates.length > 5 && (
+                              <tr>
+                                <td colSpan="6" className="text-center">
+                                  <small className="text-muted">
+                                    + {reportData.candidates.length - 5} more candidates
+                                  </small>
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </Table>
+                      ) : (
+                        <p className="text-muted">No candidate data available</p>
+                      )}
+                    </div>
+                    
+                    <div>
+                      <h6 className="mb-2">Elections Analyzed</h6>
+                      <p className="text-muted small">
+                        This report analyzes candidate performance across {reportData.elections.length} recent elections,
+                        comparing vote counts, percentages, and consistency of performance.
+                      </p>
+                    </div>
                   </div>
                 )}
                 
