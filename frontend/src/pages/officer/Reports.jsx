@@ -31,7 +31,7 @@ const Reports = () => {
   const [error, setError] = useState('');
   const [reportData, setReportData] = useState(null);
   
-  // Fetch elections from remote database
+  // Fetch elections from remote database and load saved reports from localStorage
   useEffect(() => {
     const fetchElections = async () => {
       try {
@@ -72,8 +72,16 @@ const Reports = () => {
     
     fetchElections();
     
-    // Fetch previous reports (if we had a real API for this)
-    // For now, we'll keep track of generated reports in state
+    // Load saved reports from localStorage
+    try {
+      const savedReports = localStorage.getItem('votesure_generated_reports');
+      if (savedReports) {
+        setGeneratedReports(JSON.parse(savedReports));
+        console.log('Loaded reports from localStorage:', JSON.parse(savedReports).length);
+      }
+    } catch (error) {
+      console.error('Error loading reports from localStorage:', error);
+    }
   }, []);
   
   // Handle form submission
@@ -286,7 +294,18 @@ const Reports = () => {
         size: calculateReportSize() 
       };
       
-      setGeneratedReports(prev => [newReport, ...prev]);
+      // Update state with the new report
+      const updatedReports = [newReport, ...generatedReports];
+      setGeneratedReports(updatedReports);
+      
+      // Save to localStorage
+      try {
+        localStorage.setItem('votesure_generated_reports', JSON.stringify(updatedReports));
+        console.log('Saved reports to localStorage:', updatedReports.length);
+      } catch (error) {
+        console.error('Error saving reports to localStorage:', error);
+      }
+      
       setIsGenerating(false);
       setShowPreview(false);
       
@@ -470,6 +489,77 @@ const Reports = () => {
         const electionsSheet = XLSX.utils.aoa_to_sheet(electionDetailsData);
         XLSX.utils.book_append_sheet(wb, electionsSheet, 'Elections');
       }
+      
+      // Add Individual Candidate Performance sheets
+      // Limit to top 10 candidates to avoid too many sheets
+      const topCandidates = reportData.candidates.slice(0, 10);
+      
+      topCandidates.forEach(candidate => {
+        if (candidate.elections && candidate.elections.length > 0) {
+          // Create sheet for each candidate's detailed performance
+          const candidateSheetName = candidate.name.substring(0, 28); // Limit sheet name length
+          const candidateDetailData = [
+            [`Performance Details for ${candidate.name} (${candidate.party})`],
+            [''],
+            ['Total Votes Across All Elections', candidate.totalVotes.toString()],
+            ['Average Vote Percentage', `${candidate.avgPercentage ? candidate.avgPercentage.toFixed(2) : 0}%`],
+            ['Maximum Vote Percentage', `${candidate.maxPercentage ? candidate.maxPercentage.toFixed(2) : 0}%`],
+            ['Total Elections Contested', candidate.totalElections.toString()],
+            ['Gender', candidate.gender],
+            ['Age', candidate.age.toString()],
+            [''],
+            ['Election-by-Election Performance'],
+            [''],
+            ['Election Title', 'Votes', 'Percentage', 'Total Election Votes', 'Date']
+          ];
+          
+          // Add each election performance
+          candidate.elections.forEach(election => {
+            candidateDetailData.push([
+              election.title || 'N/A',
+              election.votes || 0,
+              `${election.percentage ? election.percentage.toFixed(2) : 0}%`,
+              election.totalVotes || 0,
+              formatDate(reportData.elections.find(e => e._id === election.id)?.startDate) || 'N/A'
+            ]);
+          });
+          
+          const candidateDetailSheet = XLSX.utils.aoa_to_sheet(candidateDetailData);
+          XLSX.utils.book_append_sheet(wb, candidateDetailSheet, candidateSheetName);
+        }
+      });
+      
+      // Add Comparative Analysis sheet
+      const comparativeData = [
+        ['Comparative Candidate Analysis'],
+        [''],
+        ['Candidate', 'Election 1', 'Election 2', 'Election 3', 'Election 4', 'Election 5']
+      ];
+      
+      // Get the 5 most recent elections for comparison
+      const recentElections = reportData.elections
+        .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))
+        .slice(0, 5);
+      
+      // Update header with actual election names
+      comparativeData[2] = ['Candidate', 
+        ...recentElections.map(e => e.title || `Election ${e._id}`)
+      ];
+      
+      // Add performance data for each candidate across these elections
+      reportData.candidates.slice(0, 15).forEach(candidate => {
+        const row = [candidate.name];
+        
+        recentElections.forEach(election => {
+          const candidateElection = candidate.elections.find(e => e.id === election._id);
+          row.push(candidateElection ? `${candidateElection.percentage.toFixed(2)}%` : 'N/A');
+        });
+        
+        comparativeData.push(row);
+      });
+      
+      const comparativeSheet = XLSX.utils.aoa_to_sheet(comparativeData);
+      XLSX.utils.book_append_sheet(wb, comparativeSheet, 'Comparative Analysis');
     }
     
     // Generate filename
@@ -517,11 +607,39 @@ const Reports = () => {
       
       fileName = `${getReportName().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
     } else if (reportType === 'candidate-performance' && reportData.candidates) {
-      // Create CSV for candidate performance report
-      csvContent = 'Rank,Candidate Name,Party,Total Votes,Avg Vote %,Max Vote %,Elections Contested,Gender,Age\n';
+      // Create comprehensive CSV for candidate performance report
+      // First section: Summary
+      csvContent = 'Candidate Performance Analytics Report\n\n';
+      csvContent += `Generated On,${formatDate(new Date())}\n`;
+      csvContent += `Total Candidates Analyzed,${reportData.candidates.length}\n`;
+      csvContent += `Elections Analyzed,${reportData.elections.length}\n\n`;
+      
+      // Second section: Candidate Performance Overview
+      csvContent += 'CANDIDATE PERFORMANCE OVERVIEW\n';
+      csvContent += 'Rank,Candidate Name,Party,Total Votes,Avg Vote %,Max Vote %,Elections Contested,Gender,Age\n';
       
       reportData.candidates.forEach((candidate, index) => {
         csvContent += `${index + 1},"${candidate.name}","${candidate.party}",${candidate.totalVotes},${candidate.avgPercentage ? candidate.avgPercentage.toFixed(2) : 0}%,${candidate.maxPercentage ? candidate.maxPercentage.toFixed(2) : 0}%,${candidate.totalElections},"${candidate.gender}","${candidate.age}"\n`;
+      });
+      
+      csvContent += '\nELECTIONS INCLUDED\n';
+      csvContent += 'Election Title,Start Date,End Date,Total Votes,Region,Status\n';
+      
+      reportData.elections.forEach(election => {
+        csvContent += `"${election.title || 'N/A'}","${formatDate(election.startDate)}","${formatDate(election.endDate)}",${election.totalVotes || 0},"${election.region || 'N/A'}","${election.isActive ? 'Active' : 'Completed'}"\n`;
+      });
+      
+      // Third section: Detailed candidate performance by election
+      csvContent += '\nDETAILED CANDIDATE PERFORMANCE BY ELECTION\n';
+      csvContent += 'Candidate,Party,Election,Votes,Percentage,Election Total Votes\n';
+      
+      reportData.candidates.forEach(candidate => {
+        if (candidate.elections && candidate.elections.length > 0) {
+          candidate.elections.forEach(election => {
+            const electionDetails = reportData.elections.find(e => e._id === election.id);
+            csvContent += `"${candidate.name}","${candidate.party}","${election.title || 'N/A'}",${election.votes || 0},${election.percentage ? election.percentage.toFixed(2) : 0}%,${election.totalVotes || 0}\n`;
+          });
+        }
       });
       
       fileName = `Candidate_Performance_Report_${new Date().toISOString().split('T')[0]}.csv`;
@@ -658,6 +776,187 @@ const Reports = () => {
   // View report details
   const viewReportDetails = (report) => {
     setSelectedReport(report);
+  };
+  
+  // Download a report from history
+  const downloadReport = async (report) => {
+    try {
+      // First check if we need to regenerate the report
+      if (!reportData) {
+        // Get auth token
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        
+        setLoading(true);
+        
+        // Fetch data based on report type
+        let data = null;
+        
+        switch (report.type) {
+          case 'election':
+            // For simplicity, we'll assume election ID is in the report name
+            const electionId = report.name.split(' ')[0]; // This is a simplification
+            const electionResponse = await axios.get(
+              `${API_URL}/officer/elections/${electionId}/results`, 
+              { headers }
+            );
+            data = electionResponse.data;
+            break;
+            
+          case 'voter-participation':
+            const voterStatsResponse = await axios.get(
+              `${API_URL}/officer/voters/stats`,
+              { headers }
+            );
+            data = voterStatsResponse.data;
+            break;
+            
+          case 'date-range':
+          case 'regional':
+            const allElectionsResponse = await axios.get(
+              `${API_URL}/officer/elections/all`,
+              { headers }
+            );
+            data = { elections: allElectionsResponse.data.elections };
+            break;
+            
+          case 'candidate-performance':
+            // Fetch all elections and aggregate candidate data
+            const electionsResponse = await axios.get(
+              `${API_URL}/officer/elections/all`,
+              { headers }
+            );
+            
+            // Initialize aggregated data structure
+            const candidatePerformanceData = {
+              elections: electionsResponse.data.elections || [],
+              candidates: []
+            };
+            
+            // Process only up to 5 most recent elections for performance reasons
+            const recentElections = candidatePerformanceData.elections
+              .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))
+              .slice(0, 5);
+            
+            // Fetch candidate data for each election
+            const candidatesMap = new Map();
+            for (const election of recentElections) {
+              try {
+                const electionDetailsResponse = await axios.get(
+                  `${API_URL}/officer/elections/${election._id}/results`,
+                  { headers }
+                );
+                
+                if (electionDetailsResponse.data.candidates && 
+                    electionDetailsResponse.data.candidates.length > 0) {
+                  
+                  // Process candidates
+                  electionDetailsResponse.data.candidates.forEach(candidate => {
+                    const candidateKey = `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim();
+                    
+                    if (candidatesMap.has(candidateKey)) {
+                      // Update existing candidate data
+                      const existingData = candidatesMap.get(candidateKey);
+                      existingData.totalVotes += candidate.votes || 0;
+                      existingData.elections.push({
+                        id: election._id,
+                        title: election.title,
+                        votes: candidate.votes || 0,
+                        percentage: candidate.percentage || 0,
+                        totalVotes: election.totalVotes || 0
+                      });
+                      
+                      // Update averages and max values
+                      existingData.avgPercentage = existingData.elections.reduce((sum, e) => sum + e.percentage, 0) / existingData.elections.length;
+                      existingData.maxPercentage = Math.max(existingData.maxPercentage, candidate.percentage || 0);
+                      existingData.totalElections = existingData.elections.length;
+                    } else {
+                      // Create new candidate entry
+                      candidatesMap.set(candidateKey, {
+                        name: candidateKey,
+                        party: candidate.partyName || 'Independent',
+                        gender: candidate.gender || 'N/A',
+                        age: candidate.age || 'N/A',
+                        totalVotes: candidate.votes || 0,
+                        avgPercentage: candidate.percentage || 0,
+                        maxPercentage: candidate.percentage || 0,
+                        totalElections: 1,
+                        elections: [{
+                          id: election._id,
+                          title: election.title,
+                          votes: candidate.votes || 0,
+                          percentage: candidate.percentage || 0,
+                          totalVotes: election.totalVotes || 0
+                        }]
+                      });
+                    }
+                  });
+                }
+              } catch (error) {
+                console.error(`Error fetching details for election ${election._id}:`, error);
+              }
+            }
+            
+            // Convert map to array and sort by total votes
+            candidatePerformanceData.candidates = Array.from(candidatesMap.values())
+              .sort((a, b) => b.totalVotes - a.totalVotes);
+            
+            data = candidatePerformanceData;
+            break;
+            
+          default:
+            break;
+        }
+        
+        setLoading(false);
+        setReportData(data);
+        
+        // Now generate the report with the fetched data
+        // Temporarily set reportType to match the report being downloaded
+        const originalReportType = reportType;
+        setReportType(report.type);
+        
+        if (report.format === 'excel') {
+          generateExcelReport();
+        } else if (report.format === 'csv') {
+          generateCSVReport();
+        }
+        
+        // Reset back to original report type
+        setReportType(originalReportType);
+        
+      } else {
+        // If we already have report data, just generate the report
+        if (report.format === 'excel') {
+          generateExcelReport();
+        } else if (report.format === 'csv') {
+          generateCSVReport();
+        }
+      }
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      alert(`Error downloading report: ${error.message}`);
+      setLoading(false);
+    }
+  };
+  
+  // Delete a report from history
+  const deleteReport = (reportId) => {
+    const updatedReports = generatedReports.filter(report => report.id !== reportId);
+    setGeneratedReports(updatedReports);
+    
+    // Update localStorage
+    try {
+      localStorage.setItem('votesure_generated_reports', JSON.stringify(updatedReports));
+      console.log('Updated reports in localStorage after deletion');
+    } catch (error) {
+      console.error('Error updating localStorage after deleting report:', error);
+    }
+    
+    // If the deleted report was selected, clear selection
+    if (selectedReport && selectedReport.id === reportId) {
+      setSelectedReport(null);
+    }
   };
   
   return (
@@ -985,8 +1284,21 @@ const Reports = () => {
                             <Button 
                               variant="outline-success" 
                               size="sm"
+                              className="me-2"
+                              onClick={() => downloadReport(report)}
                             >
                               <FaDownload className="me-1" /> Download
+                            </Button>
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={() => {
+                                if (window.confirm('Are you sure you want to delete this report?')) {
+                                  deleteReport(report.id);
+                                }
+                              }}
+                            >
+                              Delete
                             </Button>
                           </td>
                         </tr>
@@ -1032,7 +1344,21 @@ const Reports = () => {
                         </p>
                       </div>
                       <div className="mt-3 d-flex justify-content-end">
-                        <Button variant="primary">
+                        <Button 
+                          variant="outline-danger" 
+                          className="me-2"
+                          onClick={() => {
+                            if (window.confirm('Are you sure you want to delete this report?')) {
+                              deleteReport(selectedReport.id);
+                            }
+                          }}
+                        >
+                          Delete Report
+                        </Button>
+                        <Button 
+                          variant="primary"
+                          onClick={() => downloadReport(selectedReport)}
+                        >
                           <FaDownload className="me-2" /> Download Full Report
                         </Button>
                       </div>
