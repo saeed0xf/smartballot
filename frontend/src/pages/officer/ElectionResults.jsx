@@ -838,7 +838,7 @@ const ElectionResults = () => {
             <div className="d-flex justify-content-between align-items-center">
               <h5 className="mb-0">Results & Analytics</h5>
               <div>
-                <Button 
+                {/* <Button 
                   variant="outline-primary" 
                   className="me-2"
                   onClick={() => handleGenerateReport('pdf')}
@@ -854,7 +854,7 @@ const ElectionResults = () => {
                       <FaRegFilePdf className="me-2" /> PDF Report
                     </>
                   )}
-                </Button>
+                </Button> */}
                 <Button 
                   variant="outline-success"
                   onClick={() => handleGenerateReport('excel')}
