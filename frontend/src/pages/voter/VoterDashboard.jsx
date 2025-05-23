@@ -316,7 +316,7 @@ const VoterDashboard = () => {
   return (
     <Layout>
       <Container className="py-4">
-        <h1 className="mb-4">Voter Dashboard</h1>
+        <h1 className="mb-4 text-white">Voter Dashboard</h1>
         
         {error && <Alert variant="danger">{error}</Alert>}
         
@@ -424,6 +424,7 @@ const VoterDashboard = () => {
                           as={Link} 
                           to="/voter/vote" 
                           variant="primary"
+                          className="mb-4"
                           disabled={hasVoted() || voterProfile?.status !== 'approved'}
                         >
                           {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
@@ -475,6 +476,7 @@ const VoterDashboard = () => {
                     as={Link} 
                     to="/voter/vote" 
                     variant="primary"
+                    className="mb-4"
                     disabled={hasVoted() || voterProfile?.status !== 'approved'}
                   >
                     {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
@@ -541,7 +543,7 @@ const VoterDashboard = () => {
                   as={Link} 
                   to="/voter/vote" 
                   variant="outline-primary" 
-                  className="mt-auto"
+                  className="mt-auto mb-4"
                   disabled={filteredElections.length === 0 || hasVoted() || voterProfile?.status !== 'approved'}
                 >
                   {hasVoted() ? 'Already Voted' : 'Cast Vote'}

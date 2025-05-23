@@ -989,6 +989,68 @@ exports.checkRemoteVote = async (req, res) => {
   }
 };
 
+// Get all votes for a voter from the remote database
+exports.getRemoteVotes = async (req, res) => {
+  let remoteConnection = null;
+  
+  try {
+    const userId = req.user.id;
+    
+    // Find voter profile to get voter ID
+    const voter = await Voter.findOne({ user: userId });
+    if (!voter) {
+      return res.status(404).json({ message: 'Voter profile not found' });
+    }
+    
+    console.log(`Fetching remote votes for voter ID: ${voter._id}`);
+    
+    // Establish connection to remote database
+    const remoteDb = require('../utils/remoteDb.util');
+    console.log('Connecting to remote database to fetch votes...');
+    remoteConnection = await remoteDb.createRemoteConnection();
+    
+    // Create the Vote model on the remote connection
+    const RemoteVote = remoteConnection.model('Vote', remoteDb.RemoteVoteSchema);
+    
+    // Fetch all votes by this voter
+    const votes = await RemoteVote.find({ voterId: voter._id.toString() })
+      .sort({ timestamp: -1 }) // Sort by timestamp (newest first)
+      .lean(); // Convert to plain JS objects
+    
+    console.log(`Found ${votes.length} vote records for voter ${voter._id} in remote database`);
+    
+    // Close the remote connection
+    await remoteConnection.close();
+    console.log('Remote database connection closed');
+    
+    // Return the votes
+    return res.json({ 
+      success: true, 
+      message: `Found ${votes.length} vote records`,
+      votes: votes
+    });
+    
+  } catch (error) {
+    console.error('Error fetching remote votes:', error);
+    
+    // Make sure to close the connection in case of errors
+    try {
+      if (remoteConnection) {
+        await remoteConnection.close();
+        console.log('Remote connection closed after error');
+      }
+    } catch (closeError) {
+      console.error('Error closing remote connection:', closeError);
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching vote records from remote database',
+      error: error.message
+    });
+  }
+};
+
 // Upload recording of voter casting vote
 exports.uploadRecording = async (req, res) => {
   try {

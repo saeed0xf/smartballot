@@ -127,12 +127,12 @@ const AdminDashboard = () => {
     <Layout>
       <Container className="py-4">
         <div className="d-flex justify-content-between align-items-center mb-4">
-          <h1>Admin Dashboard</h1>
-          {stats.electionActive ? (
+          <h1 className="text-white">Admin Dashboard</h1>
+          {/* {stats.electionActive ? (
             <Badge bg="success" className="p-2">Election Active</Badge>
           ) : (
             <Badge bg="danger" className="p-2">Election Inactive</Badge>
-          )}
+          )} */}
         </div>
         
         {error && <Alert variant="warning">{error}</Alert>}
@@ -223,7 +223,7 @@ const AdminDashboard = () => {
               </Card.Header>
               <Card.Body>
                 <p>
-                  Start or end an election. Monitor the election process and manage election settings.
+                  Start or end an election on blockchain. Create, Update & Delete an election. Monitor the election process and manage election settings.
                 </p>
                 <div className="d-grid gap-2">
                   <Button 
@@ -248,7 +248,7 @@ const AdminDashboard = () => {
           </Col>
           
           {/* Election Results */}
-          <Col lg={4} md={6} className="mb-4">
+          {/* <Col lg={4} md={6} className="mb-4">
             <Card className="h-100 shadow-sm">
               <Card.Header className="bg-primary text-white">
                 <h5 className="mb-0 d-flex align-items-center">
@@ -271,10 +271,10 @@ const AdminDashboard = () => {
                 </div>
               </Card.Body>
             </Card>
-          </Col>
+          </Col> */}
           
           {/* Archived Elections */}
-          <Col lg={4} md={6} className="mb-4">
+          {/* <Col lg={4} md={6} className="mb-4">
             <Card className="h-100 shadow-sm">
               <Card.Header className="bg-primary text-white">
                 <h5 className="mb-0 d-flex align-items-center">
@@ -297,7 +297,7 @@ const AdminDashboard = () => {
                 </div>
               </Card.Body>
             </Card>
-          </Col>
+          </Col> */}
         </Row>
         )}
       </Container>

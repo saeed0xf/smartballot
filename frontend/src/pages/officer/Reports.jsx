@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Button, Form, Spinner, Alert, Badge, Table, Tabs, Tab, ListGroup, Modal } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaDownload, FaChartBar, FaFilePdf, FaFileExcel, FaFileAlt, FaArrowLeft, FaFilter, FaCalendarAlt, FaUsers, FaUserCheck, FaChartPie, FaMapMarkerAlt, FaSearch } from 'react-icons/fa';
+import { FaDownload, FaChartBar, FaFilePdf, FaFileExcel, FaFileAlt, FaArrowLeft, FaFilter, FaCalendarAlt, FaUsers, FaUserCheck, FaChartPie, FaMapMarkerAlt, FaSearch, FaCubes, FaHistory } from 'react-icons/fa';
 import Layout from '../../components/Layout';
+import axios from 'axios';
+import env from '../../utils/env';
+import * as XLSX from 'xlsx';
+
+const { API_URL } = env;
 
 const Reports = () => {
   const [reportType, setReportType] = useState('election');
@@ -11,7 +16,7 @@ const Reports = () => {
   const [endDate, setEndDate] = useState('');
   const [region, setRegion] = useState('');
   const [pincode, setPincode] = useState('');
-  const [format, setFormat] = useState('pdf');
+  const [format, setFormat] = useState('excel');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedReports, setGeneratedReports] = useState([]);
   const [formError, setFormError] = useState('');
@@ -19,60 +24,71 @@ const Reports = () => {
   const [selectedReport, setSelectedReport] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('generate');
+  const [elections, setElections] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [pincodes, setPincodes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [reportData, setReportData] = useState(null);
   
-  // Sample data
-  const elections = [
-    { id: 'e1', title: 'Lok Sabha Elections 2023', totalVoters: 1250, voterTurnout: '70%', startDate: '2023-10-15', endDate: '2023-10-30', regions: ['North Delhi', 'South Delhi', 'East Delhi', 'West Delhi'] },
-    { id: 'e2', title: 'Municipal Corporation Elections', totalVoters: 980, voterTurnout: '58%', startDate: '2023-09-01', endDate: '2023-09-15', regions: ['Central Delhi', 'North Delhi', 'South Delhi'] },
-    { id: 'e3', title: 'State Assembly Elections', totalVoters: 1500, voterTurnout: '72%', startDate: '2023-08-01', endDate: '2023-08-10', regions: ['East Delhi', 'West Delhi'] },
-    { id: 'e4', title: 'Panchayat Elections 2023', totalVoters: 750, voterTurnout: '85%', startDate: '2023-07-05', endDate: '2023-07-10', regions: ['Rural Delhi'] },
-    { id: 'e5', title: 'School Board Elections', totalVoters: 450, voterTurnout: '65%', startDate: '2023-06-10', endDate: '2023-06-15', regions: ['Academic District'] }
-  ];
-  
-  const regions = ['North Delhi', 'South Delhi', 'East Delhi', 'West Delhi', 'Central Delhi', 'Rural Delhi', 'Academic District'];
-  
-  const pincodes = ['110001', '110002', '110003', '110005', '110006', '110007', '110008', '110009'];
-
-  // Some sample previously generated reports
+  // Fetch elections from remote database and load saved reports from localStorage
   useEffect(() => {
-    // Simulating previously generated reports
-    const previousReports = [
-      {
-        id: 'report-1667305200000',
-        name: 'Lok Sabha Elections 2023 Report',
-        type: 'election',
-        format: 'pdf',
-        date: '2023-11-01T10:00:00.000Z',
-        status: 'completed',
-        size: '2.5 MB'
-      },
-      {
-        id: 'report-1667218800000',
-        name: 'Voter Participation Statistics Report',
-        type: 'voter-participation',
-        format: 'excel',
-        date: '2023-10-31T08:00:00.000Z',
-        status: 'completed',
-        size: '4.2 MB'
-      },
-      {
-        id: 'report-1667132400000',
-        name: 'North Delhi Region Election Report (Pincode: 110001)',
-        type: 'regional',
-        format: 'pdf',
-        date: '2023-10-30T15:30:00.000Z',
-        status: 'completed',
-        size: '3.7 MB'
+    const fetchElections = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        
+        // Get auth token
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        
+        // Fetch all elections
+        const response = await axios.get(`${API_URL}/officer/elections/all`, { headers });
+        console.log('Elections fetched:', response.data);
+        
+        if (response.data && response.data.elections) {
+          setElections(response.data.elections);
+          
+          // Extract unique regions and pincodes from elections
+          const allRegions = response.data.elections
+            .map(e => e.region)
+            .filter(Boolean);
+          
+          const allPincodes = response.data.elections
+            .map(e => e.pincode)
+            .filter(Boolean);
+          
+          setRegions([...new Set(allRegions)]);
+          setPincodes([...new Set(allPincodes)]);
+        }
+        
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching elections:', error);
+        setError('Failed to fetch elections from the database. Please try again.');
+        setLoading(false);
       }
-    ];
+    };
     
-    setGeneratedReports(previousReports);
+    fetchElections();
+    
+    // Load saved reports from localStorage
+    try {
+      const savedReports = localStorage.getItem('votesure_generated_reports');
+      if (savedReports) {
+        setGeneratedReports(JSON.parse(savedReports));
+        console.log('Loaded reports from localStorage:', JSON.parse(savedReports).length);
+      }
+    } catch (error) {
+      console.error('Error loading reports from localStorage:', error);
+    }
   }, []);
   
   // Handle form submission
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+    setReportData(null);
     
     // Validate form
     if (reportType === 'election' && !electionId) {
@@ -90,23 +106,184 @@ const Reports = () => {
       return;
     }
     
-    if (reportType === 'regional' && !pincode) {
-      setFormError('Please select a pincode');
-      return;
+    // Fetch data based on report type
+    try {
+      setLoading(true);
+      
+      // Get auth token
+      const token = localStorage.getItem('token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      
+      let data = null;
+      
+      switch (reportType) {
+        case 'election':
+          // Fetch specific election data
+          const electionResponse = await axios.get(
+            `${API_URL}/officer/elections/${electionId}/results`, 
+            { headers }
+          );
+          data = electionResponse.data;
+          break;
+          
+        case 'voter-participation':
+          // Fetch voter statistics
+          const voterStatsResponse = await axios.get(
+            `${API_URL}/officer/voters/stats`,
+            { headers }
+          );
+          data = voterStatsResponse.data;
+          break;
+          
+        case 'date-range':
+          // For date range, we need to fetch all elections and filter
+          const allElectionsResponse = await axios.get(
+            `${API_URL}/officer/elections/all`,
+            { headers }
+          );
+          
+          // Filter elections by date range
+          const startDateObj = new Date(startDate);
+          const endDateObj = new Date(endDate);
+          
+          data = {
+            elections: allElectionsResponse.data.elections.filter(election => {
+              const electionStartDate = new Date(election.startDate);
+              return electionStartDate >= startDateObj && electionStartDate <= endDateObj;
+            })
+          };
+          break;
+          
+        case 'regional':
+          // For regional reports, fetch all elections and filter by region
+          const regionalElectionsResponse = await axios.get(
+            `${API_URL}/officer/elections/all`,
+            { headers }
+          );
+          
+          data = {
+            elections: regionalElectionsResponse.data.elections.filter(election => 
+              election.region === region && 
+              (!pincode || election.pincode === pincode)
+            )
+          };
+          break;
+          
+        case 'candidate-performance':
+          // For candidate performance, fetch all elections and aggregate candidate data
+          const electionsResponse = await axios.get(
+            `${API_URL}/officer/elections/all`,
+            { headers }
+          );
+          
+          // Initialize aggregated data structure
+          const candidatePerformanceData = {
+            elections: electionsResponse.data.elections || [],
+            candidates: []
+          };
+          
+          // Fetch detailed information for each election to get candidate data
+          const candidatesMap = new Map();
+          
+          // Process only up to 5 most recent elections for performance reasons
+          const recentElections = candidatePerformanceData.elections
+            .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))
+            .slice(0, 5);
+          
+          // Fetch candidate data for each election
+          for (const election of recentElections) {
+            try {
+              const electionDetailsResponse = await axios.get(
+                `${API_URL}/officer/elections/${election._id}/results`,
+                { headers }
+              );
+              
+              if (electionDetailsResponse.data.candidates && 
+                  electionDetailsResponse.data.candidates.length > 0) {
+                
+                // Add election info to each candidate
+                electionDetailsResponse.data.candidates.forEach(candidate => {
+                  const candidateKey = `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim();
+                  
+                  if (candidatesMap.has(candidateKey)) {
+                    // Update existing candidate data
+                    const existingData = candidatesMap.get(candidateKey);
+                    existingData.totalVotes += candidate.votes || 0;
+                    existingData.elections.push({
+                      id: election._id,
+                      title: election.title,
+                      votes: candidate.votes || 0,
+                      percentage: candidate.percentage || 0,
+                      totalVotes: election.totalVotes || 0
+                    });
+                    
+                    // Update averages and max values
+                    existingData.avgPercentage = existingData.elections.reduce((sum, e) => sum + e.percentage, 0) / existingData.elections.length;
+                    existingData.maxPercentage = Math.max(existingData.maxPercentage, candidate.percentage || 0);
+                    existingData.totalElections = existingData.elections.length;
+                  } else {
+                    // Create new candidate entry
+                    candidatesMap.set(candidateKey, {
+                      name: candidateKey,
+                      party: candidate.partyName || 'Independent',
+                      gender: candidate.gender || 'N/A',
+                      age: candidate.age || 'N/A',
+                      totalVotes: candidate.votes || 0,
+                      avgPercentage: candidate.percentage || 0,
+                      maxPercentage: candidate.percentage || 0,
+                      totalElections: 1,
+                      elections: [{
+                        id: election._id,
+                        title: election.title,
+                        votes: candidate.votes || 0,
+                        percentage: candidate.percentage || 0,
+                        totalVotes: election.totalVotes || 0
+                      }]
+                    });
+                  }
+                });
+              }
+            } catch (error) {
+              console.error(`Error fetching details for election ${election._id}:`, error);
+            }
+          }
+          
+          // Convert map to array and sort by total votes
+          candidatePerformanceData.candidates = Array.from(candidatesMap.values())
+            .sort((a, b) => b.totalVotes - a.totalVotes);
+          
+          data = candidatePerformanceData;
+          break;
+          
+        default:
+          break;
+      }
+      
+      setReportData(data);
+      setLoading(false);
+      
+      // Show preview
+      setShowPreview(true);
+      
+    } catch (error) {
+      console.error('Error fetching report data:', error);
+      setFormError(`Failed to fetch data: ${error.message}`);
+      setLoading(false);
     }
-    
-    // Show preview first
-    setShowPreview(true);
-    
-    // Then generate report after user confirms
   };
   
-  // Generate a report
+  // Generate report in the selected format
   const generateReport = () => {
     setIsGenerating(true);
     
-    // Simulate API call with timeout
-    setTimeout(() => {
+    try {
+      if (format === 'excel') {
+        generateExcelReport();
+      } else if (format === 'csv') {
+        generateCSVReport();
+      }
+      
+      // Create a record of the generated report
       const newReport = {
         id: `report-${Date.now()}`,
         name: getReportName(),
@@ -114,10 +291,21 @@ const Reports = () => {
         format: format,
         date: new Date().toISOString(),
         status: 'completed',
-        size: `${Math.floor(Math.random() * 10) + 1}.${Math.floor(Math.random() * 9)}${Math.floor(Math.random() * 9)} MB`
+        size: calculateReportSize() 
       };
       
-      setGeneratedReports(prev => [newReport, ...prev]);
+      // Update state with the new report
+      const updatedReports = [newReport, ...generatedReports];
+      setGeneratedReports(updatedReports);
+      
+      // Save to localStorage
+      try {
+        localStorage.setItem('votesure_generated_reports', JSON.stringify(updatedReports));
+        console.log('Saved reports to localStorage:', updatedReports.length);
+      } catch (error) {
+        console.error('Error saving reports to localStorage:', error);
+      }
+      
       setIsGenerating(false);
       setShowPreview(false);
       
@@ -132,7 +320,379 @@ const Reports = () => {
       
       // Show success message
       alert(`Report "${newReport.name}" has been generated successfully!`);
-    }, 2000);
+      
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert(`Error generating report: ${error.message}`);
+      setIsGenerating(false);
+    }
+  };
+  
+  // Generate Excel report
+  const generateExcelReport = () => {
+    if (!reportData) return;
+    
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Add sheets based on report type
+    if (reportType === 'election' && reportData.election) {
+      // Add Election Summary sheet
+      const electionSummaryData = [
+        ['Election Summary'],
+        [''],
+        ['Title', reportData.election.title || 'N/A'],
+        ['Description', reportData.election.description || 'N/A'],
+        ['Start Date', formatDate(reportData.election.startDate)],
+        ['End Date', formatDate(reportData.election.endDate)],
+        ['Total Votes', reportData.election.totalVotes || 0],
+        ['Voter Turnout', reportData.election.voterTurnout || 'N/A'],
+        ['Status', reportData.election.isActive ? 'Active' : 'Completed'],
+        ['None of the Above Votes', reportData.election.noneOfTheAboveVotes || 0],
+        ['']
+      ];
+      
+      const summarySheet = XLSX.utils.aoa_to_sheet(electionSummaryData);
+      XLSX.utils.book_append_sheet(wb, summarySheet, 'Election Summary');
+      
+      // Add Candidates sheet
+      if (reportData.candidates && reportData.candidates.length > 0) {
+        const candidatesData = [
+          ['Rank', 'Name', 'Party', 'Votes', 'Percentage', 'Gender', 'Age', 'Constituency']
+        ];
+        
+        reportData.candidates.forEach((candidate, index) => {
+          candidatesData.push([
+            index + 1,
+            `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim(),
+            candidate.partyName || 'Independent',
+            candidate.votes || 0,
+            `${candidate.percentage || 0}%`,
+            candidate.gender || 'N/A',
+            candidate.age || 'N/A',
+            candidate.constituency || 'N/A'
+          ]);
+        });
+        
+        const candidatesSheet = XLSX.utils.aoa_to_sheet(candidatesData);
+        XLSX.utils.book_append_sheet(wb, candidatesSheet, 'Candidates');
+      }
+      
+      // Add Blockchain Transactions sheet
+      if (reportData.blockchainTransactions && reportData.blockchainTransactions.length > 0) {
+        const transactionsData = [
+          ['Transaction Hash', 'Type', 'Timestamp', 'From Address', 'Status', 'Block Number']
+        ];
+        
+        reportData.blockchainTransactions.forEach(tx => {
+          transactionsData.push([
+            tx.txHash || 'N/A',
+            tx.type || 'N/A',
+            formatDate(tx.timestamp),
+            tx.from || 'N/A',
+            tx.status || 'N/A',
+            tx.blockNumber || 'N/A'
+          ]);
+        });
+        
+        const txSheet = XLSX.utils.aoa_to_sheet(transactionsData);
+        XLSX.utils.book_append_sheet(wb, txSheet, 'Blockchain Transactions');
+      }
+    } else if (reportType === 'voter-participation' && reportData) {
+      // Add Voter Participation sheet
+      const voterData = [
+        ['Voter Participation Summary'],
+        [''],
+        ['Total Voters', reportData.totalVoters || 0],
+        ['Pending Voters', reportData.pendingVoters || 0],
+        ['Rejected Voters', reportData.rejectedVoters || 0],
+        ['Active Voters', reportData.activeVoters || 0]
+      ];
+      
+      const voterSheet = XLSX.utils.aoa_to_sheet(voterData);
+      XLSX.utils.book_append_sheet(wb, voterSheet, 'Voter Participation');
+    } else if ((reportType === 'date-range' || reportType === 'regional') && reportData.elections) {
+      // Add Elections sheet
+      const electionsData = [
+        ['Title', 'Description', 'Start Date', 'End Date', 'Status', 'Total Votes', 'Voter Turnout', 'Region', 'Pincode']
+      ];
+      
+      reportData.elections.forEach(election => {
+        electionsData.push([
+          election.title || 'N/A',
+          election.description || 'N/A',
+          formatDate(election.startDate),
+          formatDate(election.endDate),
+          election.isActive ? 'Active' : 'Completed',
+          election.totalVotes || 0,
+          election.voterTurnout || 'N/A',
+          election.region || 'N/A',
+          election.pincode || 'N/A'
+        ]);
+      });
+      
+      const electionsSheet = XLSX.utils.aoa_to_sheet(electionsData);
+      XLSX.utils.book_append_sheet(wb, electionsSheet, 'Elections');
+    } else if (reportType === 'candidate-performance' && reportData.candidates) {
+      // Add Candidate Performance Summary sheet
+      const summaryData = [
+        ['Candidate Performance Analytics Report'],
+        [''],
+        ['Generated On', formatDate(new Date())],
+        ['Total Candidates Analyzed', reportData.candidates.length.toString()],
+        ['Elections Analyzed', reportData.elections.length.toString()],
+        ['']
+      ];
+      
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+      
+      // Add Candidate Performance sheet
+      const candidatePerformanceData = [
+        ['Rank', 'Candidate Name', 'Party', 'Total Votes', 'Avg Vote %', 'Max Vote %', 'Elections Contested', 'Gender', 'Age']
+      ];
+      
+      reportData.candidates.forEach((candidate, index) => {
+        candidatePerformanceData.push([
+          index + 1,
+          candidate.name,
+          candidate.party,
+          candidate.totalVotes,
+          candidate.avgPercentage ? `${candidate.avgPercentage.toFixed(2)}%` : '0%',
+          candidate.maxPercentage ? `${candidate.maxPercentage.toFixed(2)}%` : '0%',
+          candidate.totalElections,
+          candidate.gender,
+          candidate.age
+        ]);
+      });
+      
+      const performanceSheet = XLSX.utils.aoa_to_sheet(candidatePerformanceData);
+      XLSX.utils.book_append_sheet(wb, performanceSheet, 'Candidate Performance');
+      
+      // Add Election Details sheet
+      if (reportData.elections.length > 0) {
+        const electionDetailsData = [
+          ['Election Title', 'Start Date', 'End Date', 'Total Votes', 'Region', 'Status']
+        ];
+        
+        reportData.elections.forEach(election => {
+          electionDetailsData.push([
+            election.title || 'N/A',
+            formatDate(election.startDate),
+            formatDate(election.endDate),
+            election.totalVotes || 0,
+            election.region || 'N/A',
+            election.isActive ? 'Active' : 'Completed'
+          ]);
+        });
+        
+        const electionsSheet = XLSX.utils.aoa_to_sheet(electionDetailsData);
+        XLSX.utils.book_append_sheet(wb, electionsSheet, 'Elections');
+      }
+      
+      // Add Individual Candidate Performance sheets
+      // Limit to top 10 candidates to avoid too many sheets
+      const topCandidates = reportData.candidates.slice(0, 10);
+      
+      topCandidates.forEach(candidate => {
+        if (candidate.elections && candidate.elections.length > 0) {
+          // Create sheet for each candidate's detailed performance
+          const candidateSheetName = candidate.name.substring(0, 28); // Limit sheet name length
+          const candidateDetailData = [
+            [`Performance Details for ${candidate.name} (${candidate.party})`],
+            [''],
+            ['Total Votes Across All Elections', candidate.totalVotes.toString()],
+            ['Average Vote Percentage', `${candidate.avgPercentage ? candidate.avgPercentage.toFixed(2) : 0}%`],
+            ['Maximum Vote Percentage', `${candidate.maxPercentage ? candidate.maxPercentage.toFixed(2) : 0}%`],
+            ['Total Elections Contested', candidate.totalElections.toString()],
+            ['Gender', candidate.gender],
+            ['Age', candidate.age.toString()],
+            [''],
+            ['Election-by-Election Performance'],
+            [''],
+            ['Election Title', 'Votes', 'Percentage', 'Total Election Votes', 'Date']
+          ];
+          
+          // Add each election performance
+          candidate.elections.forEach(election => {
+            candidateDetailData.push([
+              election.title || 'N/A',
+              election.votes || 0,
+              `${election.percentage ? election.percentage.toFixed(2) : 0}%`,
+              election.totalVotes || 0,
+              formatDate(reportData.elections.find(e => e._id === election.id)?.startDate) || 'N/A'
+            ]);
+          });
+          
+          const candidateDetailSheet = XLSX.utils.aoa_to_sheet(candidateDetailData);
+          XLSX.utils.book_append_sheet(wb, candidateDetailSheet, candidateSheetName);
+        }
+      });
+      
+      // Add Comparative Analysis sheet
+      const comparativeData = [
+        ['Comparative Candidate Analysis'],
+        [''],
+        ['Candidate', 'Election 1', 'Election 2', 'Election 3', 'Election 4', 'Election 5']
+      ];
+      
+      // Get the 5 most recent elections for comparison
+      const recentElections = reportData.elections
+        .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))
+        .slice(0, 5);
+      
+      // Update header with actual election names
+      comparativeData[2] = ['Candidate', 
+        ...recentElections.map(e => e.title || `Election ${e._id}`)
+      ];
+      
+      // Add performance data for each candidate across these elections
+      reportData.candidates.slice(0, 15).forEach(candidate => {
+        const row = [candidate.name];
+        
+        recentElections.forEach(election => {
+          const candidateElection = candidate.elections.find(e => e.id === election._id);
+          row.push(candidateElection ? `${candidateElection.percentage.toFixed(2)}%` : 'N/A');
+        });
+        
+        comparativeData.push(row);
+      });
+      
+      const comparativeSheet = XLSX.utils.aoa_to_sheet(comparativeData);
+      XLSX.utils.book_append_sheet(wb, comparativeSheet, 'Comparative Analysis');
+    }
+    
+    // Generate filename
+    const fileName = `${getReportName().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    // Write and download file
+    XLSX.writeFile(wb, fileName);
+  };
+  
+  // Generate CSV report
+  const generateCSVReport = () => {
+    if (!reportData) return;
+    
+    let csvContent = '';
+    let fileName = '';
+    
+    if (reportType === 'election' && reportData.election) {
+      // Create CSV for election report
+      csvContent = 'Title,Description,Start Date,End Date,Total Votes,Voter Turnout,Status\n';
+      csvContent += `"${reportData.election.title || 'N/A'}","${reportData.election.description || 'N/A'}","${formatDate(reportData.election.startDate)}","${formatDate(reportData.election.endDate)}",${reportData.election.totalVotes || 0},"${reportData.election.voterTurnout || 'N/A'}","${reportData.election.isActive ? 'Active' : 'Completed'}"\n\n`;
+      
+      if (reportData.candidates && reportData.candidates.length > 0) {
+        csvContent += 'Rank,Name,Party,Votes,Percentage,Gender,Age,Constituency\n';
+        
+        reportData.candidates.forEach((candidate, index) => {
+          const name = `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim();
+          csvContent += `${index + 1},"${name}","${candidate.partyName || 'Independent'}",${candidate.votes || 0},"${candidate.percentage || 0}%","${candidate.gender || 'N/A'}","${candidate.age || 'N/A'}","${candidate.constituency || 'N/A'}"\n`;
+        });
+      }
+      
+      fileName = `${reportData.election.title.replace(/\s+/g, '_')}_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    } else if (reportType === 'voter-participation' && reportData) {
+      // Create CSV for voter participation
+      csvContent = 'Total Voters,Pending Voters,Rejected Voters,Active Voters\n';
+      csvContent += `${reportData.totalVoters || 0},${reportData.pendingVoters || 0},${reportData.rejectedVoters || 0},${reportData.activeVoters || 0}\n`;
+      
+      fileName = `Voter_Participation_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    } else if ((reportType === 'date-range' || reportType === 'regional') && reportData.elections) {
+      // Create CSV for elections list
+      csvContent = 'Title,Description,Start Date,End Date,Status,Total Votes,Voter Turnout,Region,Pincode\n';
+      
+      reportData.elections.forEach(election => {
+        csvContent += `"${election.title || 'N/A'}","${election.description || 'N/A'}","${formatDate(election.startDate)}","${formatDate(election.endDate)}","${election.isActive ? 'Active' : 'Completed'}",${election.totalVotes || 0},"${election.voterTurnout || 'N/A'}","${election.region || 'N/A'}","${election.pincode || 'N/A'}"\n`;
+      });
+      
+      fileName = `${getReportName().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    } else if (reportType === 'candidate-performance' && reportData.candidates) {
+      // Create comprehensive CSV for candidate performance report
+      // First section: Summary
+      csvContent = 'Candidate Performance Analytics Report\n\n';
+      csvContent += `Generated On,${formatDate(new Date())}\n`;
+      csvContent += `Total Candidates Analyzed,${reportData.candidates.length}\n`;
+      csvContent += `Elections Analyzed,${reportData.elections.length}\n\n`;
+      
+      // Second section: Candidate Performance Overview
+      csvContent += 'CANDIDATE PERFORMANCE OVERVIEW\n';
+      csvContent += 'Rank,Candidate Name,Party,Total Votes,Avg Vote %,Max Vote %,Elections Contested,Gender,Age\n';
+      
+      reportData.candidates.forEach((candidate, index) => {
+        csvContent += `${index + 1},"${candidate.name}","${candidate.party}",${candidate.totalVotes},${candidate.avgPercentage ? candidate.avgPercentage.toFixed(2) : 0}%,${candidate.maxPercentage ? candidate.maxPercentage.toFixed(2) : 0}%,${candidate.totalElections},"${candidate.gender}","${candidate.age}"\n`;
+      });
+      
+      csvContent += '\nELECTIONS INCLUDED\n';
+      csvContent += 'Election Title,Start Date,End Date,Total Votes,Region,Status\n';
+      
+      reportData.elections.forEach(election => {
+        csvContent += `"${election.title || 'N/A'}","${formatDate(election.startDate)}","${formatDate(election.endDate)}",${election.totalVotes || 0},"${election.region || 'N/A'}","${election.isActive ? 'Active' : 'Completed'}"\n`;
+      });
+      
+      // Third section: Detailed candidate performance by election
+      csvContent += '\nDETAILED CANDIDATE PERFORMANCE BY ELECTION\n';
+      csvContent += 'Candidate,Party,Election,Votes,Percentage,Election Total Votes\n';
+      
+      reportData.candidates.forEach(candidate => {
+        if (candidate.elections && candidate.elections.length > 0) {
+          candidate.elections.forEach(election => {
+            const electionDetails = reportData.elections.find(e => e._id === election.id);
+            csvContent += `"${candidate.name}","${candidate.party}","${election.title || 'N/A'}",${election.votes || 0},${election.percentage ? election.percentage.toFixed(2) : 0}%,${election.totalVotes || 0}\n`;
+          });
+        }
+      });
+      
+      fileName = `Candidate_Performance_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    }
+    
+    // Create and download the CSV file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  // Calculate approximate report size
+  const calculateReportSize = () => {
+    if (!reportData) return '0 KB';
+    
+    // Estimate size based on data
+    let sizeInKB = 0;
+    
+    if (reportType === 'election') {
+      sizeInKB = 10; // Base size for header info
+      
+      // Add size for candidates
+      if (reportData.candidates) {
+        sizeInKB += reportData.candidates.length * 2;
+      }
+      
+      // Add size for transactions
+      if (reportData.blockchainTransactions) {
+        sizeInKB += reportData.blockchainTransactions.length * 1.5;
+      }
+    } else if (reportType === 'voter-participation') {
+      sizeInKB = 5; // Small fixed size
+    } else if ((reportType === 'date-range' || reportType === 'regional') && reportData.elections) {
+      sizeInKB = 5 + (reportData.elections.length * 3);
+    }
+    
+    // Add format overhead
+    if (format === 'excel') {
+      sizeInKB *= 1.2; // Excel files are slightly larger
+    }
+    
+    // Return size with units
+    if (sizeInKB < 1000) {
+      return `${Math.round(sizeInKB * 10) / 10} KB`;
+    } else {
+      return `${Math.round(sizeInKB / 100) / 10} MB`;
+    }
   };
   
   // Cancel report generation
@@ -144,14 +704,18 @@ const Reports = () => {
   const getReportName = () => {
     switch (reportType) {
       case 'election':
-        const election = elections.find(e => e.id === electionId);
+        if (reportData && reportData.election) {
+          return `${reportData.election.title || 'Election'} Report`;
+        }
+        
+        const election = elections.find(e => e._id === electionId);
         return `${election?.title || 'Election'} Report`;
       
       case 'date-range':
         return `Elections Report (${formatDate(startDate)} to ${formatDate(endDate)})`;
       
       case 'regional':
-        return `${region} Region Election Report (Pincode: ${pincode})`;
+        return `${region} Region Election Report${pincode ? ` (Pincode: ${pincode})` : ''}`;
       
       case 'voter-participation':
         return 'Voter Participation Statistics Report';
@@ -168,20 +732,20 @@ const Reports = () => {
   const getReportDescription = () => {
     switch (reportType) {
       case 'election':
-        const election = elections.find(e => e.id === electionId);
+        const election = reportData?.election || elections.find(e => e._id === electionId);
         return `This report contains comprehensive data about the ${election?.title} including vote counts, turnout statistics, demographic breakdowns, and regional analysis.`;
       
       case 'date-range':
         return `This report summarizes election activity between ${formatDate(startDate)} and ${formatDate(endDate)}, including comparative analytics across multiple elections during this period.`;
       
       case 'regional':
-        return `This report provides detailed analysis of voting patterns in ${region} (Pincode: ${pincode}), including turnout rates, candidate performance, and demographic trends.`;
+        return `This report provides detailed analysis of voting patterns in ${region}${pincode ? ` (Pincode: ${pincode})` : ''}, including turnout rates, candidate performance, and demographic trends.`;
       
       case 'voter-participation':
         return 'This report offers comprehensive data on voter engagement, demographic breakdowns, turnout rates by region, and comparison with previous elections.';
       
       case 'candidate-performance':
-        return 'This report analyzes candidate performance across various demographics, regions, and other metrics to provide insights into voting patterns.';
+        return 'This report analyzes candidate performance across multiple elections, showing voting trends, comparative performance metrics, and election history for each candidate.';
       
       default:
         return 'Election report with detailed analytics and statistics.';
@@ -214,20 +778,201 @@ const Reports = () => {
     setSelectedReport(report);
   };
   
+  // Download a report from history
+  const downloadReport = async (report) => {
+    try {
+      // First check if we need to regenerate the report
+      if (!reportData) {
+        // Get auth token
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        
+        setLoading(true);
+        
+        // Fetch data based on report type
+        let data = null;
+        
+        switch (report.type) {
+          case 'election':
+            // For simplicity, we'll assume election ID is in the report name
+            const electionId = report.name.split(' ')[0]; // This is a simplification
+            const electionResponse = await axios.get(
+              `${API_URL}/officer/elections/${electionId}/results`, 
+              { headers }
+            );
+            data = electionResponse.data;
+            break;
+            
+          case 'voter-participation':
+            const voterStatsResponse = await axios.get(
+              `${API_URL}/officer/voters/stats`,
+              { headers }
+            );
+            data = voterStatsResponse.data;
+            break;
+            
+          case 'date-range':
+          case 'regional':
+            const allElectionsResponse = await axios.get(
+              `${API_URL}/officer/elections/all`,
+              { headers }
+            );
+            data = { elections: allElectionsResponse.data.elections };
+            break;
+            
+          case 'candidate-performance':
+            // Fetch all elections and aggregate candidate data
+            const electionsResponse = await axios.get(
+              `${API_URL}/officer/elections/all`,
+              { headers }
+            );
+            
+            // Initialize aggregated data structure
+            const candidatePerformanceData = {
+              elections: electionsResponse.data.elections || [],
+              candidates: []
+            };
+            
+            // Process only up to 5 most recent elections for performance reasons
+            const recentElections = candidatePerformanceData.elections
+              .sort((a, b) => new Date(b.startDate) - new Date(a.startDate))
+              .slice(0, 5);
+            
+            // Fetch candidate data for each election
+            const candidatesMap = new Map();
+            for (const election of recentElections) {
+              try {
+                const electionDetailsResponse = await axios.get(
+                  `${API_URL}/officer/elections/${election._id}/results`,
+                  { headers }
+                );
+                
+                if (electionDetailsResponse.data.candidates && 
+                    electionDetailsResponse.data.candidates.length > 0) {
+                  
+                  // Process candidates
+                  electionDetailsResponse.data.candidates.forEach(candidate => {
+                    const candidateKey = `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim();
+                    
+                    if (candidatesMap.has(candidateKey)) {
+                      // Update existing candidate data
+                      const existingData = candidatesMap.get(candidateKey);
+                      existingData.totalVotes += candidate.votes || 0;
+                      existingData.elections.push({
+                        id: election._id,
+                        title: election.title,
+                        votes: candidate.votes || 0,
+                        percentage: candidate.percentage || 0,
+                        totalVotes: election.totalVotes || 0
+                      });
+                      
+                      // Update averages and max values
+                      existingData.avgPercentage = existingData.elections.reduce((sum, e) => sum + e.percentage, 0) / existingData.elections.length;
+                      existingData.maxPercentage = Math.max(existingData.maxPercentage, candidate.percentage || 0);
+                      existingData.totalElections = existingData.elections.length;
+                    } else {
+                      // Create new candidate entry
+                      candidatesMap.set(candidateKey, {
+                        name: candidateKey,
+                        party: candidate.partyName || 'Independent',
+                        gender: candidate.gender || 'N/A',
+                        age: candidate.age || 'N/A',
+                        totalVotes: candidate.votes || 0,
+                        avgPercentage: candidate.percentage || 0,
+                        maxPercentage: candidate.percentage || 0,
+                        totalElections: 1,
+                        elections: [{
+                          id: election._id,
+                          title: election.title,
+                          votes: candidate.votes || 0,
+                          percentage: candidate.percentage || 0,
+                          totalVotes: election.totalVotes || 0
+                        }]
+                      });
+                    }
+                  });
+                }
+              } catch (error) {
+                console.error(`Error fetching details for election ${election._id}:`, error);
+              }
+            }
+            
+            // Convert map to array and sort by total votes
+            candidatePerformanceData.candidates = Array.from(candidatesMap.values())
+              .sort((a, b) => b.totalVotes - a.totalVotes);
+            
+            data = candidatePerformanceData;
+            break;
+            
+          default:
+            break;
+        }
+        
+        setLoading(false);
+        setReportData(data);
+        
+        // Now generate the report with the fetched data
+        // Temporarily set reportType to match the report being downloaded
+        const originalReportType = reportType;
+        setReportType(report.type);
+        
+        if (report.format === 'excel') {
+          generateExcelReport();
+        } else if (report.format === 'csv') {
+          generateCSVReport();
+        }
+        
+        // Reset back to original report type
+        setReportType(originalReportType);
+        
+      } else {
+        // If we already have report data, just generate the report
+        if (report.format === 'excel') {
+          generateExcelReport();
+        } else if (report.format === 'csv') {
+          generateCSVReport();
+        }
+      }
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      alert(`Error downloading report: ${error.message}`);
+      setLoading(false);
+    }
+  };
+  
+  // Delete a report from history
+  const deleteReport = (reportId) => {
+    const updatedReports = generatedReports.filter(report => report.id !== reportId);
+    setGeneratedReports(updatedReports);
+    
+    // Update localStorage
+    try {
+      localStorage.setItem('votesure_generated_reports', JSON.stringify(updatedReports));
+      console.log('Updated reports in localStorage after deletion');
+    } catch (error) {
+      console.error('Error updating localStorage after deleting report:', error);
+    }
+    
+    // If the deleted report was selected, clear selection
+    if (selectedReport && selectedReport.id === reportId) {
+      setSelectedReport(null);
+    }
+  };
+  
   return (
     <Layout>
       <Container className="py-4">
-        <div className="d-flex justify-content-between align-items-center mb-4">
+        <div className="d-flex justify-content-between align-items-center mb-4 text-white">
           <div>
-            <h1>Reports Center</h1>
-            <p className="text-muted">
-              Generate and manage election reports and analytics.
+            <h1 className="blockchain-title">Reports Center</h1>
+            <p className="blockchain-subtitle">
+              Generate and manage election reports and analytics on the blockchain.
             </p>
           </div>
           <Button
             as={Link}
             to="/officer"
-            variant="outline-secondary"
+            variant="outline-light"
             className="d-flex align-items-center"
           >
             <FaArrowLeft className="me-2" /> Back to Dashboard
@@ -243,8 +988,10 @@ const Reports = () => {
             <Row>
               <Col lg={8}>
                 <Card className="border-0 shadow-sm mb-4">
-                  <Card.Header className="bg-white py-3">
-                    <h5 className="mb-0">Report Generator</h5>
+                  <Card.Header className="py-3">
+                    <h5 className="mb-0 d-flex align-items-center">
+                      <FaCubes className="me-2" /> Report Generator
+                    </h5>
                   </Card.Header>
                   <Card.Body>
                     {formError && (
@@ -272,11 +1019,12 @@ const Reports = () => {
                           <Form.Select 
                             value={electionId} 
                             onChange={(e) => setElectionId(e.target.value)}
+                            disabled={loading}
                           >
                             <option value="">Select an election</option>
                             {elections.map(election => (
-                              <option key={election.id} value={election.id}>
-                                {election.title}
+                              <option key={election._id} value={election._id}>
+                                {election.title} ({formatDate(election.startDate)} - {formatDate(election.endDate)})
                               </option>
                             ))}
                           </Form.Select>
@@ -316,6 +1064,7 @@ const Reports = () => {
                               <Form.Select 
                                 value={region} 
                                 onChange={(e) => setRegion(e.target.value)}
+                                disabled={loading}
                               >
                                 <option value="">Select region</option>
                                 {regions.map(r => (
@@ -330,8 +1079,9 @@ const Reports = () => {
                               <Form.Select 
                                 value={pincode} 
                                 onChange={(e) => setPincode(e.target.value)}
+                                disabled={loading}
                               >
-                                <option value="">Select pincode</option>
+                                <option value="">All pincodes</option>
                                 {pincodes.map(p => (
                                   <option key={p} value={p}>{p}</option>
                                 ))}
@@ -344,18 +1094,6 @@ const Reports = () => {
                       <Form.Group className="mb-3">
                         <Form.Label>Report Format</Form.Label>
                         <div className="d-flex flex-wrap">
-                          <div className="me-4 mb-2">
-                            <Form.Check
-                              type="radio"
-                              label={<span><FaFilePdf className="text-danger me-1" /> PDF</span>}
-                              name="formatGroup"
-                              id="format-pdf"
-                              value="pdf"
-                              checked={format === 'pdf'}
-                              onChange={(e) => setFormat(e.target.value)}
-                              className="d-flex align-items-center"
-                            />
-                          </div>
                           <div className="me-4 mb-2">
                             <Form.Check
                               type="radio"
@@ -383,13 +1121,29 @@ const Reports = () => {
                         </div>
                       </Form.Group>
                       
+                      {/* Display API errors */}
+                      {error && (
+                        <Alert variant="danger" className="mt-3">
+                          {error}
+                        </Alert>
+                      )}
+                      
                       <div className="d-flex justify-content-end">
                         <Button 
                           type="submit" 
                           variant="primary"
-                          disabled={isGenerating}
+                          disabled={loading || isGenerating}
                         >
-                          <FaFileAlt className="me-2" /> Preview Report
+                          {loading ? (
+                            <>
+                              <Spinner size="sm" animation="border" className="me-2" />
+                              Loading Data...
+                            </>
+                          ) : (
+                            <>
+                              <FaFileAlt className="me-2" /> Preview Report
+                            </>
+                          )}
                         </Button>
                       </div>
                     </Form>
@@ -399,8 +1153,10 @@ const Reports = () => {
               
               <Col lg={4}>
                 <Card className="border-0 shadow-sm mb-4">
-                  <Card.Header className="bg-white py-3">
-                    <h5 className="mb-0">Report Types</h5>
+                  <Card.Header className="py-3">
+                    <h5 className="mb-0 d-flex align-items-center">
+                      <FaChartBar className="me-2" /> Report Types
+                    </h5>
                   </Card.Header>
                   <Card.Body>
                     <div className="mb-3 pb-3 border-bottom">
@@ -473,18 +1229,20 @@ const Reports = () => {
           
           <Tab eventKey="history" title="Report History">
             <Card className="border-0 shadow-sm mb-4">
-              <Card.Header className="bg-white py-3">
+              <Card.Header className="py-3">
                 <div className="d-flex justify-content-between align-items-center flex-wrap">
-                  <h5 className="mb-0">Generated Reports</h5>
+                  <h5 className="mb-0 d-flex align-items-center">
+                    <FaHistory className="me-2" /> Generated Reports
+                  </h5>
                   <Form.Group className="d-flex align-items-center mb-0 mt-2 mt-md-0">
-                    <FaSearch className="text-muted position-absolute ms-3" style={{ zIndex: 1 }} />
+                    <FaSearch className="text-white position-absolute ms-3" style={{ zIndex: 2 }} />
                     <Form.Control
                       type="text"
                       placeholder="Search reports..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="ps-5 border-0 shadow-sm"
-                      style={{ width: '250px' }}
+                      className="ps-5 border-0 shadow-sm blockchain-search"
+                      style={{ width: '250px', background: 'rgba(255, 255, 255, 0.2)', color: 'white' }}
                     />
                   </Form.Group>
                 </div>
@@ -511,10 +1269,10 @@ const Reports = () => {
                         <tr key={report.id}>
                           <td className="fw-semibold">{report.name}</td>
                           <td>
-                            <Badge bg="info">{report.type}</Badge>
+                            <Badge bg="info" className="blockchain-type-badge">{report.type}</Badge>
                           </td>
                           <td>
-                            <Badge bg={report.format === 'pdf' ? 'danger' : (report.format === 'excel' ? 'success' : 'primary')}>
+                            <Badge bg={report.format === 'excel' ? 'success' : 'primary'} className="format-badge">
                               {report.format.toUpperCase()}
                             </Badge>
                           </td>
@@ -532,8 +1290,21 @@ const Reports = () => {
                             <Button 
                               variant="outline-success" 
                               size="sm"
+                              className="me-2"
+                              onClick={() => downloadReport(report)}
                             >
                               <FaDownload className="me-1" /> Download
+                            </Button>
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={() => {
+                                if (window.confirm('Are you sure you want to delete this report?')) {
+                                  deleteReport(report.id);
+                                }
+                              }}
+                            >
+                              Delete
                             </Button>
                           </td>
                         </tr>
@@ -546,8 +1317,10 @@ const Reports = () => {
             
             {selectedReport && (
               <Card className="border-0 shadow-sm mb-4">
-                <Card.Header className="bg-white py-3">
-                  <h5 className="mb-0">Report Details: {selectedReport.name}</h5>
+                <Card.Header className="py-3">
+                  <h5 className="mb-0 d-flex align-items-center">
+                    <FaFileAlt className="me-2" /> Report Details: <span className="blockchain-badge ms-2">{selectedReport.name}</span>
+                  </h5>
                 </Card.Header>
                 <Card.Body>
                   <Row>
@@ -579,7 +1352,21 @@ const Reports = () => {
                         </p>
                       </div>
                       <div className="mt-3 d-flex justify-content-end">
-                        <Button variant="primary">
+                        <Button 
+                          variant="outline-danger" 
+                          className="me-2"
+                          onClick={() => {
+                            if (window.confirm('Are you sure you want to delete this report?')) {
+                              deleteReport(selectedReport.id);
+                            }
+                          }}
+                        >
+                          Delete Report
+                        </Button>
+                        <Button 
+                          variant="primary"
+                          onClick={() => downloadReport(selectedReport)}
+                        >
                           <FaDownload className="me-2" /> Download Full Report
                         </Button>
                       </div>
@@ -599,68 +1386,304 @@ const Reports = () => {
           centered
         >
           <Modal.Header closeButton>
-            <Modal.Title>
-              Report Preview: {getReportName()}
+            <Modal.Title className="d-flex align-items-center">
+              <FaCubes className="me-2" />
+              Report Preview: <span className="blockchain-badge ms-2">{getReportName()}</span>
             </Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <p>
-              {getReportDescription()}
-            </p>
-            
-            <h6 className="mt-4 mb-3">This report will include:</h6>
-            <Row>
-              <Col md={6}>
-                <ListGroup variant="flush">
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaChartBar className="text-primary me-2" /> 
-                    Election Overview
-                  </ListGroup.Item>
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaUsers className="text-info me-2" /> 
-                    Voter Demographics
-                  </ListGroup.Item>
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaMapMarkerAlt className="text-warning me-2" /> 
-                    Regional Analysis
-                  </ListGroup.Item>
-                </ListGroup>
-              </Col>
-              <Col md={6}>
-                <ListGroup variant="flush">
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaChartPie className="text-success me-2" /> 
-                    Turnout Statistics
-                  </ListGroup.Item>
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaChartBar className="text-danger me-2" /> 
-                    Candidate Performance
-                  </ListGroup.Item>
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaCalendarAlt className="text-secondary me-2" /> 
-                    Time-based Analysis
-                  </ListGroup.Item>
-                </ListGroup>
-              </Col>
-            </Row>
-            
-            <hr />
-            
-            <div className="d-flex align-items-center">
-              <div>
-                <h6 className="mb-1">Format: {format.toUpperCase()}</h6>
-                <p className="text-muted mb-0 small">
-                  {format === 'pdf' ? 'PDF format provides a complete formatted document with charts and tables.' : 
-                   format === 'excel' ? 'Excel format allows for further data analysis and custom chart creation.' :
-                   'CSV format provides raw data that can be imported into any analytics tool.'}
+            {reportData ? (
+              <>
+                <p>
+                  {getReportDescription()}
                 </p>
+                
+                <h6 className="mt-4 mb-3">This report will include:</h6>
+                
+                {reportType === 'election' && reportData.election && (
+                  <div className="mb-4">
+                    <Card className="border-0 shadow-sm mb-3">
+                      <Card.Header className="bg-light">
+                        <h6 className="mb-0">Election: {reportData.election.title}</h6>
+                      </Card.Header>
+                      <Card.Body>
+                        <Row>
+                          <Col md={6}>
+                            <small className="text-muted d-block mb-1">Period</small>
+                            <p className="mb-3">{formatDate(reportData.election.startDate)} - {formatDate(reportData.election.endDate)}</p>
+                            
+                            <small className="text-muted d-block mb-1">Status</small>
+                            <Badge bg={reportData.election.isActive ? "success" : "secondary"}>
+                              {reportData.election.isActive ? "Active" : "Completed"}
+                            </Badge>
+                          </Col>
+                          <Col md={6}>
+                            <small className="text-muted d-block mb-1">Total Votes</small>
+                            <p className="mb-3">{reportData.election.totalVotes || 0}</p>
+                            
+                            <small className="text-muted d-block mb-1">Voter Turnout</small>
+                            <p className="mb-0">{reportData.election.voterTurnout || 'N/A'}</p>
+                          </Col>
+                        </Row>
+                      </Card.Body>
+                    </Card>
+                    
+                    <div className="mb-3">
+                      <h6 className="mb-2">Candidate Results ({reportData.candidates?.length || 0} candidates)</h6>
+                      {reportData.candidates && reportData.candidates.length > 0 ? (
+                        <Table responsive size="sm" className="border">
+                          <thead className="table-light">
+                            <tr>
+                              <th>Rank</th>
+                              <th>Name</th>
+                              <th>Party</th>
+                              <th>Votes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reportData.candidates.slice(0, 5).map((candidate, index) => (
+                              <tr key={candidate._id}>
+                                <td>{index + 1}</td>
+                                <td>
+                                  {`${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim()}
+                                </td>
+                                <td>{candidate.partyName || 'Independent'}</td>
+                                <td>
+                                  <Badge bg="primary">{candidate.votes} ({candidate.percentage}%)</Badge>
+                                </td>
+                              </tr>
+                            ))}
+                            {reportData.candidates.length > 5 && (
+                              <tr>
+                                <td colSpan="4" className="text-center">
+                                  <small className="text-muted">
+                                    + {reportData.candidates.length - 5} more candidates
+                                  </small>
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </Table>
+                      ) : (
+                        <p className="text-muted">No candidate data available</p>
+                      )}
+                    </div>
+                    
+                    {reportData.blockchainTransactions && reportData.blockchainTransactions.length > 0 && (
+                      <div>
+                        <h6 className="mb-2">Blockchain Transactions ({reportData.blockchainTransactions.length})</h6>
+                        <p className="text-muted small">
+                          Report will include {reportData.blockchainTransactions.length} blockchain transactions
+                          related to this election.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {reportType === 'voter-participation' && reportData && (
+                  <div className="mb-4">
+                    <Row>
+                      <Col md={6} className="mb-3">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="text-center">
+                            <h3 className="mb-1">{reportData.totalVoters || 0}</h3>
+                            <p className="text-muted mb-0">Total Voters</p>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={6} className="mb-3">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="text-center">
+                            <h3 className="mb-1">{reportData.activeVoters || 0}</h3>
+                            <p className="text-muted mb-0">Active Voters</p>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={6} className="mb-3">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="text-center">
+                            <h3 className="mb-1">{reportData.pendingVoters || 0}</h3>
+                            <p className="text-muted mb-0">Pending Approval</p>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={6} className="mb-3">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="text-center">
+                            <h3 className="mb-1">{reportData.rejectedVoters || 0}</h3>
+                            <p className="text-muted mb-0">Rejected Voters</p>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                    </Row>
+                  </div>
+                )}
+                
+                {(reportType === 'date-range' || reportType === 'regional') && reportData.elections && (
+                  <div className="mb-4">
+                    <h6 className="mb-2">Elections ({reportData.elections.length})</h6>
+                    {reportData.elections.length > 0 ? (
+                      <Table responsive size="sm" className="border">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Title</th>
+                            <th>Period</th>
+                            <th>Status</th>
+                            <th>Votes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.elections.slice(0, 5).map(election => (
+                            <tr key={election._id}>
+                              <td>{election.title}</td>
+                              <td>{formatDate(election.startDate)} - {formatDate(election.endDate)}</td>
+                              <td>
+                                <Badge bg={election.isActive ? "success" : "secondary"}>
+                                  {election.isActive ? "Active" : "Completed"}
+                                </Badge>
+                              </td>
+                              <td>{election.totalVotes || 0}</td>
+                            </tr>
+                          ))}
+                          {reportData.elections.length > 5 && (
+                            <tr>
+                              <td colSpan="4" className="text-center">
+                                <small className="text-muted">
+                                  + {reportData.elections.length - 5} more elections
+                                </small>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </Table>
+                    ) : (
+                      <p className="text-muted">No elections found for the selected criteria</p>
+                    )}
+                  </div>
+                )}
+                
+                {reportType === 'candidate-performance' && reportData.candidates && (
+                  <div className="mb-4">
+                    <Card className="border-0 shadow-sm mb-3">
+                      <Card.Header className="bg-light">
+                        <h6 className="mb-0">Candidate Performance Analytics</h6>
+                      </Card.Header>
+                      <Card.Body>
+                        <Row className="text-center mb-3">
+                          <Col xs={6} md={3} className="mb-3">
+                            <div className="border rounded p-3">
+                              <h5 className="mb-1">{reportData.candidates.length}</h5>
+                              <p className="text-muted small mb-0">Candidates Analyzed</p>
+                            </div>
+                          </Col>
+                          <Col xs={6} md={3} className="mb-3">
+                            <div className="border rounded p-3">
+                              <h5 className="mb-1">{reportData.elections.length}</h5>
+                              <p className="text-muted small mb-0">Elections Covered</p>
+                            </div>
+                          </Col>
+                          <Col xs={6} md={3} className="mb-3">
+                            <div className="border rounded p-3">
+                              <h5 className="mb-1">
+                                {reportData.candidates.length > 0 ? 
+                                  reportData.candidates[0].name : 'N/A'}
+                              </h5>
+                              <p className="text-muted small mb-0">Top Performer</p>
+                            </div>
+                          </Col>
+                          <Col xs={6} md={3} className="mb-3">
+                            <div className="border rounded p-3">
+                              <h5 className="mb-1">
+                                {reportData.candidates.length > 0 ?
+                                  reportData.candidates.reduce((max, c) => 
+                                    Math.max(max, c.totalVotes), 0) : 0}
+                              </h5>
+                              <p className="text-muted small mb-0">Highest Vote Count</p>
+                            </div>
+                          </Col>
+                        </Row>
+                      </Card.Body>
+                    </Card>
+                    
+                    <div className="mb-3">
+                      <h6 className="mb-2">Top Candidates by Total Votes</h6>
+                      {reportData.candidates && reportData.candidates.length > 0 ? (
+                        <Table responsive size="sm" className="border">
+                          <thead className="table-light">
+                            <tr>
+                              <th>Rank</th>
+                              <th>Name</th>
+                              <th>Party</th>
+                              <th>Total Votes</th>
+                              <th>Avg %</th>
+                              <th>Elections</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reportData.candidates.slice(0, 5).map((candidate, index) => (
+                              <tr key={index}>
+                                <td>{index + 1}</td>
+                                <td>{candidate.name}</td>
+                                <td>{candidate.party}</td>
+                                <td>{candidate.totalVotes}</td>
+                                <td>
+                                  <Badge bg="primary">
+                                    {candidate.avgPercentage ? 
+                                      `${candidate.avgPercentage.toFixed(2)}%` : '0%'}
+                                  </Badge>
+                                </td>
+                                <td>{candidate.totalElections}</td>
+                              </tr>
+                            ))}
+                            {reportData.candidates.length > 5 && (
+                              <tr>
+                                <td colSpan="6" className="text-center">
+                                  <small className="text-muted">
+                                    + {reportData.candidates.length - 5} more candidates
+                                  </small>
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </Table>
+                      ) : (
+                        <p className="text-muted">No candidate data available</p>
+                      )}
+                    </div>
+                    
+                    <div>
+                      <h6 className="mb-2">Elections Analyzed</h6>
+                      <p className="text-muted small">
+                        This report analyzes candidate performance across {reportData.elections.length} recent elections,
+                        comparing vote counts, percentages, and consistency of performance.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                <hr />
+                
+                <div className="d-flex align-items-center">
+                  <div>
+                    <h6 className="mb-1">Format: <span className="badge bg-indigo">{format.toUpperCase()}</span></h6>
+                    <p className="text-muted mb-0 small">
+                      {format === 'excel' ? 'Excel format allows for further data analysis and custom chart creation.' :
+                       'CSV format provides raw data that can be imported into any analytics tool.'}
+                    </p>
+                  </div>
+                  <div className="ms-3">
+                    {format === 'excel' ? <FaFileExcel size={32} className="text-success" /> :
+                     <FaFileAlt size={32} className="text-primary" />}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <Spinner animation="border" variant="primary" />
+                <p className="mt-3">Preparing report preview...</p>
               </div>
-              <div className="ms-3">
-                {format === 'pdf' ? <FaFilePdf size={32} className="text-danger" /> : 
-                 format === 'excel' ? <FaFileExcel size={32} className="text-success" /> :
-                 <FaFileAlt size={32} className="text-primary" />}
-              </div>
-            </div>
+            )}
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={cancelReportGeneration}>
@@ -669,7 +1692,7 @@ const Reports = () => {
             <Button 
               variant="primary" 
               onClick={generateReport}
-              disabled={isGenerating}
+              disabled={isGenerating || !reportData}
             >
               {isGenerating ? (
                 <>
@@ -678,12 +1701,373 @@ const Reports = () => {
                 </>
               ) : (
                 <>
-                  <FaFileAlt className="me-2" /> Generate Report
+                  <FaDownload className="me-2" /> Generate {format.toUpperCase()} Report
                 </>
               )}
             </Button>
           </Modal.Footer>
         </Modal>
+        
+        {/* Add CSS styles */}
+        <style jsx="true">{`
+          /* Blockchain-inspired card headers */
+          .card-header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%) !important;
+            color: white !important;
+            position: relative;
+            overflow: hidden;
+            border-bottom: none !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          
+          /* Blockchain pattern overlay */
+          .card-header:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+              linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+              linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+              linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%),
+              linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%);
+            background-size: 10px 10px;
+            opacity: 0.3;
+            z-index: 1;
+          }
+          
+          /* Digital circuit pattern */
+          .card-header:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+            background-size: 15px 15px;
+            opacity: 0.2;
+            z-index: 1;
+          }
+          
+          /* Ensure text is above the patterns */
+          .card-header h1, 
+          .card-header h2, 
+          .card-header h3, 
+          .card-header h4, 
+          .card-header h5, 
+          .card-header h6,
+          .card-header .mb-0,
+          .card-header .d-flex {
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Improve nav tab styling */
+          .nav-tabs .nav-link {
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #6c757d;
+            font-weight: 500;
+            padding: 0.75rem 1.25rem;
+            transition: all 0.2s ease;
+          }
+          
+          .nav-tabs .nav-link:hover {
+            color: #1a237e;
+            border-bottom-color: rgba(26, 35, 126, 0.3);
+          }
+          
+          .nav-tabs .nav-link.active {
+            color: #1a237e;
+            background-color: transparent;
+            border-bottom-color: #1a237e;
+          }
+          
+          /* Style modal header for blockchain look */
+          .modal-header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%) !important;
+            color: white !important;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .modal-header:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+              linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+              linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%);
+            background-size: 10px 10px;
+            opacity: 0.3;
+            z-index: 1;
+          }
+          
+          .modal-title {
+            position: relative;
+            z-index: 2;
+          }
+          
+          .modal-header .btn-close {
+            color: white;
+            filter: brightness(0) invert(1);
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Additional blockchain-inspired elements */
+          .blockchain-badge {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 0.5rem 0.75rem;
+            color: white;
+            font-family: monospace;
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Style table headers with blockchain theme */
+          .table-light th {
+            background-color: #e8eaf6;
+            color: #1a237e;
+            font-weight: 500;
+            border-bottom: 2px solid #c5cae9;
+          }
+          
+          /* Style buttons with blockchain look */
+          .btn-primary {
+            background-color: #3949ab;
+            border-color: #3949ab;
+            box-shadow: 0 2px 4px rgba(57, 73, 171, 0.3);
+          }
+          
+          .btn-primary:hover {
+            background-color: #303f9f;
+            border-color: #283593;
+            box-shadow: 0 4px 8px rgba(57, 73, 171, 0.4);
+          }
+          
+          .btn-outline-primary {
+            color: #3949ab;
+            border-color: #3949ab;
+          }
+          
+          .btn-outline-primary:hover {
+            background-color: #3949ab;
+            border-color: #3949ab;
+            box-shadow: 0 2px 4px rgba(57, 73, 171, 0.3);
+          }
+          
+          /* Update search input for blockchain theme */
+          .blockchain-search::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+          }
+          
+          .blockchain-search:focus {
+            background: rgba(255, 255, 255, 0.3) !important;
+            color: white !important;
+            box-shadow: 0 0 0 0.25rem rgba(255, 255, 255, 0.25) !important;
+          }
+          
+          /* Digital circuit animation for card headers */
+          @keyframes circuit-glow {
+            0% {
+              box-shadow: 0 0 5px rgba(66, 133, 244, 0.3);
+            }
+            50% {
+              box-shadow: 0 0 15px rgba(66, 133, 244, 0.5);
+            }
+            100% {
+              box-shadow: 0 0 5px rgba(66, 133, 244, 0.3);
+            }
+          }
+          
+          .card {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+          }
+          
+          .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+          }
+          
+          /* Add indigo background */
+          .bg-indigo {
+            background-color: #3949ab !important;
+          }
+          
+          /* Blockchain-style badges */
+          .badge {
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            padding: 0.5em 0.75em;
+            border-radius: 4px;
+          }
+          
+          /* Blockchain hash style */
+          .hash-style {
+            font-family: 'Courier New', monospace;
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #1a237e;
+            border-left: 3px solid #3949ab;
+          }
+          
+          /* Blockchain tile effect */
+          .blockchain-tile {
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .blockchain-tile:before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            height: 4px;
+            background: linear-gradient(90deg, #3949ab, #5c6bc0);
+            z-index: 2;
+          }
+          
+          /* Section dividers with hash pattern */
+          .blockchain-divider {
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #3949ab, transparent);
+            position: relative;
+            margin: 1.5rem 0;
+          }
+          
+          .blockchain-divider:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+              linear-gradient(90deg, rgba(255, 255, 255, 0.5) 25%, transparent 25%),
+              linear-gradient(90deg, transparent 75%, rgba(255, 255, 255, 0.5) 75%);
+            background-size: 8px 1px;
+          }
+          
+          /* Blockchain title with animated glow */
+          .blockchain-title {
+            font-weight: 700;
+            position: relative;
+            display: inline-block;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 10px rgba(100, 181, 246, 0.5);
+          }
+          
+          .blockchain-title:after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: -5px;
+            width: 100px;
+            height: 3px;
+            background: linear-gradient(90deg, #3949ab, transparent);
+          }
+          
+          .blockchain-subtitle {
+            opacity: 0.85;
+            font-weight: 300;
+            margin-left: 2px;
+          }
+          
+          /* Blockchain badge styling */
+          .blockchain-type-badge {
+            font-family: "Courier New", monospace;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .blockchain-type-badge:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, 
+                                               transparent 50%, rgba(255,255,255,0.1) 50%, 
+                                               rgba(255,255,255,0.1) 75%, transparent 75%, 
+                                               transparent);
+            background-size: 4px 4px;
+            opacity: 0.3;
+          }
+          
+          /* Format badge with tech style */
+          .format-badge {
+            font-family: "Consolas", monospace;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          /* Improved Table Styling */
+          .table-responsive {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+          }
+          
+          .table {
+            margin-bottom: 0;
+          }
+          
+          .table thead th {
+            background-color: #e8eaf6;
+            color: #3949ab;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            border-top: none;
+          }
+          
+          .table tbody tr {
+            transition: background-color 0.2s;
+          }
+          
+          .table tbody tr:hover {
+            background-color: #f5f5f5;
+          }
+          
+          /* Circuit board background overlay for the container */
+          .container.py-4::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+              radial-gradient(circle at 25px 25px, rgba(255, 255, 255, 0.1) 1px, transparent 2px),
+              linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+              linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px, 25px 25px, 25px 25px;
+            pointer-events: none;
+            z-index: -1;
+          }
+        `}</style>
       </Container>
     </Layout>
   );

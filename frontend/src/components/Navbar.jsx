@@ -105,9 +105,9 @@ const AppNavbar = () => {
       <Nav.Link as={Link} to="/admin/election" className="d-flex align-items-center">
         <FaVoteYea className="me-1" /> Election
       </Nav.Link>
-      <Nav.Link as={Link} to="/admin/archived-elections" className="d-flex align-items-center">
+      {/* <Nav.Link as={Link} to="/admin/archived-elections" className="d-flex align-items-center">
         <FaArchive className="me-1" /> Archives
-      </Nav.Link>
+      </Nav.Link> */}
       <Button variant="outline-danger" onClick={handleLogout} className="ms-2 d-flex align-items-center">
         <FaSignOutAlt className="me-1" /> Logout
       </Button>
@@ -141,15 +141,15 @@ const AppNavbar = () => {
       <Nav.Link as={Link} to="/officer" className="d-flex align-items-center">
         <FaHome className="me-1" /> Dashboard
       </Nav.Link>
-      <Nav.Link as={Link} to="/officer/results" className="d-flex align-items-center">
-        <FaChartBar className="me-1" /> Election Results
+      <Nav.Link as={Link} to="/officer/statistics" className="d-flex align-items-center">
+        <FaChartBar className="me-1" /> Election Statistics
       </Nav.Link>
       <Nav.Link as={Link} to="/officer/reports" className="d-flex align-items-center">
         <FaFilePdf className="me-1" /> Reports
       </Nav.Link>
-      <Nav.Link as={Link} to="/officer/verification" className="d-flex align-items-center">
+      {/* <Nav.Link as={Link} to="/officer/verification" className="d-flex align-items-center">
         <FaVideo className="me-1" /> Verification Center
-      </Nav.Link>
+      </Nav.Link> */}
       <Button variant="outline-danger" onClick={handleLogout} className="ms-2 d-flex align-items-center">
         <FaSignOutAlt className="me-1" /> Logout
       </Button>

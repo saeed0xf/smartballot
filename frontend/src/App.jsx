@@ -25,7 +25,7 @@ import ArchivedElections from './pages/admin/ArchivedElections';
 import OfficerDashboard from './pages/officer/OfficerDashboard';
 import ElectionResults from './pages/officer/ElectionResults';
 import Reports from './pages/officer/Reports';
-import VerificationCenter from './pages/officer/VerificationCenter';
+// import VerificationCenter from './pages/officer/VerificationCenter';
 import MonitorVoting from './pages/officer/MonitorVoting';
 import NotFound from './pages/NotFound';
 
@@ -50,14 +50,14 @@ function App() {
         <Route path="/admin/voters" element={<AdminRoute><ApproveVoters /></AdminRoute>} />
         <Route path="/admin/candidates" element={<AdminRoute><ManageCandidates /></AdminRoute>} />
         <Route path="/admin/election" element={<AdminRoute><ManageElection /></AdminRoute>} />
-        <Route path="/admin/archived-elections" element={<AdminRoute><ArchivedElections /></AdminRoute>} />
+        {/* <Route path="/admin/archived-elections" element={<AdminRoute><ArchivedElections /></AdminRoute>} /> */}
         
         {/* Officer Routes */}
         <Route path="/officer" element={<OfficerRoute><OfficerDashboard /></OfficerRoute>} />
-        <Route path="/officer/results" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
-        <Route path="/officer/results/:electionId" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
+        <Route path="/officer/statistics" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
+        <Route path="/officer/statistics/:electionId" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
         <Route path="/officer/reports" element={<OfficerRoute><Reports /></OfficerRoute>} />
-        <Route path="/officer/verification" element={<OfficerRoute><VerificationCenter /></OfficerRoute>} />
+        {/* <Route path="/officer/verification" element={<OfficerRoute><VerificationCenter /></OfficerRoute>} /> */}
         <Route path="/officer/monitor" element={<OfficerRoute><MonitorVoting /></OfficerRoute>} />
         
         {/* 404 Route */}

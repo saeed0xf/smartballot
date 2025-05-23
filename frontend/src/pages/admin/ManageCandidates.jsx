@@ -618,10 +618,10 @@ const ManageCandidates = () => {
   return (
     <Layout>
       <Container className="py-4">
-        <div className="d-flex justify-content-between align-items-center mb-4">
+        <div className="d-flex justify-content-between align-items-center mb-4 text-white">
           <div>
-            <h1>Manage Candidates</h1>
-            <p className="text-muted">
+            <h1 className="">Manage Candidates</h1>
+            <p>
               Add, update, and remove election candidates.
             </p>
           </div>

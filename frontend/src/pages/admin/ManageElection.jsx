@@ -1850,21 +1850,21 @@ const ManageElection = () => {
   return (
     <Layout>
       <Container className="py-4">
-        <div className="d-flex justify-content-between align-items-center mb-4">
+        <div className="d-flex justify-content-between align-items-center mb-4 text-white">
           <div>
             <h1>Manage Elections</h1>
-            <p className="text-muted">
+            <p>
               Create, update, and manage elections.
             </p>
           </div>
         </div>
         
-        <Alert variant="info" className="mb-4">
+        {/* <Alert variant="info" className="mb-4">
           <FaArchive className="me-2" /> 
           <strong>Note:</strong> Archived elections have been moved to a separate page. 
           You can view them at <Link to="/admin/archived-elections">Archived Elections</Link>.
           This page now only shows active and upcoming elections.
-        </Alert>
+        </Alert> */}
         
         {error && (
           <Alert variant="danger" className="mb-4">
