@@ -768,14 +768,14 @@ const VerifyVote = () => {
                           {new Date(selectedVote.timestamp).toLocaleString()}
                         </div>
                       </ListGroup.Item>
-                      {selectedVote.verificationCode && (
+                      {/* {selectedVote.verificationCode && (
                         <ListGroup.Item className="d-flex justify-content-between align-items-start">
                           <div className="ms-2 me-auto">
                             <div className="fw-bold">Verification Code</div>
                             <code>{selectedVote.verificationCode}</code>
                           </div>
                         </ListGroup.Item>
-                      )}
+                      )} */}
                       <ListGroup.Item className="d-flex justify-content-between align-items-start">
                         <div className="ms-2 me-auto">
                           <div className="fw-bold">Status</div>
