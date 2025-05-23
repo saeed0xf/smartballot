@@ -994,7 +994,7 @@ const ViewCandidates = () => {
         </Card>
         
         {/* Election Area Info */}
-        {voterPincode && (
+        {/* {voterPincode && (
           <Alert variant="info" className="mb-3">
             <div className="d-flex align-items-center">
               <FaMapMarkerAlt className="me-2" />
@@ -1004,7 +1004,7 @@ const ViewCandidates = () => {
               </span>
             </div>
           </Alert>
-        )}
+        )} */}
         
         {/* Compare button and badge */}
         <div className="d-flex justify-content-between align-items-center mb-3">

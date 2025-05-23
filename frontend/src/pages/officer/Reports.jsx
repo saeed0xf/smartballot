@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Button, Form, Spinner, Alert, Badge, Table, Tabs, Tab, ListGroup, Modal } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import { FaDownload, FaChartBar, FaFilePdf, FaFileExcel, FaFileAlt, FaArrowLeft, FaFilter, FaCalendarAlt, FaUsers, FaUserCheck, FaChartPie, FaMapMarkerAlt, FaSearch } from 'react-icons/fa';
+import { FaDownload, FaChartBar, FaFilePdf, FaFileExcel, FaFileAlt, FaArrowLeft, FaFilter, FaCalendarAlt, FaUsers, FaUserCheck, FaChartPie, FaMapMarkerAlt, FaSearch, FaCubes, FaHistory } from 'react-icons/fa';
 import Layout from '../../components/Layout';
 import axios from 'axios';
 import env from '../../utils/env';
@@ -964,15 +964,15 @@ const Reports = () => {
       <Container className="py-4">
         <div className="d-flex justify-content-between align-items-center mb-4 text-white">
           <div>
-            <h1>Reports Center</h1>
-            <p className="">
-              Generate and manage election reports and analytics.
+            <h1 className="blockchain-title">Reports Center</h1>
+            <p className="blockchain-subtitle">
+              Generate and manage election reports and analytics on the blockchain.
             </p>
           </div>
           <Button
             as={Link}
             to="/officer"
-            variant="outline-secondary"
+            variant="outline-light"
             className="d-flex align-items-center"
           >
             <FaArrowLeft className="me-2" /> Back to Dashboard
@@ -988,8 +988,10 @@ const Reports = () => {
             <Row>
               <Col lg={8}>
                 <Card className="border-0 shadow-sm mb-4">
-                  <Card.Header className="bg-white py-3">
-                    <h5 className="mb-0">Report Generator</h5>
+                  <Card.Header className="py-3">
+                    <h5 className="mb-0 d-flex align-items-center">
+                      <FaCubes className="me-2" /> Report Generator
+                    </h5>
                   </Card.Header>
                   <Card.Body>
                     {formError && (
@@ -1151,8 +1153,10 @@ const Reports = () => {
               
               <Col lg={4}>
                 <Card className="border-0 shadow-sm mb-4">
-                  <Card.Header className="bg-white py-3">
-                    <h5 className="mb-0">Report Types</h5>
+                  <Card.Header className="py-3">
+                    <h5 className="mb-0 d-flex align-items-center">
+                      <FaChartBar className="me-2" /> Report Types
+                    </h5>
                   </Card.Header>
                   <Card.Body>
                     <div className="mb-3 pb-3 border-bottom">
@@ -1225,18 +1229,20 @@ const Reports = () => {
           
           <Tab eventKey="history" title="Report History">
             <Card className="border-0 shadow-sm mb-4">
-              <Card.Header className="bg-white py-3">
+              <Card.Header className="py-3">
                 <div className="d-flex justify-content-between align-items-center flex-wrap">
-                  <h5 className="mb-0">Generated Reports</h5>
+                  <h5 className="mb-0 d-flex align-items-center">
+                    <FaHistory className="me-2" /> Generated Reports
+                  </h5>
                   <Form.Group className="d-flex align-items-center mb-0 mt-2 mt-md-0">
-                    <FaSearch className="text-muted position-absolute ms-3" style={{ zIndex: 1 }} />
+                    <FaSearch className="text-white position-absolute ms-3" style={{ zIndex: 2 }} />
                     <Form.Control
                       type="text"
                       placeholder="Search reports..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="ps-5 border-0 shadow-sm"
-                      style={{ width: '250px' }}
+                      className="ps-5 border-0 shadow-sm blockchain-search"
+                      style={{ width: '250px', background: 'rgba(255, 255, 255, 0.2)', color: 'white' }}
                     />
                   </Form.Group>
                 </div>
@@ -1263,10 +1269,10 @@ const Reports = () => {
                         <tr key={report.id}>
                           <td className="fw-semibold">{report.name}</td>
                           <td>
-                            <Badge bg="info">{report.type}</Badge>
+                            <Badge bg="info" className="blockchain-type-badge">{report.type}</Badge>
                           </td>
                           <td>
-                            <Badge bg={report.format === 'excel' ? 'success' : 'primary'}>
+                            <Badge bg={report.format === 'excel' ? 'success' : 'primary'} className="format-badge">
                               {report.format.toUpperCase()}
                             </Badge>
                           </td>
@@ -1311,8 +1317,10 @@ const Reports = () => {
             
             {selectedReport && (
               <Card className="border-0 shadow-sm mb-4">
-                <Card.Header className="bg-white py-3">
-                  <h5 className="mb-0">Report Details: {selectedReport.name}</h5>
+                <Card.Header className="py-3">
+                  <h5 className="mb-0 d-flex align-items-center">
+                    <FaFileAlt className="me-2" /> Report Details: <span className="blockchain-badge ms-2">{selectedReport.name}</span>
+                  </h5>
                 </Card.Header>
                 <Card.Body>
                   <Row>
@@ -1378,8 +1386,9 @@ const Reports = () => {
           centered
         >
           <Modal.Header closeButton>
-            <Modal.Title>
-              Report Preview: {getReportName()}
+            <Modal.Title className="d-flex align-items-center">
+              <FaCubes className="me-2" />
+              Report Preview: <span className="blockchain-badge ms-2">{getReportName()}</span>
             </Modal.Title>
           </Modal.Header>
           <Modal.Body>
@@ -1657,7 +1666,7 @@ const Reports = () => {
                 
                 <div className="d-flex align-items-center">
                   <div>
-                    <h6 className="mb-1">Format: {format.toUpperCase()}</h6>
+                    <h6 className="mb-1">Format: <span className="badge bg-indigo">{format.toUpperCase()}</span></h6>
                     <p className="text-muted mb-0 small">
                       {format === 'excel' ? 'Excel format allows for further data analysis and custom chart creation.' :
                        'CSV format provides raw data that can be imported into any analytics tool.'}
@@ -1698,6 +1707,367 @@ const Reports = () => {
             </Button>
           </Modal.Footer>
         </Modal>
+        
+        {/* Add CSS styles */}
+        <style jsx="true">{`
+          /* Blockchain-inspired card headers */
+          .card-header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%) !important;
+            color: white !important;
+            position: relative;
+            overflow: hidden;
+            border-bottom: none !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          
+          /* Blockchain pattern overlay */
+          .card-header:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+              linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+              linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+              linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%),
+              linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%);
+            background-size: 10px 10px;
+            opacity: 0.3;
+            z-index: 1;
+          }
+          
+          /* Digital circuit pattern */
+          .card-header:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+            background-size: 15px 15px;
+            opacity: 0.2;
+            z-index: 1;
+          }
+          
+          /* Ensure text is above the patterns */
+          .card-header h1, 
+          .card-header h2, 
+          .card-header h3, 
+          .card-header h4, 
+          .card-header h5, 
+          .card-header h6,
+          .card-header .mb-0,
+          .card-header .d-flex {
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Improve nav tab styling */
+          .nav-tabs .nav-link {
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #6c757d;
+            font-weight: 500;
+            padding: 0.75rem 1.25rem;
+            transition: all 0.2s ease;
+          }
+          
+          .nav-tabs .nav-link:hover {
+            color: #1a237e;
+            border-bottom-color: rgba(26, 35, 126, 0.3);
+          }
+          
+          .nav-tabs .nav-link.active {
+            color: #1a237e;
+            background-color: transparent;
+            border-bottom-color: #1a237e;
+          }
+          
+          /* Style modal header for blockchain look */
+          .modal-header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%) !important;
+            color: white !important;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .modal-header:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+              linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+              linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%);
+            background-size: 10px 10px;
+            opacity: 0.3;
+            z-index: 1;
+          }
+          
+          .modal-title {
+            position: relative;
+            z-index: 2;
+          }
+          
+          .modal-header .btn-close {
+            color: white;
+            filter: brightness(0) invert(1);
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Additional blockchain-inspired elements */
+          .blockchain-badge {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 0.5rem 0.75rem;
+            color: white;
+            font-family: monospace;
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Style table headers with blockchain theme */
+          .table-light th {
+            background-color: #e8eaf6;
+            color: #1a237e;
+            font-weight: 500;
+            border-bottom: 2px solid #c5cae9;
+          }
+          
+          /* Style buttons with blockchain look */
+          .btn-primary {
+            background-color: #3949ab;
+            border-color: #3949ab;
+            box-shadow: 0 2px 4px rgba(57, 73, 171, 0.3);
+          }
+          
+          .btn-primary:hover {
+            background-color: #303f9f;
+            border-color: #283593;
+            box-shadow: 0 4px 8px rgba(57, 73, 171, 0.4);
+          }
+          
+          .btn-outline-primary {
+            color: #3949ab;
+            border-color: #3949ab;
+          }
+          
+          .btn-outline-primary:hover {
+            background-color: #3949ab;
+            border-color: #3949ab;
+            box-shadow: 0 2px 4px rgba(57, 73, 171, 0.3);
+          }
+          
+          /* Update search input for blockchain theme */
+          .blockchain-search::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+          }
+          
+          .blockchain-search:focus {
+            background: rgba(255, 255, 255, 0.3) !important;
+            color: white !important;
+            box-shadow: 0 0 0 0.25rem rgba(255, 255, 255, 0.25) !important;
+          }
+          
+          /* Digital circuit animation for card headers */
+          @keyframes circuit-glow {
+            0% {
+              box-shadow: 0 0 5px rgba(66, 133, 244, 0.3);
+            }
+            50% {
+              box-shadow: 0 0 15px rgba(66, 133, 244, 0.5);
+            }
+            100% {
+              box-shadow: 0 0 5px rgba(66, 133, 244, 0.3);
+            }
+          }
+          
+          .card {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+          }
+          
+          .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+          }
+          
+          /* Add indigo background */
+          .bg-indigo {
+            background-color: #3949ab !important;
+          }
+          
+          /* Blockchain-style badges */
+          .badge {
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            padding: 0.5em 0.75em;
+            border-radius: 4px;
+          }
+          
+          /* Blockchain hash style */
+          .hash-style {
+            font-family: 'Courier New', monospace;
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #1a237e;
+            border-left: 3px solid #3949ab;
+          }
+          
+          /* Blockchain tile effect */
+          .blockchain-tile {
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .blockchain-tile:before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            height: 4px;
+            background: linear-gradient(90deg, #3949ab, #5c6bc0);
+            z-index: 2;
+          }
+          
+          /* Section dividers with hash pattern */
+          .blockchain-divider {
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #3949ab, transparent);
+            position: relative;
+            margin: 1.5rem 0;
+          }
+          
+          .blockchain-divider:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+              linear-gradient(90deg, rgba(255, 255, 255, 0.5) 25%, transparent 25%),
+              linear-gradient(90deg, transparent 75%, rgba(255, 255, 255, 0.5) 75%);
+            background-size: 8px 1px;
+          }
+          
+          /* Blockchain title with animated glow */
+          .blockchain-title {
+            font-weight: 700;
+            position: relative;
+            display: inline-block;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 10px rgba(100, 181, 246, 0.5);
+          }
+          
+          .blockchain-title:after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: -5px;
+            width: 100px;
+            height: 3px;
+            background: linear-gradient(90deg, #3949ab, transparent);
+          }
+          
+          .blockchain-subtitle {
+            opacity: 0.85;
+            font-weight: 300;
+            margin-left: 2px;
+          }
+          
+          /* Blockchain badge styling */
+          .blockchain-type-badge {
+            font-family: "Courier New", monospace;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .blockchain-type-badge:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, 
+                                               transparent 50%, rgba(255,255,255,0.1) 50%, 
+                                               rgba(255,255,255,0.1) 75%, transparent 75%, 
+                                               transparent);
+            background-size: 4px 4px;
+            opacity: 0.3;
+          }
+          
+          /* Format badge with tech style */
+          .format-badge {
+            font-family: "Consolas", monospace;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          /* Improved Table Styling */
+          .table-responsive {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+          }
+          
+          .table {
+            margin-bottom: 0;
+          }
+          
+          .table thead th {
+            background-color: #e8eaf6;
+            color: #3949ab;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            border-top: none;
+          }
+          
+          .table tbody tr {
+            transition: background-color 0.2s;
+          }
+          
+          .table tbody tr:hover {
+            background-color: #f5f5f5;
+          }
+          
+          /* Circuit board background overlay for the container */
+          .container.py-4::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+              radial-gradient(circle at 25px 25px, rgba(255, 255, 255, 0.1) 1px, transparent 2px),
+              linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+              linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px, 25px 25px, 25px 25px;
+            pointer-events: none;
+            z-index: -1;
+          }
+        `}</style>
       </Container>
     </Layout>
   );

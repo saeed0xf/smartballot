@@ -424,6 +424,7 @@ const VoterDashboard = () => {
                           as={Link} 
                           to="/voter/vote" 
                           variant="primary"
+                          className="mb-4"
                           disabled={hasVoted() || voterProfile?.status !== 'approved'}
                         >
                           {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
@@ -475,6 +476,7 @@ const VoterDashboard = () => {
                     as={Link} 
                     to="/voter/vote" 
                     variant="primary"
+                    className="mb-4"
                     disabled={hasVoted() || voterProfile?.status !== 'approved'}
                   >
                     {hasVoted() ? 'Vote Already Cast' : 'Cast Vote'}
@@ -541,7 +543,7 @@ const VoterDashboard = () => {
                   as={Link} 
                   to="/voter/vote" 
                   variant="outline-primary" 
-                  className="mt-auto"
+                  className="mt-auto mb-4"
                   disabled={filteredElections.length === 0 || hasVoted() || voterProfile?.status !== 'approved'}
                 >
                   {hasVoted() ? 'Already Voted' : 'Cast Vote'}

@@ -406,7 +406,7 @@ const VerifyVote = () => {
   return (
     <Layout>
       <Container className="py-4">
-        <h1 className="mb-4 text-white">Blockchain Vote Explorer</h1>
+        <h1 className="mb-4 text-white">Blockchain Vote Verification</h1>
         
         {error && (
           <Alert variant="danger" className="d-flex align-items-center">
