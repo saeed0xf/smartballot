@@ -218,11 +218,33 @@ const ElectionResults = () => {
   
   // Get winner
   const getWinner = () => {
-    if (!candidates || candidates.length === 0) return null;
+    if (!candidates || candidates.length === 0) {
+      // If there are no candidates or if "None of the Above" has most votes, return None of the Above
+      if (election?.noneOfTheAboveVotes > 0) {
+        return {
+          isNoneOfTheAbove: true,
+          votes: election.noneOfTheAboveVotes,
+          percentage: election.totalVotes > 0 ? ((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2) : 0
+        };
+      }
+      return null;
+    }
     
-    return candidates.reduce((prev, current) => 
+    // Find candidate with most votes
+    const topCandidate = candidates.reduce((prev, current) => 
       (prev.votes > current.votes) ? prev : current
     );
+    
+    // Check if "None of the Above" has more votes than the top candidate
+    if (election?.noneOfTheAboveVotes > topCandidate.votes) {
+      return {
+        isNoneOfTheAbove: true,
+        votes: election.noneOfTheAboveVotes,
+        percentage: election.totalVotes > 0 ? ((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2) : 0
+      };
+    }
+    
+    return topCandidate;
   };
   
   // Format date
@@ -466,6 +488,14 @@ const ElectionResults = () => {
   
   // Calculate total filtered votes
   const totalFilteredVotes = filteredResults.reduce((total, candidate) => total + candidate.filteredVotes, 0);
+  
+  // Calculate filtered None of the Above votes
+  const filteredNoneOfTheAboveVotes = election?.noneOfTheAboveVotes > 0 
+    ? (filterRegion !== 'all' || filterPincode ? Math.floor(election.noneOfTheAboveVotes * 0.3) : election.noneOfTheAboveVotes) 
+    : 0;
+  
+  // Calculate total including None of the Above votes
+  const totalVotesWithNoneOption = totalFilteredVotes + filteredNoneOfTheAboveVotes;
   
   // Add this function to handle search input changes
   const handleSearchChange = (e) => {
@@ -887,9 +917,16 @@ const ElectionResults = () => {
                     
                     {winner && (
                       <Alert variant="success" className="d-flex align-items-center mb-4 winner-alert">
-                        <div className="me-3 fs-3">{getCandidateSymbol(winner)}</div>
+                        <div className="me-3 fs-3">
+                          {winner.isNoneOfTheAbove ? (
+                            <FaExclamationCircle className="text-warning" />
+                          ) : (
+                            getCandidateSymbol(winner)
+                          )}
+                        </div>
                         <div>
-                          <strong>Winner:</strong> {getCandidateFullName(winner)} ({getCandidateParty(winner)}) with {winner.votes} votes 
+                          <strong>Winner:</strong> {winner.isNoneOfTheAbove ? 'None of the Above' : 
+                            `${getCandidateFullName(winner)} (${getCandidateParty(winner)})`} with {winner.votes} votes 
                           ({winner.percentage}% of total votes)
                         </div>
                       </Alert>
@@ -907,7 +944,7 @@ const ElectionResults = () => {
                       </thead>
                       <tbody>
                         {candidates.sort((a, b) => b.votes - a.votes).map((candidate, index) => (
-                          <tr key={candidate._id || candidate.id} className={`blockchain-row ${index === 0 ? 'winner-row' : ''}`}>
+                          <tr key={candidate._id || candidate.id} className={`blockchain-row ${index === 0 && (!winner || !winner.isNoneOfTheAbove) ? 'winner-row' : ''}`}>
                             <td>{index + 1}</td>
                             <td>
                               <div className="d-flex align-items-center">
@@ -920,6 +957,29 @@ const ElectionResults = () => {
                             <td><span className="percentage">{candidate.percentage}%</span></td>
                           </tr>
                         ))}
+                        
+                        {/* Add None of the Above row */}
+                        {election?.noneOfTheAboveVotes > 0 && (
+                          <tr className={`blockchain-row ${winner && winner.isNoneOfTheAbove ? 'winner-row' : ''}`}>
+                            <td>{candidates.length + 1}</td>
+                            <td>
+                              <div className="d-flex align-items-center">
+                                <span className="me-2 candidate-symbol">
+                                  <FaExclamationCircle className="text-warning" />
+                                </span>
+                                <span className="candidate-name fw-bold">None of the Above</span>
+                              </div>
+                            </td>
+                            <td className="party-name">N/A</td>
+                            <td><Badge bg="warning" className="vote-count text-dark">{election.noneOfTheAboveVotes}</Badge></td>
+                            <td>
+                              <span className="percentage">
+                                {election.totalVotes > 0 ? 
+                                  ((election.noneOfTheAboveVotes / election.totalVotes) * 100).toFixed(2) : 0}%
+                              </span>
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </Table>
                   </Col>
@@ -976,7 +1036,7 @@ const ElectionResults = () => {
                   </thead>
                   <tbody>
                     {filteredResults.map((candidate, index) => (
-                      <tr key={candidate._id || candidate.id} className={`blockchain-row ${index === 0 ? 'winner-row' : ''}`}>
+                      <tr key={candidate._id || candidate.id} className={`blockchain-row ${index === 0 && (!winner || !winner.isNoneOfTheAbove) ? 'winner-row' : ''}`}>
                         <td>{index + 1}</td>
                         <td>
                           <div className="d-flex align-items-center">
@@ -988,13 +1048,47 @@ const ElectionResults = () => {
                         <td><Badge bg="primary" className="vote-count">{candidate.filteredVotes}</Badge></td>
                         <td>
                           <span className="percentage">
-                          {totalFilteredVotes > 0 
-                            ? ((candidate.filteredVotes / totalFilteredVotes) * 100).toFixed(2) 
+                          {totalVotesWithNoneOption > 0 
+                            ? ((candidate.filteredVotes / totalVotesWithNoneOption) * 100).toFixed(2) 
                             : '0.00'}%
                           </span>
                         </td>
                       </tr>
                     ))}
+
+                    {/* Add None of the Above row with filtered votes */}
+                    {election?.noneOfTheAboveVotes > 0 && (
+                      <tr className={`blockchain-row ${winner && winner.isNoneOfTheAbove ? 'winner-row' : ''}`}>
+                        <td>{filteredResults.length + 1}</td>
+                        <td>
+                          <div className="d-flex align-items-center">
+                            <span className="me-2 candidate-symbol">
+                              <FaExclamationCircle className="text-warning" />
+                            </span>
+                            <span className="candidate-name fw-bold">None of the Above</span>
+                          </div>
+                        </td>
+                        <td className="party-name">N/A</td>
+                        <td>
+                          <Badge bg="warning" className="vote-count text-dark">
+                            {/* Apply the same filtering logic to None of the Above votes */}
+                            {filterRegion !== 'all' || filterPincode ? 
+                              Math.floor(election.noneOfTheAboveVotes * 0.3) : 
+                              election.noneOfTheAboveVotes}
+                          </Badge>
+                        </td>
+                        <td>
+                          <span className="percentage">
+                            {totalVotesWithNoneOption > 0 ? 
+                              ((filterRegion !== 'all' || filterPincode ? 
+                                Math.floor(election.noneOfTheAboveVotes * 0.3) : 
+                                election.noneOfTheAboveVotes) / 
+                              totalVotesWithNoneOption * 100).toFixed(2) 
+                              : '0.00'}%
+                          </span>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </Table>
               </Tab>
