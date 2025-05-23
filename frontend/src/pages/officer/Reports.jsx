@@ -263,8 +263,8 @@ const Reports = () => {
       setLoading(false);
       
       // Show preview
-      setShowPreview(true);
-      
+    setShowPreview(true);
+    
     } catch (error) {
       console.error('Error fetching report data:', error);
       setFormError(`Failed to fetch data: ${error.message}`);
@@ -1183,7 +1183,7 @@ const Reports = () => {
                             </>
                           ) : (
                             <>
-                              <FaFileAlt className="me-2" /> Preview Report
+                          <FaFileAlt className="me-2" /> Preview Report
                             </>
                           )}
                         </Button>
@@ -1436,11 +1436,11 @@ const Reports = () => {
           <Modal.Body>
             {reportData ? (
               <>
-                <p>
-                  {getReportDescription()}
-                </p>
-                
-                <h6 className="mt-4 mb-3">This report will include:</h6>
+            <p>
+              {getReportDescription()}
+            </p>
+            
+            <h6 className="mt-4 mb-3">This report will include:</h6>
                 
                 {reportType === 'election' && reportData.election && (
                   <div className="mb-4">
@@ -1449,8 +1449,8 @@ const Reports = () => {
                         <h6 className="mb-0">Election: {reportData.election.title}</h6>
                       </Card.Header>
                       <Card.Body>
-                        <Row>
-                          <Col md={6}>
+            <Row>
+              <Col md={6}>
                             <small className="text-muted d-block mb-1">Period</small>
                             <p className="mb-3">{formatDate(reportData.election.startDate)} - {formatDate(reportData.election.endDate)}</p>
                             
@@ -1458,15 +1458,15 @@ const Reports = () => {
                             <Badge bg={reportData.election.isActive ? "success" : "secondary"}>
                               {reportData.election.isActive ? "Active" : "Completed"}
                             </Badge>
-                          </Col>
-                          <Col md={6}>
+              </Col>
+              <Col md={6}>
                             <small className="text-muted d-block mb-1">Total Votes</small>
                             <p className="mb-3">{reportData.election.totalVotes || 0}</p>
                             
                             <small className="text-muted d-block mb-1">Voter Turnout</small>
                             <p className="mb-0">{reportData.election.voterTurnout || 'N/A'}</p>
-                          </Col>
-                        </Row>
+              </Col>
+            </Row>
                       </Card.Body>
                     </Card>
                     
@@ -1719,22 +1719,22 @@ const Reports = () => {
                     </div>
                   </div>
                 )}
-                
-                <hr />
-                
-                <div className="d-flex align-items-center">
-                  <div>
+            
+            <hr />
+            
+            <div className="d-flex align-items-center">
+              <div>
                     <h6 className="mb-1">Format: <span className="badge bg-indigo">{format.toUpperCase()}</span></h6>
-                    <p className="text-muted mb-0 small">
+                <p className="text-muted mb-0 small">
                       {format === 'excel' ? 'Excel format allows for further data analysis and custom chart creation.' :
-                       'CSV format provides raw data that can be imported into any analytics tool.'}
-                    </p>
-                  </div>
-                  <div className="ms-3">
+                   'CSV format provides raw data that can be imported into any analytics tool.'}
+                </p>
+              </div>
+              <div className="ms-3">
                     {format === 'excel' ? <FaFileExcel size={32} className="text-success" /> :
-                     <FaFileAlt size={32} className="text-primary" />}
-                  </div>
-                </div>
+                 <FaFileAlt size={32} className="text-primary" />}
+              </div>
+            </div>
               </>
             ) : (
               <div className="text-center py-4">

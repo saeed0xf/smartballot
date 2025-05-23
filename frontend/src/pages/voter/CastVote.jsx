@@ -374,8 +374,8 @@ const CastVote = () => {
           console.log('Using recordingBlob from state instead');
           blob = recordingBlob;
         } else {
-          toast.error('Recording data is missing. Your vote was processed, but the recording may not be saved.');
-          return;
+        toast.error('Recording data is missing. Your vote was processed, but the recording may not be saved.');
+        return;
         }
       }
       
@@ -452,11 +452,11 @@ const CastVote = () => {
       
       // Add all necessary data to FormData
       try {
-        formData.append('recording', file);
-        formData.append('voterId', voterProfile._id);
+      formData.append('recording', file);
+      formData.append('voterId', voterProfile._id);
         formData.append('electionId', voteData.electionId);
         formData.append('candidateId', voteData._id || voteData.id);
-        formData.append('voteTimestamp', new Date().toISOString());
+      formData.append('voteTimestamp', new Date().toISOString());
         formData.append('txHash', txHash); 
         formData.append('targetFolder', 'voter-recording');
         formData.append('updateRemote', 'true'); // Ensure this is properly set
@@ -667,7 +667,7 @@ const CastVote = () => {
           if (activeElectionsResponse.data) {
             if (activeElectionsResponse.data.elections && Array.isArray(activeElectionsResponse.data.elections)) {
               // Format: { elections: [...] }
-              electionsData = activeElectionsResponse.data.elections;
+            electionsData = activeElectionsResponse.data.elections;
             } else if (Array.isArray(activeElectionsResponse.data)) {
               // Format: direct array of elections
               electionsData = activeElectionsResponse.data;
@@ -690,7 +690,7 @@ const CastVote = () => {
             setLoading(false);
             return;
           }
-
+          
           // Instead of checking if voted in ANY active election, just store which elections the voter has voted in
           // We'll filter these out from the available candidates later
           let votedElectionIds = [];
@@ -794,8 +794,8 @@ const CastVote = () => {
           
           if (allCandidates.length === 0) {
             setError('No candidates found for any active election.');
-          }
-        } catch (err) {
+        }
+      } catch (err) {
           console.error('Error fetching active elections:', err);
           const errorMsg = err.response?.data?.message || err.message || 'Unknown error';
           console.error('Error details:', errorMsg);
@@ -1422,7 +1422,7 @@ const CastVote = () => {
       // Redirect after recording has been handled and uploaded
       console.log('Recording process complete, redirecting to verification page...');
       setTimeout(() => {
-        navigate('/voter/verify');
+      navigate('/voter/verify');
       }, 5000); // 5 seconds to ensure the user sees the success message
       
     } catch (err) {
