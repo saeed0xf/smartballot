@@ -493,15 +493,15 @@ const ElectionResults = () => {
               <FaEthereum className="text-primary me-3" size={32} />
           <Spinner animation="border" variant="primary" />
             </div>
-            <h4 className="text-primary mb-2">Connecting to Blockchain Network</h4>
-            <p className="text-muted">
+            <h4 className="text-primary mb-2 text-white">Connecting to Blockchain Network</h4>
+            <p className="text-white">
               {electionId 
                 ? "Retrieving election data from distributed ledger..." 
                 : "Scanning blockchain for available elections..."
               }
             </p>
             <div className="mt-3">
-              <small className="text-muted">
+              <small className="text-white">
                 Verifying cryptographic signatures and block confirmations...
               </small>
             </div>
@@ -770,11 +770,11 @@ const ElectionResults = () => {
           </div>
           <Button
             as={Link}
-            to="/officer"
+            to="/officer/statistics"
             variant="outline-secondary"
             className="d-flex align-items-center"
           >
-            <FaArrowLeft className="me-2" /> Back to Dashboard
+            <FaArrowLeft className="me-2" /> Back to Statistics
           </Button>
         </div>
         
