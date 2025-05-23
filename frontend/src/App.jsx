@@ -54,8 +54,8 @@ function App() {
         
         {/* Officer Routes */}
         <Route path="/officer" element={<OfficerRoute><OfficerDashboard /></OfficerRoute>} />
-        <Route path="/officer/results" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
-        <Route path="/officer/results/:electionId" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
+        <Route path="/officer/statistics" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
+        <Route path="/officer/statistics/:electionId" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
         <Route path="/officer/reports" element={<OfficerRoute><Reports /></OfficerRoute>} />
         <Route path="/officer/verification" element={<OfficerRoute><VerificationCenter /></OfficerRoute>} />
         <Route path="/officer/monitor" element={<OfficerRoute><MonitorVoting /></OfficerRoute>} />

@@ -141,8 +141,8 @@ const AppNavbar = () => {
       <Nav.Link as={Link} to="/officer" className="d-flex align-items-center">
         <FaHome className="me-1" /> Dashboard
       </Nav.Link>
-      <Nav.Link as={Link} to="/officer/results" className="d-flex align-items-center">
-        <FaChartBar className="me-1" /> Election Results
+      <Nav.Link as={Link} to="/officer/statistics" className="d-flex align-items-center">
+        <FaChartBar className="me-1" /> Election Statistics
       </Nav.Link>
       <Nav.Link as={Link} to="/officer/reports" className="d-flex align-items-center">
         <FaFilePdf className="me-1" /> Reports

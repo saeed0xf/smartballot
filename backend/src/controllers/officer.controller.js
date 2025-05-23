@@ -4,6 +4,7 @@ const Voter = require('../models/voter.model');
 const Candidate = require('../models/candidate.model');
 const Vote = require('../models/vote.model');
 const { getElectionStatusFromBlockchain } = require('../utils/blockchain.util');
+const { createRemoteConnection, RemoteElectionSchema, RemoteVoteSchema, RemoteCandidateSchema } = require('../utils/remoteDb.util');
 
 // Get all slots
 exports.getAllSlots = async (req, res) => {
@@ -145,6 +146,360 @@ exports.deleteSlot = async (req, res) => {
   } catch (error) {
     console.error('Delete slot error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Get voter statistics (for officers - no admin privileges required)
+exports.getVoterStats = async (req, res) => {
+  try {
+    console.log('Getting voter statistics for officer dashboard');
+    
+    // Get voter counts by status
+    const totalVoters = await Voter.countDocuments({ status: 'approved' });
+    const pendingVoters = await Voter.countDocuments({ status: 'pending' });
+    const rejectedVoters = await Voter.countDocuments({ status: 'rejected' });
+    
+    console.log(`Voter stats: Total=${totalVoters}, Pending=${pendingVoters}, Rejected=${rejectedVoters}`);
+    
+    res.json({
+      totalVoters,
+      pendingVoters,
+      rejectedVoters,
+      activeVoters: totalVoters
+    });
+  } catch (error) {
+    console.error('Get voter stats error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Get election statistics from remote database
+exports.getRemoteElectionStats = async (req, res) => {
+  let remoteConnection = null;
+  
+  try {
+    console.log('Getting remote election stats');
+    
+    // Connect to remote database
+    remoteConnection = await createRemoteConnection();
+    if (!remoteConnection) {
+      return res.status(500).json({ message: 'Failed to connect to remote database' });
+    }
+    
+    // Create models on the remote connection
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    
+    // Count total and active elections
+    const totalElections = await RemoteElection.countDocuments();
+    const activeElections = await RemoteElection.countDocuments({ isActive: true });
+    
+    console.log(`Remote elections stats: Total=${totalElections}, Active=${activeElections}`);
+    
+    res.json({ 
+      totalElections,
+      activeElections,
+      completedElections: totalElections - activeElections
+    });
+  } catch (error) {
+    console.error('Get remote election stats error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  } finally {
+    // Close remote connection
+    if (remoteConnection) {
+      await remoteConnection.close();
+      console.log('Remote database connection closed');
+    }
+  }
+};
+
+// Get vote count from remote database (votes collection)
+exports.getRemoteVotesCount = async (req, res) => {
+  let remoteConnection = null;
+  
+  try {
+    console.log('Getting remote votes count');
+    
+    // Connect to remote database
+    remoteConnection = await createRemoteConnection();
+    if (!remoteConnection) {
+      return res.status(500).json({ message: 'Failed to connect to remote database' });
+    }
+    
+    // Create models on the remote connection
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    const RemoteVote = remoteConnection.model('Vote', RemoteVoteSchema);
+    
+    // Get active election IDs
+    const activeElections = await RemoteElection.find({ isActive: true }, '_id');
+    const activeElectionIds = activeElections.map(election => election._id.toString());
+    
+    console.log(`Found ${activeElectionIds.length} active elections`);
+    
+    // Count votes for active elections
+    const totalVotes = activeElectionIds.length > 0 ? 
+      await RemoteVote.countDocuments({ electionId: { $in: activeElectionIds } }) : 
+      0;
+    
+    // Count verified and pending videos
+    const verifiedVideos = await RemoteVote.countDocuments({ 
+      recordingUrl: { $exists: true, $ne: null }
+    });
+    const pendingVideos = await RemoteVote.countDocuments({ 
+      $or: [
+        { recordingUrl: { $exists: false } },
+        { recordingUrl: null }
+      ]
+    });
+    
+    console.log(`Remote votes stats: Total=${totalVotes}, Verified=${verifiedVideos}, Pending=${pendingVideos}`);
+    
+    res.json({ 
+      totalVotes,
+      verifiedVideos,
+      pendingVideos
+    });
+  } catch (error) {
+    console.error('Get remote votes count error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  } finally {
+    // Close remote connection
+    if (remoteConnection) {
+      await remoteConnection.close();
+      console.log('Remote database connection closed');
+    }
+  }
+};
+
+// Get recent elections from remote database
+exports.getRecentElections = async (req, res) => {
+  let remoteConnection = null;
+  
+  try {
+    console.log('Getting recent elections');
+    
+    // Connect to remote database
+    remoteConnection = await createRemoteConnection();
+    if (!remoteConnection) {
+      return res.status(500).json({ message: 'Failed to connect to remote database' });
+    }
+    
+    // Create models on the remote connection
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    const RemoteVote = remoteConnection.model('Vote', RemoteVoteSchema);
+    
+    // Get recent elections (limit to 5)
+    const elections = await RemoteElection
+      .find({})
+      .sort({ startDate: -1 })
+      .limit(5)
+      .lean();
+    
+    console.log(`Found ${elections.length} recent elections`);
+    
+    // Enhance each election with vote counts and turnout
+    const enhancedElections = await Promise.all(elections.map(async (election) => {
+      // Count votes for this election
+      const voteCount = await RemoteVote.countDocuments({ 
+        electionId: election._id.toString()
+      });
+      
+      // Calculate voter turnout (assuming totalVoters is stored in the election document)
+      // If not, we'll just return 'N/A'
+      let voterTurnout = 'N/A';
+      if (election.totalVoters && election.totalVoters > 0) {
+        const percentage = (voteCount / election.totalVoters) * 100;
+        voterTurnout = `${percentage.toFixed(1)}%`;
+      }
+      
+      return {
+        ...election,
+        totalVotes: voteCount,
+        voterTurnout
+      };
+    }));
+    
+    console.log(`Enhanced ${enhancedElections.length} elections with vote data`);
+    
+    res.json({
+      elections: enhancedElections
+    });
+  } catch (error) {
+    console.error('Get recent elections error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  } finally {
+    // Close remote connection
+    if (remoteConnection) {
+      await remoteConnection.close();
+      console.log('Remote database connection closed');
+    }
+  }
+};
+
+// Get election results from remote database
+exports.getElectionResults = async (req, res) => {
+  let remoteConnection = null;
+  
+  try {
+    const { electionId } = req.params;
+    console.log(`Getting election results for election ID: ${electionId}`);
+    
+    // Connect to remote database
+    remoteConnection = await createRemoteConnection();
+    if (!remoteConnection) {
+      return res.status(500).json({ message: 'Failed to connect to remote database' });
+    }
+    
+    // Create models on the remote connection
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
+    const RemoteVote = remoteConnection.model('Vote', RemoteVoteSchema);
+    
+    // Get election details
+    const election = await RemoteElection.findById(electionId).lean();
+    if (!election) {
+      return res.status(404).json({ message: 'Election not found' });
+    }
+    
+    // Get candidates for this election
+    const candidates = await RemoteCandidate.find({ 
+      electionId: electionId 
+    }).lean();
+    
+    // Get all votes for this election
+    const votes = await RemoteVote.find({ 
+      electionId: electionId 
+    }).lean();
+    
+    // Calculate vote counts for each candidate
+    const candidateVoteCounts = {};
+    let totalVotes = 0;
+    let noneOfTheAboveVotes = 0;
+    
+    votes.forEach(vote => {
+      if (vote.isNoneOption) {
+        noneOfTheAboveVotes++;
+      } else if (vote.candidateId) {
+        candidateVoteCounts[vote.candidateId] = (candidateVoteCounts[vote.candidateId] || 0) + 1;
+      }
+      totalVotes++;
+    });
+    
+    // Enhance candidates with vote counts and percentages
+    const enhancedCandidates = candidates.map(candidate => {
+      const voteCount = candidateVoteCounts[candidate._id.toString()] || 0;
+      const percentage = totalVotes > 0 ? ((voteCount / totalVotes) * 100).toFixed(2) : 0;
+      
+      return {
+        ...candidate,
+        votes: voteCount,
+        percentage: parseFloat(percentage)
+      };
+    });
+    
+    // Sort candidates by vote count (descending)
+    enhancedCandidates.sort((a, b) => b.votes - a.votes);
+    
+    // Calculate voter turnout
+    const voterTurnout = election.totalVoters && election.totalVoters > 0 
+      ? ((totalVotes / election.totalVoters) * 100).toFixed(1) + '%'
+      : 'N/A';
+    
+    // Get blockchain transactions for this election
+    const blockchainTransactions = votes.map(vote => ({
+      txHash: vote.blockchainTxHash,
+      type: 'Vote',
+      timestamp: vote.timestamp,
+      from: `0x${vote.voterId.slice(-40)}`, // Mock wallet address from voter ID
+      data: {
+        candidateId: vote.candidateId,
+        electionId: vote.electionId,
+        isNoneOption: vote.isNoneOption
+      },
+      status: vote.confirmed ? 'Confirmed' : 'Pending',
+      blockNumber: vote.blockInfo?.blockNumber || Math.floor(Math.random() * 1000000) + 15000000
+    }));
+    
+    console.log(`Found ${enhancedCandidates.length} candidates and ${totalVotes} votes for election ${electionId}`);
+    
+    res.json({
+      election: {
+        ...election,
+        totalVotes,
+        voterTurnout,
+        noneOfTheAboveVotes
+      },
+      candidates: enhancedCandidates,
+      blockchainTransactions,
+      statistics: {
+        totalVotes,
+        totalCandidates: candidates.length,
+        noneOfTheAboveVotes,
+        voterTurnout
+      }
+    });
+  } catch (error) {
+    console.error('Get election results error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  } finally {
+    // Close remote connection
+    if (remoteConnection) {
+      await remoteConnection.close();
+      console.log('Remote database connection closed');
+    }
+  }
+};
+
+// Get all elections from remote database for statistics page
+exports.getAllElections = async (req, res) => {
+  let remoteConnection = null;
+  
+  try {
+    console.log('Getting all elections from remote database');
+    
+    // Connect to remote database
+    remoteConnection = await createRemoteConnection();
+    if (!remoteConnection) {
+      return res.status(500).json({ message: 'Failed to connect to remote database' });
+    }
+    
+    // Create models on the remote connection
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    const RemoteVote = remoteConnection.model('Vote', RemoteVoteSchema);
+    
+    // Get all elections
+    const elections = await RemoteElection.find({}).sort({ startDate: -1 }).lean();
+    
+    // Enhance each election with vote counts
+    const enhancedElections = await Promise.all(elections.map(async (election) => {
+      const voteCount = await RemoteVote.countDocuments({ 
+        electionId: election._id.toString()
+      });
+      
+      const voterTurnout = election.totalVoters && election.totalVoters > 0 
+        ? ((voteCount / election.totalVoters) * 100).toFixed(1) + '%'
+        : 'N/A';
+      
+      return {
+        ...election,
+        totalVotes: voteCount,
+        voterTurnout
+      };
+    }));
+    
+    console.log(`Found ${enhancedElections.length} elections`);
+    
+    res.json({
+      elections: enhancedElections
+    });
+  } catch (error) {
+    console.error('Get all elections error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  } finally {
+    // Close remote connection
+    if (remoteConnection) {
+      await remoteConnection.close();
+      console.log('Remote database connection closed');
+    }
   }
 };
 

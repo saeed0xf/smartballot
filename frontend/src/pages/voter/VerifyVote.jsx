@@ -367,6 +367,13 @@ const VerifyVote = () => {
     );
   };
 
+  // Get transaction explorer URL
+  const getTransactionExplorerUrl = (txHash) => {
+    // This would be network-dependent in a real application
+    // For example, for Ethereum mainnet: `https://etherscan.io/tx/${txHash}`
+    return `https://sepolia.etherscan.io/tx/${txHash}`;
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -560,26 +567,37 @@ const VerifyVote = () => {
                                 </Badge>
                               ) : <span className="text-muted">Pending</span>}
                             </div>
-                          </Col>
+                    </Col>
                           <Col xs={12} md={4}>
                             <div className="text-muted small">STATUS</div>
-                            <div>
-                              <Badge bg={vote.confirmed ? "success" : "warning"} className="py-1 px-2 me-1">
+                            <div className="d-flex align-items-center">
+                              <Badge bg={vote.confirmed ? "success" : "warning"} className="py-1 px-2 me-2">
                                 {vote.confirmed ? <FaCheck className="me-1" size={10} /> : null}
                                 {vote.confirmed ? "Confirmed" : "Pending"}
                               </Badge>
-                              
+                              <Button 
+                                variant="outline-primary" 
+                                size="sm"
+                                className="d-flex align-items-center"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(getTransactionExplorerUrl(vote.blockchainTxHash), '_blank');
+                                }}
+                                title="View on Blockchain Explorer"
+                              >
+                                <FaExternalLinkAlt size={12} />
+                              </Button>
                             </div>
-                          </Col>
-                        </Row>
-                      </Col>
+                    </Col>
+                  </Row>
+                    </Col>
                       <Col xs={12} className="mt-2 d-flex justify-content-end">
                         <div className="d-flex align-items-center view-details-link">
                           <FaInfoCircle className="me-1" size={14} />
                           <span className="small">Click to view transaction details</span>
                         </div>
-                      </Col>
-                    </Row>
+                    </Col>
+                  </Row>
                   </div>
                 ))}
                 
@@ -653,10 +671,10 @@ const VerifyVote = () => {
                   <Card className="h-100 blockchain-stat-card border-0 shadow-sm">
                     <Card.Body className="d-flex flex-column justify-content-between">
                       <div className="text-muted mb-2">Latest Vote Time</div>
-                      <div>
+                  <div>
                         <h5 className="mb-1">
                           {remoteVotes[0]?.timestamp ? getTimeAgo(remoteVotes[0].timestamp) : 'Unknown'}
-                        </h5>
+                    </h5>
                         <div className="text-muted small">
                           {remoteVotes[0]?.timestamp ? 
                             new Date(remoteVotes[0].timestamp).toLocaleString() : 
@@ -828,14 +846,14 @@ const VerifyVote = () => {
                         Your browser does not support the video tag.
                       </video>
                     </div>
-                  </div>
-                )}
-                
+              </div>
+            )}
+            
                 <div className="mt-4 blockchain-explorer-link text-center">
                   <p className="mb-2">View this transaction on the public blockchain explorer</p>
                   <Button 
                     variant="outline-primary"
-                    onClick={() => window.open(`https://etherscan.io/tx/${selectedVote.blockchainTxHash}`, '_blank')}
+                    onClick={() => window.open(getTransactionExplorerUrl(selectedVote.blockchainTxHash), '_blank')}
                   >
                     <FaExternalLinkAlt className="me-2" />
                     View on Blockchain Explorer

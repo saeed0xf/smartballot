@@ -18,6 +18,24 @@ router.put('/slots/:slotId', verifyToken, isOfficer, officerController.updateSlo
 // Delete slot (protected route)
 router.delete('/slots/:slotId', verifyToken, isOfficer, officerController.deleteSlot);
 
+// Get voter statistics (protected route)
+router.get('/voters/stats', verifyToken, isOfficer, officerController.getVoterStats);
+
+// Get all elections from remote database (protected route)
+router.get('/elections/all', verifyToken, isOfficer, officerController.getAllElections);
+
+// Get election results from remote database (protected route)
+router.get('/elections/:electionId/results', verifyToken, isOfficer, officerController.getElectionResults);
+
+// Get remote election stats (protected route)
+router.get('/elections/remote/stats', verifyToken, isOfficer, officerController.getRemoteElectionStats);
+
+// Get remote votes count (protected route)
+router.get('/elections/remote/votes/count', verifyToken, isOfficer, officerController.getRemoteVotesCount);
+
+// Get recent elections from remote database (protected route)
+router.get('/elections/remote/recent', verifyToken, isOfficer, officerController.getRecentElections);
+
 // Get election monitoring data (protected route)
 router.get('/monitor', verifyToken, isOfficer, officerController.getMonitoringData);
 
