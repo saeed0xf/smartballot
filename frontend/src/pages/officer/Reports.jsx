@@ -3,6 +3,11 @@ import { Container, Row, Col, Card, Button, Form, Spinner, Alert, Badge, Table, 
 import { Link } from 'react-router-dom';
 import { FaDownload, FaChartBar, FaFilePdf, FaFileExcel, FaFileAlt, FaArrowLeft, FaFilter, FaCalendarAlt, FaUsers, FaUserCheck, FaChartPie, FaMapMarkerAlt, FaSearch } from 'react-icons/fa';
 import Layout from '../../components/Layout';
+import axios from 'axios';
+import env from '../../utils/env';
+import * as XLSX from 'xlsx';
+
+const { API_URL } = env;
 
 const Reports = () => {
   const [reportType, setReportType] = useState('election');
@@ -11,7 +16,7 @@ const Reports = () => {
   const [endDate, setEndDate] = useState('');
   const [region, setRegion] = useState('');
   const [pincode, setPincode] = useState('');
-  const [format, setFormat] = useState('pdf');
+  const [format, setFormat] = useState('excel');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedReports, setGeneratedReports] = useState([]);
   const [formError, setFormError] = useState('');
@@ -19,60 +24,63 @@ const Reports = () => {
   const [selectedReport, setSelectedReport] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('generate');
+  const [elections, setElections] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [pincodes, setPincodes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [reportData, setReportData] = useState(null);
   
-  // Sample data
-  const elections = [
-    { id: 'e1', title: 'Lok Sabha Elections 2023', totalVoters: 1250, voterTurnout: '70%', startDate: '2023-10-15', endDate: '2023-10-30', regions: ['North Delhi', 'South Delhi', 'East Delhi', 'West Delhi'] },
-    { id: 'e2', title: 'Municipal Corporation Elections', totalVoters: 980, voterTurnout: '58%', startDate: '2023-09-01', endDate: '2023-09-15', regions: ['Central Delhi', 'North Delhi', 'South Delhi'] },
-    { id: 'e3', title: 'State Assembly Elections', totalVoters: 1500, voterTurnout: '72%', startDate: '2023-08-01', endDate: '2023-08-10', regions: ['East Delhi', 'West Delhi'] },
-    { id: 'e4', title: 'Panchayat Elections 2023', totalVoters: 750, voterTurnout: '85%', startDate: '2023-07-05', endDate: '2023-07-10', regions: ['Rural Delhi'] },
-    { id: 'e5', title: 'School Board Elections', totalVoters: 450, voterTurnout: '65%', startDate: '2023-06-10', endDate: '2023-06-15', regions: ['Academic District'] }
-  ];
-  
-  const regions = ['North Delhi', 'South Delhi', 'East Delhi', 'West Delhi', 'Central Delhi', 'Rural Delhi', 'Academic District'];
-  
-  const pincodes = ['110001', '110002', '110003', '110005', '110006', '110007', '110008', '110009'];
-
-  // Some sample previously generated reports
+  // Fetch elections from remote database
   useEffect(() => {
-    // Simulating previously generated reports
-    const previousReports = [
-      {
-        id: 'report-1667305200000',
-        name: 'Lok Sabha Elections 2023 Report',
-        type: 'election',
-        format: 'pdf',
-        date: '2023-11-01T10:00:00.000Z',
-        status: 'completed',
-        size: '2.5 MB'
-      },
-      {
-        id: 'report-1667218800000',
-        name: 'Voter Participation Statistics Report',
-        type: 'voter-participation',
-        format: 'excel',
-        date: '2023-10-31T08:00:00.000Z',
-        status: 'completed',
-        size: '4.2 MB'
-      },
-      {
-        id: 'report-1667132400000',
-        name: 'North Delhi Region Election Report (Pincode: 110001)',
-        type: 'regional',
-        format: 'pdf',
-        date: '2023-10-30T15:30:00.000Z',
-        status: 'completed',
-        size: '3.7 MB'
+    const fetchElections = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        
+        // Get auth token
+        const token = localStorage.getItem('token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        
+        // Fetch all elections
+        const response = await axios.get(`${API_URL}/officer/elections/all`, { headers });
+        console.log('Elections fetched:', response.data);
+        
+        if (response.data && response.data.elections) {
+          setElections(response.data.elections);
+          
+          // Extract unique regions and pincodes from elections
+          const allRegions = response.data.elections
+            .map(e => e.region)
+            .filter(Boolean);
+          
+          const allPincodes = response.data.elections
+            .map(e => e.pincode)
+            .filter(Boolean);
+          
+          setRegions([...new Set(allRegions)]);
+          setPincodes([...new Set(allPincodes)]);
+        }
+        
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching elections:', error);
+        setError('Failed to fetch elections from the database. Please try again.');
+        setLoading(false);
       }
-    ];
+    };
     
-    setGeneratedReports(previousReports);
+    fetchElections();
+    
+    // Fetch previous reports (if we had a real API for this)
+    // For now, we'll keep track of generated reports in state
   }, []);
   
   // Handle form submission
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+    setReportData(null);
     
     // Validate form
     if (reportType === 'election' && !electionId) {
@@ -90,23 +98,98 @@ const Reports = () => {
       return;
     }
     
-    if (reportType === 'regional' && !pincode) {
-      setFormError('Please select a pincode');
-      return;
+    // Fetch data based on report type
+    try {
+      setLoading(true);
+      
+      // Get auth token
+      const token = localStorage.getItem('token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      
+      let data = null;
+      
+      switch (reportType) {
+        case 'election':
+          // Fetch specific election data
+          const electionResponse = await axios.get(
+            `${API_URL}/officer/elections/${electionId}/results`, 
+            { headers }
+          );
+          data = electionResponse.data;
+          break;
+          
+        case 'voter-participation':
+          // Fetch voter statistics
+          const voterStatsResponse = await axios.get(
+            `${API_URL}/officer/voters/stats`,
+            { headers }
+          );
+          data = voterStatsResponse.data;
+          break;
+          
+        case 'date-range':
+          // For date range, we need to fetch all elections and filter
+          const allElectionsResponse = await axios.get(
+            `${API_URL}/officer/elections/all`,
+            { headers }
+          );
+          
+          // Filter elections by date range
+          const startDateObj = new Date(startDate);
+          const endDateObj = new Date(endDate);
+          
+          data = {
+            elections: allElectionsResponse.data.elections.filter(election => {
+              const electionStartDate = new Date(election.startDate);
+              return electionStartDate >= startDateObj && electionStartDate <= endDateObj;
+            })
+          };
+          break;
+          
+        case 'regional':
+          // For regional reports, fetch all elections and filter by region
+          const regionalElectionsResponse = await axios.get(
+            `${API_URL}/officer/elections/all`,
+            { headers }
+          );
+          
+          data = {
+            elections: regionalElectionsResponse.data.elections.filter(election => 
+              election.region === region && 
+              (!pincode || election.pincode === pincode)
+            )
+          };
+          break;
+          
+        default:
+          break;
+      }
+      
+      setReportData(data);
+      setLoading(false);
+      
+      // Show preview
+      setShowPreview(true);
+      
+    } catch (error) {
+      console.error('Error fetching report data:', error);
+      setFormError(`Failed to fetch data: ${error.message}`);
+      setLoading(false);
     }
-    
-    // Show preview first
-    setShowPreview(true);
-    
-    // Then generate report after user confirms
   };
   
-  // Generate a report
+  // Generate report in the selected format
   const generateReport = () => {
     setIsGenerating(true);
     
-    // Simulate API call with timeout
-    setTimeout(() => {
+    try {
+      if (format === 'excel') {
+        generateExcelReport();
+      } else if (format === 'csv') {
+        generateCSVReport();
+      }
+      
+      // Create a record of the generated report
       const newReport = {
         id: `report-${Date.now()}`,
         name: getReportName(),
@@ -114,7 +197,7 @@ const Reports = () => {
         format: format,
         date: new Date().toISOString(),
         status: 'completed',
-        size: `${Math.floor(Math.random() * 10) + 1}.${Math.floor(Math.random() * 9)}${Math.floor(Math.random() * 9)} MB`
+        size: calculateReportSize() 
       };
       
       setGeneratedReports(prev => [newReport, ...prev]);
@@ -132,7 +215,215 @@ const Reports = () => {
       
       // Show success message
       alert(`Report "${newReport.name}" has been generated successfully!`);
-    }, 2000);
+      
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert(`Error generating report: ${error.message}`);
+      setIsGenerating(false);
+    }
+  };
+  
+  // Generate Excel report
+  const generateExcelReport = () => {
+    if (!reportData) return;
+    
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Add sheets based on report type
+    if (reportType === 'election' && reportData.election) {
+      // Add Election Summary sheet
+      const electionSummaryData = [
+        ['Election Summary'],
+        [''],
+        ['Title', reportData.election.title || 'N/A'],
+        ['Description', reportData.election.description || 'N/A'],
+        ['Start Date', formatDate(reportData.election.startDate)],
+        ['End Date', formatDate(reportData.election.endDate)],
+        ['Total Votes', reportData.election.totalVotes || 0],
+        ['Voter Turnout', reportData.election.voterTurnout || 'N/A'],
+        ['Status', reportData.election.isActive ? 'Active' : 'Completed'],
+        ['None of the Above Votes', reportData.election.noneOfTheAboveVotes || 0],
+        ['']
+      ];
+      
+      const summarySheet = XLSX.utils.aoa_to_sheet(electionSummaryData);
+      XLSX.utils.book_append_sheet(wb, summarySheet, 'Election Summary');
+      
+      // Add Candidates sheet
+      if (reportData.candidates && reportData.candidates.length > 0) {
+        const candidatesData = [
+          ['Rank', 'Name', 'Party', 'Votes', 'Percentage', 'Gender', 'Age', 'Constituency']
+        ];
+        
+        reportData.candidates.forEach((candidate, index) => {
+          candidatesData.push([
+            index + 1,
+            `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim(),
+            candidate.partyName || 'Independent',
+            candidate.votes || 0,
+            `${candidate.percentage || 0}%`,
+            candidate.gender || 'N/A',
+            candidate.age || 'N/A',
+            candidate.constituency || 'N/A'
+          ]);
+        });
+        
+        const candidatesSheet = XLSX.utils.aoa_to_sheet(candidatesData);
+        XLSX.utils.book_append_sheet(wb, candidatesSheet, 'Candidates');
+      }
+      
+      // Add Blockchain Transactions sheet
+      if (reportData.blockchainTransactions && reportData.blockchainTransactions.length > 0) {
+        const transactionsData = [
+          ['Transaction Hash', 'Type', 'Timestamp', 'From Address', 'Status', 'Block Number']
+        ];
+        
+        reportData.blockchainTransactions.forEach(tx => {
+          transactionsData.push([
+            tx.txHash || 'N/A',
+            tx.type || 'N/A',
+            formatDate(tx.timestamp),
+            tx.from || 'N/A',
+            tx.status || 'N/A',
+            tx.blockNumber || 'N/A'
+          ]);
+        });
+        
+        const txSheet = XLSX.utils.aoa_to_sheet(transactionsData);
+        XLSX.utils.book_append_sheet(wb, txSheet, 'Blockchain Transactions');
+      }
+    } else if (reportType === 'voter-participation' && reportData) {
+      // Add Voter Participation sheet
+      const voterData = [
+        ['Voter Participation Summary'],
+        [''],
+        ['Total Voters', reportData.totalVoters || 0],
+        ['Pending Voters', reportData.pendingVoters || 0],
+        ['Rejected Voters', reportData.rejectedVoters || 0],
+        ['Active Voters', reportData.activeVoters || 0]
+      ];
+      
+      const voterSheet = XLSX.utils.aoa_to_sheet(voterData);
+      XLSX.utils.book_append_sheet(wb, voterSheet, 'Voter Participation');
+    } else if ((reportType === 'date-range' || reportType === 'regional') && reportData.elections) {
+      // Add Elections sheet
+      const electionsData = [
+        ['Title', 'Description', 'Start Date', 'End Date', 'Status', 'Total Votes', 'Voter Turnout', 'Region', 'Pincode']
+      ];
+      
+      reportData.elections.forEach(election => {
+        electionsData.push([
+          election.title || 'N/A',
+          election.description || 'N/A',
+          formatDate(election.startDate),
+          formatDate(election.endDate),
+          election.isActive ? 'Active' : 'Completed',
+          election.totalVotes || 0,
+          election.voterTurnout || 'N/A',
+          election.region || 'N/A',
+          election.pincode || 'N/A'
+        ]);
+      });
+      
+      const electionsSheet = XLSX.utils.aoa_to_sheet(electionsData);
+      XLSX.utils.book_append_sheet(wb, electionsSheet, 'Elections');
+    }
+    
+    // Generate filename
+    const fileName = `${getReportName().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    // Write and download file
+    XLSX.writeFile(wb, fileName);
+  };
+  
+  // Generate CSV report
+  const generateCSVReport = () => {
+    if (!reportData) return;
+    
+    let csvContent = '';
+    let fileName = '';
+    
+    if (reportType === 'election' && reportData.election) {
+      // Create CSV for election report
+      csvContent = 'Title,Description,Start Date,End Date,Total Votes,Voter Turnout,Status\n';
+      csvContent += `"${reportData.election.title || 'N/A'}","${reportData.election.description || 'N/A'}","${formatDate(reportData.election.startDate)}","${formatDate(reportData.election.endDate)}",${reportData.election.totalVotes || 0},"${reportData.election.voterTurnout || 'N/A'}","${reportData.election.isActive ? 'Active' : 'Completed'}"\n\n`;
+      
+      if (reportData.candidates && reportData.candidates.length > 0) {
+        csvContent += 'Rank,Name,Party,Votes,Percentage,Gender,Age,Constituency\n';
+        
+        reportData.candidates.forEach((candidate, index) => {
+          const name = `${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim();
+          csvContent += `${index + 1},"${name}","${candidate.partyName || 'Independent'}",${candidate.votes || 0},"${candidate.percentage || 0}%","${candidate.gender || 'N/A'}","${candidate.age || 'N/A'}","${candidate.constituency || 'N/A'}"\n`;
+        });
+      }
+      
+      fileName = `${reportData.election.title.replace(/\s+/g, '_')}_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    } else if (reportType === 'voter-participation' && reportData) {
+      // Create CSV for voter participation
+      csvContent = 'Total Voters,Pending Voters,Rejected Voters,Active Voters\n';
+      csvContent += `${reportData.totalVoters || 0},${reportData.pendingVoters || 0},${reportData.rejectedVoters || 0},${reportData.activeVoters || 0}\n`;
+      
+      fileName = `Voter_Participation_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    } else if ((reportType === 'date-range' || reportType === 'regional') && reportData.elections) {
+      // Create CSV for elections list
+      csvContent = 'Title,Description,Start Date,End Date,Status,Total Votes,Voter Turnout,Region,Pincode\n';
+      
+      reportData.elections.forEach(election => {
+        csvContent += `"${election.title || 'N/A'}","${election.description || 'N/A'}","${formatDate(election.startDate)}","${formatDate(election.endDate)}","${election.isActive ? 'Active' : 'Completed'}",${election.totalVotes || 0},"${election.voterTurnout || 'N/A'}","${election.region || 'N/A'}","${election.pincode || 'N/A'}"\n`;
+      });
+      
+      fileName = `${getReportName().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    }
+    
+    // Create and download the CSV file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  // Calculate approximate report size
+  const calculateReportSize = () => {
+    if (!reportData) return '0 KB';
+    
+    // Estimate size based on data
+    let sizeInKB = 0;
+    
+    if (reportType === 'election') {
+      sizeInKB = 10; // Base size for header info
+      
+      // Add size for candidates
+      if (reportData.candidates) {
+        sizeInKB += reportData.candidates.length * 2;
+      }
+      
+      // Add size for transactions
+      if (reportData.blockchainTransactions) {
+        sizeInKB += reportData.blockchainTransactions.length * 1.5;
+      }
+    } else if (reportType === 'voter-participation') {
+      sizeInKB = 5; // Small fixed size
+    } else if ((reportType === 'date-range' || reportType === 'regional') && reportData.elections) {
+      sizeInKB = 5 + (reportData.elections.length * 3);
+    }
+    
+    // Add format overhead
+    if (format === 'excel') {
+      sizeInKB *= 1.2; // Excel files are slightly larger
+    }
+    
+    // Return size with units
+    if (sizeInKB < 1000) {
+      return `${Math.round(sizeInKB * 10) / 10} KB`;
+    } else {
+      return `${Math.round(sizeInKB / 100) / 10} MB`;
+    }
   };
   
   // Cancel report generation
@@ -144,14 +435,18 @@ const Reports = () => {
   const getReportName = () => {
     switch (reportType) {
       case 'election':
-        const election = elections.find(e => e.id === electionId);
+        if (reportData && reportData.election) {
+          return `${reportData.election.title || 'Election'} Report`;
+        }
+        
+        const election = elections.find(e => e._id === electionId);
         return `${election?.title || 'Election'} Report`;
       
       case 'date-range':
         return `Elections Report (${formatDate(startDate)} to ${formatDate(endDate)})`;
       
       case 'regional':
-        return `${region} Region Election Report (Pincode: ${pincode})`;
+        return `${region} Region Election Report${pincode ? ` (Pincode: ${pincode})` : ''}`;
       
       case 'voter-participation':
         return 'Voter Participation Statistics Report';
@@ -168,14 +463,14 @@ const Reports = () => {
   const getReportDescription = () => {
     switch (reportType) {
       case 'election':
-        const election = elections.find(e => e.id === electionId);
+        const election = reportData?.election || elections.find(e => e._id === electionId);
         return `This report contains comprehensive data about the ${election?.title} including vote counts, turnout statistics, demographic breakdowns, and regional analysis.`;
       
       case 'date-range':
         return `This report summarizes election activity between ${formatDate(startDate)} and ${formatDate(endDate)}, including comparative analytics across multiple elections during this period.`;
       
       case 'regional':
-        return `This report provides detailed analysis of voting patterns in ${region} (Pincode: ${pincode}), including turnout rates, candidate performance, and demographic trends.`;
+        return `This report provides detailed analysis of voting patterns in ${region}${pincode ? ` (Pincode: ${pincode})` : ''}, including turnout rates, candidate performance, and demographic trends.`;
       
       case 'voter-participation':
         return 'This report offers comprehensive data on voter engagement, demographic breakdowns, turnout rates by region, and comparison with previous elections.';
@@ -217,10 +512,10 @@ const Reports = () => {
   return (
     <Layout>
       <Container className="py-4">
-        <div className="d-flex justify-content-between align-items-center mb-4">
+        <div className="d-flex justify-content-between align-items-center mb-4 text-white">
           <div>
             <h1>Reports Center</h1>
-            <p className="text-muted">
+            <p className="">
               Generate and manage election reports and analytics.
             </p>
           </div>
@@ -272,11 +567,12 @@ const Reports = () => {
                           <Form.Select 
                             value={electionId} 
                             onChange={(e) => setElectionId(e.target.value)}
+                            disabled={loading}
                           >
                             <option value="">Select an election</option>
                             {elections.map(election => (
-                              <option key={election.id} value={election.id}>
-                                {election.title}
+                              <option key={election._id} value={election._id}>
+                                {election.title} ({formatDate(election.startDate)} - {formatDate(election.endDate)})
                               </option>
                             ))}
                           </Form.Select>
@@ -316,6 +612,7 @@ const Reports = () => {
                               <Form.Select 
                                 value={region} 
                                 onChange={(e) => setRegion(e.target.value)}
+                                disabled={loading}
                               >
                                 <option value="">Select region</option>
                                 {regions.map(r => (
@@ -330,8 +627,9 @@ const Reports = () => {
                               <Form.Select 
                                 value={pincode} 
                                 onChange={(e) => setPincode(e.target.value)}
+                                disabled={loading}
                               >
-                                <option value="">Select pincode</option>
+                                <option value="">All pincodes</option>
                                 {pincodes.map(p => (
                                   <option key={p} value={p}>{p}</option>
                                 ))}
@@ -344,18 +642,6 @@ const Reports = () => {
                       <Form.Group className="mb-3">
                         <Form.Label>Report Format</Form.Label>
                         <div className="d-flex flex-wrap">
-                          <div className="me-4 mb-2">
-                            <Form.Check
-                              type="radio"
-                              label={<span><FaFilePdf className="text-danger me-1" /> PDF</span>}
-                              name="formatGroup"
-                              id="format-pdf"
-                              value="pdf"
-                              checked={format === 'pdf'}
-                              onChange={(e) => setFormat(e.target.value)}
-                              className="d-flex align-items-center"
-                            />
-                          </div>
                           <div className="me-4 mb-2">
                             <Form.Check
                               type="radio"
@@ -383,13 +669,29 @@ const Reports = () => {
                         </div>
                       </Form.Group>
                       
+                      {/* Display API errors */}
+                      {error && (
+                        <Alert variant="danger" className="mt-3">
+                          {error}
+                        </Alert>
+                      )}
+                      
                       <div className="d-flex justify-content-end">
                         <Button 
                           type="submit" 
                           variant="primary"
-                          disabled={isGenerating}
+                          disabled={loading || isGenerating}
                         >
-                          <FaFileAlt className="me-2" /> Preview Report
+                          {loading ? (
+                            <>
+                              <Spinner size="sm" animation="border" className="me-2" />
+                              Loading Data...
+                            </>
+                          ) : (
+                            <>
+                              <FaFileAlt className="me-2" /> Preview Report
+                            </>
+                          )}
                         </Button>
                       </div>
                     </Form>
@@ -514,7 +816,7 @@ const Reports = () => {
                             <Badge bg="info">{report.type}</Badge>
                           </td>
                           <td>
-                            <Badge bg={report.format === 'pdf' ? 'danger' : (report.format === 'excel' ? 'success' : 'primary')}>
+                            <Badge bg={report.format === 'excel' ? 'success' : 'primary'}>
                               {report.format.toUpperCase()}
                             </Badge>
                           </td>
@@ -604,63 +906,199 @@ const Reports = () => {
             </Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <p>
-              {getReportDescription()}
-            </p>
-            
-            <h6 className="mt-4 mb-3">This report will include:</h6>
-            <Row>
-              <Col md={6}>
-                <ListGroup variant="flush">
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaChartBar className="text-primary me-2" /> 
-                    Election Overview
-                  </ListGroup.Item>
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaUsers className="text-info me-2" /> 
-                    Voter Demographics
-                  </ListGroup.Item>
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaMapMarkerAlt className="text-warning me-2" /> 
-                    Regional Analysis
-                  </ListGroup.Item>
-                </ListGroup>
-              </Col>
-              <Col md={6}>
-                <ListGroup variant="flush">
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaChartPie className="text-success me-2" /> 
-                    Turnout Statistics
-                  </ListGroup.Item>
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaChartBar className="text-danger me-2" /> 
-                    Candidate Performance
-                  </ListGroup.Item>
-                  <ListGroup.Item className="d-flex align-items-center border-0 ps-0">
-                    <FaCalendarAlt className="text-secondary me-2" /> 
-                    Time-based Analysis
-                  </ListGroup.Item>
-                </ListGroup>
-              </Col>
-            </Row>
-            
-            <hr />
-            
-            <div className="d-flex align-items-center">
-              <div>
-                <h6 className="mb-1">Format: {format.toUpperCase()}</h6>
-                <p className="text-muted mb-0 small">
-                  {format === 'pdf' ? 'PDF format provides a complete formatted document with charts and tables.' : 
-                   format === 'excel' ? 'Excel format allows for further data analysis and custom chart creation.' :
-                   'CSV format provides raw data that can be imported into any analytics tool.'}
+            {reportData ? (
+              <>
+                <p>
+                  {getReportDescription()}
                 </p>
+                
+                <h6 className="mt-4 mb-3">This report will include:</h6>
+                
+                {reportType === 'election' && reportData.election && (
+                  <div className="mb-4">
+                    <Card className="border-0 shadow-sm mb-3">
+                      <Card.Header className="bg-light">
+                        <h6 className="mb-0">Election: {reportData.election.title}</h6>
+                      </Card.Header>
+                      <Card.Body>
+                        <Row>
+                          <Col md={6}>
+                            <small className="text-muted d-block mb-1">Period</small>
+                            <p className="mb-3">{formatDate(reportData.election.startDate)} - {formatDate(reportData.election.endDate)}</p>
+                            
+                            <small className="text-muted d-block mb-1">Status</small>
+                            <Badge bg={reportData.election.isActive ? "success" : "secondary"}>
+                              {reportData.election.isActive ? "Active" : "Completed"}
+                            </Badge>
+                          </Col>
+                          <Col md={6}>
+                            <small className="text-muted d-block mb-1">Total Votes</small>
+                            <p className="mb-3">{reportData.election.totalVotes || 0}</p>
+                            
+                            <small className="text-muted d-block mb-1">Voter Turnout</small>
+                            <p className="mb-0">{reportData.election.voterTurnout || 'N/A'}</p>
+                          </Col>
+                        </Row>
+                      </Card.Body>
+                    </Card>
+                    
+                    <div className="mb-3">
+                      <h6 className="mb-2">Candidate Results ({reportData.candidates?.length || 0} candidates)</h6>
+                      {reportData.candidates && reportData.candidates.length > 0 ? (
+                        <Table responsive size="sm" className="border">
+                          <thead className="table-light">
+                            <tr>
+                              <th>Rank</th>
+                              <th>Name</th>
+                              <th>Party</th>
+                              <th>Votes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reportData.candidates.slice(0, 5).map((candidate, index) => (
+                              <tr key={candidate._id}>
+                                <td>{index + 1}</td>
+                                <td>
+                                  {`${candidate.firstName || ''} ${candidate.middleName || ''} ${candidate.lastName || ''}`.trim()}
+                                </td>
+                                <td>{candidate.partyName || 'Independent'}</td>
+                                <td>
+                                  <Badge bg="primary">{candidate.votes} ({candidate.percentage}%)</Badge>
+                                </td>
+                              </tr>
+                            ))}
+                            {reportData.candidates.length > 5 && (
+                              <tr>
+                                <td colSpan="4" className="text-center">
+                                  <small className="text-muted">
+                                    + {reportData.candidates.length - 5} more candidates
+                                  </small>
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </Table>
+                      ) : (
+                        <p className="text-muted">No candidate data available</p>
+                      )}
+                    </div>
+                    
+                    {reportData.blockchainTransactions && reportData.blockchainTransactions.length > 0 && (
+                      <div>
+                        <h6 className="mb-2">Blockchain Transactions ({reportData.blockchainTransactions.length})</h6>
+                        <p className="text-muted small">
+                          Report will include {reportData.blockchainTransactions.length} blockchain transactions
+                          related to this election.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {reportType === 'voter-participation' && reportData && (
+                  <div className="mb-4">
+                    <Row>
+                      <Col md={6} className="mb-3">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="text-center">
+                            <h3 className="mb-1">{reportData.totalVoters || 0}</h3>
+                            <p className="text-muted mb-0">Total Voters</p>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={6} className="mb-3">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="text-center">
+                            <h3 className="mb-1">{reportData.activeVoters || 0}</h3>
+                            <p className="text-muted mb-0">Active Voters</p>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={6} className="mb-3">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="text-center">
+                            <h3 className="mb-1">{reportData.pendingVoters || 0}</h3>
+                            <p className="text-muted mb-0">Pending Approval</p>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                      <Col md={6} className="mb-3">
+                        <Card className="h-100 border-0 shadow-sm">
+                          <Card.Body className="text-center">
+                            <h3 className="mb-1">{reportData.rejectedVoters || 0}</h3>
+                            <p className="text-muted mb-0">Rejected Voters</p>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                    </Row>
+                  </div>
+                )}
+                
+                {(reportType === 'date-range' || reportType === 'regional') && reportData.elections && (
+                  <div className="mb-4">
+                    <h6 className="mb-2">Elections ({reportData.elections.length})</h6>
+                    {reportData.elections.length > 0 ? (
+                      <Table responsive size="sm" className="border">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Title</th>
+                            <th>Period</th>
+                            <th>Status</th>
+                            <th>Votes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.elections.slice(0, 5).map(election => (
+                            <tr key={election._id}>
+                              <td>{election.title}</td>
+                              <td>{formatDate(election.startDate)} - {formatDate(election.endDate)}</td>
+                              <td>
+                                <Badge bg={election.isActive ? "success" : "secondary"}>
+                                  {election.isActive ? "Active" : "Completed"}
+                                </Badge>
+                              </td>
+                              <td>{election.totalVotes || 0}</td>
+                            </tr>
+                          ))}
+                          {reportData.elections.length > 5 && (
+                            <tr>
+                              <td colSpan="4" className="text-center">
+                                <small className="text-muted">
+                                  + {reportData.elections.length - 5} more elections
+                                </small>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </Table>
+                    ) : (
+                      <p className="text-muted">No elections found for the selected criteria</p>
+                    )}
+                  </div>
+                )}
+                
+                <hr />
+                
+                <div className="d-flex align-items-center">
+                  <div>
+                    <h6 className="mb-1">Format: {format.toUpperCase()}</h6>
+                    <p className="text-muted mb-0 small">
+                      {format === 'excel' ? 'Excel format allows for further data analysis and custom chart creation.' :
+                       'CSV format provides raw data that can be imported into any analytics tool.'}
+                    </p>
+                  </div>
+                  <div className="ms-3">
+                    {format === 'excel' ? <FaFileExcel size={32} className="text-success" /> :
+                     <FaFileAlt size={32} className="text-primary" />}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <Spinner animation="border" variant="primary" />
+                <p className="mt-3">Preparing report preview...</p>
               </div>
-              <div className="ms-3">
-                {format === 'pdf' ? <FaFilePdf size={32} className="text-danger" /> : 
-                 format === 'excel' ? <FaFileExcel size={32} className="text-success" /> :
-                 <FaFileAlt size={32} className="text-primary" />}
-              </div>
-            </div>
+            )}
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={cancelReportGeneration}>
@@ -669,7 +1107,7 @@ const Reports = () => {
             <Button 
               variant="primary" 
               onClick={generateReport}
-              disabled={isGenerating}
+              disabled={isGenerating || !reportData}
             >
               {isGenerating ? (
                 <>
@@ -678,7 +1116,7 @@ const Reports = () => {
                 </>
               ) : (
                 <>
-                  <FaFileAlt className="me-2" /> Generate Report
+                  <FaDownload className="me-2" /> Generate {format.toUpperCase()} Report
                 </>
               )}
             </Button>

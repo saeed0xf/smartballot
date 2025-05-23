@@ -25,7 +25,7 @@ import ArchivedElections from './pages/admin/ArchivedElections';
 import OfficerDashboard from './pages/officer/OfficerDashboard';
 import ElectionResults from './pages/officer/ElectionResults';
 import Reports from './pages/officer/Reports';
-import VerificationCenter from './pages/officer/VerificationCenter';
+// import VerificationCenter from './pages/officer/VerificationCenter';
 import MonitorVoting from './pages/officer/MonitorVoting';
 import NotFound from './pages/NotFound';
 
@@ -57,7 +57,7 @@ function App() {
         <Route path="/officer/statistics" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
         <Route path="/officer/statistics/:electionId" element={<OfficerRoute><ElectionResults /></OfficerRoute>} />
         <Route path="/officer/reports" element={<OfficerRoute><Reports /></OfficerRoute>} />
-        <Route path="/officer/verification" element={<OfficerRoute><VerificationCenter /></OfficerRoute>} />
+        {/* <Route path="/officer/verification" element={<OfficerRoute><VerificationCenter /></OfficerRoute>} /> */}
         <Route path="/officer/monitor" element={<OfficerRoute><MonitorVoting /></OfficerRoute>} />
         
         {/* 404 Route */}

@@ -245,7 +245,7 @@ const OfficerDashboard = () => {
           </Col>
           
           <Col md={6} lg={4} className="mb-3">
-            <Card className="h-100 border-0 shadow-sm">
+            {/* <Card className="h-100 border-0 shadow-sm">
               <Card.Body className="text-center p-4">
                 <div className="icon-box mb-3">
                   <FaVideo size={32} className="text-info" />
@@ -267,7 +267,7 @@ const OfficerDashboard = () => {
                   Verification Center
                 </Button>
               </Card.Body>
-            </Card>
+            </Card> */}
           </Col>
         </Row>
 
@@ -331,7 +331,7 @@ const OfficerDashboard = () => {
         </Card>
         
         {/* Monitor Elections CTA */}
-        <Row className="mb-4">
+        {/* <Row className="mb-4">
           <Col xs={12}>
             <Card className="border-0 shadow-sm text-white bg-gradient" style={{ background: 'linear-gradient(45deg, #4a6bdf, #8a64e8)' }}>
               <Card.Body className="p-4">
@@ -356,7 +356,7 @@ const OfficerDashboard = () => {
               </Card.Body>
             </Card>
           </Col>
-        </Row>
+        </Row> */}
       </Container>
     </Layout>
   );

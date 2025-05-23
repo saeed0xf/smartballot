@@ -147,9 +147,9 @@ const AppNavbar = () => {
       <Nav.Link as={Link} to="/officer/reports" className="d-flex align-items-center">
         <FaFilePdf className="me-1" /> Reports
       </Nav.Link>
-      <Nav.Link as={Link} to="/officer/verification" className="d-flex align-items-center">
+      {/* <Nav.Link as={Link} to="/officer/verification" className="d-flex align-items-center">
         <FaVideo className="me-1" /> Verification Center
-      </Nav.Link>
+      </Nav.Link> */}
       <Button variant="outline-danger" onClick={handleLogout} className="ms-2 d-flex align-items-center">
         <FaSignOutAlt className="me-1" /> Logout
       </Button>
