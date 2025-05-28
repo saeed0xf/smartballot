@@ -206,7 +206,26 @@ const VerifyVote = () => {
       // Check if we already have this election's details
       if (electionDetails[electionId]) return;
       
-      // Try to fetch from the elections endpoint
+      // First try to fetch from the remote elections endpoint (new endpoint)
+      try {
+        console.log(`Fetching election details from remote database for ID: ${electionId}`);
+        const remoteElectionResponse = await axios.get(`${API_URL}/elections/remote/${electionId}`, { headers });
+        console.log(`Remote election details for ${electionId}:`, remoteElectionResponse.data);
+        
+        if (remoteElectionResponse.data && remoteElectionResponse.data.election) {
+          const election = remoteElectionResponse.data.election;
+          setElectionDetails(prev => ({
+            ...prev,
+            [electionId]: election
+          }));
+          console.log(`Successfully fetched election details from remote database: ${election.title || election.name}`);
+          return;
+        }
+      } catch (remoteError) {
+        console.error(`Error fetching election ${electionId} from remote endpoint:`, remoteError);
+      }
+      
+      // Try to fetch from the primary elections endpoint as fallback
       try {
         const electionResponse = await axios.get(`${API_URL}/elections/${electionId}`, { headers });
         console.log(`Election details for ${electionId}:`, electionResponse.data);
@@ -223,7 +242,7 @@ const VerifyVote = () => {
         console.error(`Error fetching election ${electionId} from primary endpoint:`, error);
       }
       
-      // Try the active elections endpoint as fallback
+      // Try the active elections endpoint as final fallback
       try {
         const activeElectionsResponse = await axios.get(`${API_URL}/elections/remote/active`, { headers });
         console.log('Active elections response:', activeElectionsResponse.data);
@@ -241,6 +260,9 @@ const VerifyVote = () => {
             ...prev,
             [electionId]: matchingElection
           }));
+          console.log(`Found election in active elections list: ${matchingElection.title || matchingElection.name}`);
+        } else {
+          console.warn(`Election ${electionId} not found in active elections list`);
         }
       } catch (fallbackError) {
         console.error('Error fetching from elections/remote/active:', fallbackError);

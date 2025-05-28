@@ -205,6 +205,83 @@ This document summarizes the key changes made to the VoteSure election managemen
   - `requirements.txt`: Dependencies for the AI module
   - Detailed documentation in `README.md`
 
+## Version 1.5.0 (Latest) - Vote Verification Enhancements
+
+### Election Name Display Fix in Vote Transaction Ledger
+- **Enhanced vote verification page to show election names for all votes**:
+  - Added new backend endpoint `GET /elections/remote/:electionId` to fetch election details from remote database
+  - Updated `fetchElectionDetails` function in VerifyVote.jsx to prioritize remote database lookup
+  - Fixed issue where election names only appeared for active elections in Vote Transaction Ledger
+  - Now displays proper election names even for completed/inactive elections
+  - Improved fallback mechanism with multiple endpoint attempts for robust election data retrieval
+  - Enhanced logging for better debugging of election data fetching process
+
+### Backend API Improvements
+- **New remote election endpoint**:
+  - Created `getRemoteElectionDetails` function in election controller
+  - Added route `/elections/remote/:electionId` for fetching specific election details from remote database
+  - Implemented proper error handling and connection management for remote database queries
+  - Added comprehensive election data formatting with backward compatibility
+  - Enhanced election data structure with additional fields (isActive, isArchived, region, etc.)
+
+### Frontend Vote Verification Enhancements
+- **Improved election data fetching strategy**:
+  - Updated `fetchElectionDetails` function to try remote database first
+  - Added multiple fallback mechanisms for election data retrieval
+  - Enhanced error handling and logging for election data fetching
+  - Improved user experience by showing proper election names instead of truncated IDs
+  - Maintained backward compatibility with existing vote verification functionality
+
+## Version 1.4.0 - Enhanced UI/UX & Smart Contract Improvements
+
+### Smart Contract Enhancements
+- **Modified `VoteSure.sol` contract to handle election states gracefully**:
+  - Added `AlreadyStarted` and `AlreadyEnded` events instead of reverting transactions
+  - Improved error messages for better debugging and user feedback
+  - Optimized gas usage in voting operations
+  - Enhanced access control mechanisms
+
+### Blockchain Integration Improvements
+- **Enhanced error handling in `blockchain.util.js`**:
+  - Added detailed error classification for different blockchain errors
+  - Improved handling of "already started/ended" election scenarios
+  - Added specific handling for gas estimation errors
+  - Enhanced transaction receipt verification and error reporting
+
+### Backend Updates
+- **Improved election controller error handling**:
+  - Updated `startElection` to handle "already active" cases gracefully
+  - Enhanced `endElection` to properly handle "already ended" cases
+  - Improved `castVote` function to provide clear feedback on transaction failures
+  - Added extensive logging for blockchain transactions
+  - Updated response formats to include blockchain transaction status
+
+### Frontend Enhancements
+- **Updated election management UI**:
+  - Added informative alerts in Start and Stop Election modals
+  - Enhanced blockchain transaction feedback
+  - Improved error messaging for various transaction scenarios
+  - Added loading states during blockchain transactions
+
+### Admin Features
+- **Enhanced admin routes**:
+  - Added missing route for `approve-complete` endpoint
+  - Fixed `approveVoterComplete` functionality
+  - Improved voter verification workflow
+  - Enhanced candidate management with blockchain verification
+
+### Security Enhancements
+- **Improved face verification system**:
+  - Added webcam functionality for face verification during voting
+  - Implemented secure face image storage and comparison
+  - Enhanced identity verification before vote casting
+
+### Documentation Updates
+- **Added comprehensive smart contract setup guide**:
+  - Created detailed README with compilation and deployment instructions
+  - Added shell script for automated smart contract setup
+  - Enhanced error documentation for blockchain operations
+
 ## Version 1.3.0 (Current) - Enhanced Blockchain Error Handling & User Experience
 
 ### Smart Contract Enhancements

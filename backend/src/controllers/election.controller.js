@@ -1839,4 +1839,72 @@ exports.getAllRemoteCandidates = async (req, res) => {
     console.error('Get all remote candidates error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
+};
+
+// Get remote election details by ID
+exports.getRemoteElectionDetails = async (req, res) => {
+  try {
+    const { electionId } = req.params;
+    console.log(`Fetching remote election details for ID: ${electionId}`);
+    
+    if (!electionId || electionId.length < 5) {
+      return res.status(400).json({ 
+        message: 'Invalid election ID format',
+        details: 'The provided election ID is not valid'
+      });
+    }
+    
+    // Import the remoteDb utility functions and schemas
+    const { 
+      RemoteElectionSchema,
+      createRemoteConnection 
+    } = require('../utils/remoteDb.util');
+    
+    // Create connection to remote database
+    const remoteConnection = await createRemoteConnection();
+    
+    // Create model on the remote connection
+    const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
+    
+    // Find the election by ID
+    const election = await RemoteElection.findById(electionId);
+    
+    if (!election) {
+      // Close the connection before returning
+      await remoteConnection.close();
+      return res.status(404).json({ message: 'Remote election not found' });
+    }
+    
+    console.log(`Found remote election: ${election.title}`);
+    
+    // Format election details
+    const formattedElection = {
+      id: election._id,
+      _id: election._id,
+      title: election.title,
+      name: election.title, // Alias for compatibility
+      description: election.description,
+      type: election.type || 'General Election',
+      startDate: election.startDate,
+      endDate: election.endDate,
+      isActive: election.isActive,
+      isArchived: election.isArchived,
+      pincode: election.pincode,
+      region: election.region,
+      createdAt: election.createdAt,
+      updatedAt: election.updatedAt
+    };
+    
+    // Close the remote connection
+    await remoteConnection.close();
+    console.log('Remote database connection closed');
+    
+    res.json({ 
+      election: formattedElection,
+      success: true
+    });
+  } catch (error) {
+    console.error('Get remote election details error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 }; 
