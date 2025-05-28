@@ -242,7 +242,7 @@ export const AuthProvider = ({ children }) => {
       console.log('Authenticating with address:', address, 'and nonce:', nonce);
       
       // Create the message to sign
-      const message = `VoteSure Authentication: ${nonce}`;
+      const message = `SmartBallot Authentication: ${nonce}`;
       console.log('Message to sign:', message);
       
       // Convert message to hex

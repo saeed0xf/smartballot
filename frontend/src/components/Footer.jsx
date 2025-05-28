@@ -43,7 +43,7 @@ const Footer = () => {
         <Row className="mb-4">
           <Col lg={4} md={6} className="mb-4 mb-md-0">
             <h5 className="d-flex align-items-center text-light">
-              <FaVoteYea className="me-2" /> VoteSure
+              <FaVoteYea className="me-2" /> SmartBallot
             </h5>
             <p className="text-light opacity-75">
               A secure and transparent decentralized voting system built on Ethereum blockchain.
@@ -114,7 +114,7 @@ const Footer = () => {
         </Row>
         <hr className="border-secondary" />
         <div className="text-center text-light opacity-75">
-          <small>&copy; {new Date().getFullYear()} VoteSure. All rights reserved.</small>
+          <small>&copy; {new Date().getFullYear()} SmartBallot. All rights reserved.</small>
         </div>
       </Container>
     </footer>

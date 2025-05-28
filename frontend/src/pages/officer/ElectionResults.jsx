@@ -1453,9 +1453,9 @@ const ElectionResults = () => {
                             <small className="text-muted">Confirmed</small>
                           </div>
                           <div className="col-md-3">
-                            <strong className="text-info">12+</strong>
+                            {/* <strong className="text-info">12+</strong> */}
                             <br />
-                            <small className="text-muted">Confirmations</small>
+                            {/* <small className="text-muted">Confirmations</small> */}
                           </div>
                           <div className="col-md-3">
                             <strong className="text-warning">Ethereum</strong>

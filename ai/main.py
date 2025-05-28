@@ -31,7 +31,7 @@ logger.info(f"Temp directory: {TEMP_DIR}")
 
 # Create FastAPI app with increased file size limits
 app = FastAPI(
-    title="VoteSure Face Verification API",
+    title="SmartBallot Face Verification API",
 )
 
 # Add CORS middleware to allow all origins
@@ -78,7 +78,7 @@ async def healthcheck():
     return {
         "status": "ok",
         "app_info": {
-            "name": "VoteSure Face Verification API",
+            "name": "SmartBallot Face Verification API",
             "directories": {
                 "root": str(ROOT_DIR),
                 "temp": str(TEMP_DIR)

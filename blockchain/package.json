@@ -1,7 +1,7 @@
 {
   "name": "votesure-blockchain",
   "version": "1.0.0",
-  "description": "Blockchain component for VoteSure decentralized voting system",
+  "description": "Blockchain component for SmartBallot decentralized voting system",
   "main": "truffle-config.js",
   "scripts": {
     "compile": "truffle compile",

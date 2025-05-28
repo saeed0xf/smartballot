@@ -65,15 +65,15 @@ const sendVoterApprovalEmail = async (email, firstName) => {
     console.log(`Preparing to send approval email to ${email}`);
     
     // Get appropriate sender email
-    const fromEmail = process.env.EMAIL_FROM || 'VoteSure <mbas8848@gmail.com>';
-    const fromName = 'VoteSure';
+    const fromEmail = process.env.EMAIL_FROM || 'SmartBallot <mbas8848@gmail.com>';
+    const fromName = 'SmartBallot';
     
     // HTML content for the email
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
         <h2 style="color: #4CAF50;">Registration Approved</h2>
         <p>Dear ${firstName},</p>
-        <p>We are pleased to inform you that your voter registration has been approved. You can now log in to the VoteSure platform and participate in the upcoming election.</p>
+        <p>We are pleased to inform you that your voter registration has been approved. You can now log in to the SmartBallot platform and participate in the upcoming election.</p>
         <p>Thank you for being a part of our democratic process.</p>
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
           <p style="font-size: 12px; color: #666;">This is an automated message. Please do not reply to this email.</p>
@@ -89,7 +89,7 @@ const sendVoterApprovalEmail = async (email, firstName) => {
         const mailOptions = {
           from: fromEmail,
           to: email,
-          subject: 'VoteSure - Voter Registration Approved',
+          subject: 'SmartBallot - Voter Registration Approved',
           html: htmlContent
         };
         
@@ -104,7 +104,7 @@ const sendVoterApprovalEmail = async (email, firstName) => {
           console.log('Falling back to Brevo API for sending email');
           const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
           
-          sendSmtpEmail.subject = 'VoteSure - Voter Registration Approved';
+          sendSmtpEmail.subject = 'SmartBallot - Voter Registration Approved';
           sendSmtpEmail.htmlContent = htmlContent;
           sendSmtpEmail.sender = { 
             name: fromName, 
@@ -124,7 +124,7 @@ const sendVoterApprovalEmail = async (email, firstName) => {
       console.log('No SMTP transporter available, using Brevo API');
       const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
       
-      sendSmtpEmail.subject = 'VoteSure - Voter Registration Approved';
+      sendSmtpEmail.subject = 'SmartBallot - Voter Registration Approved';
       sendSmtpEmail.htmlContent = htmlContent;
       sendSmtpEmail.sender = { 
         name: fromName, 
@@ -159,8 +159,8 @@ const sendVoterRejectionEmail = async (email, firstName, reason) => {
     console.log(`Preparing to send rejection email to ${email}`);
     
     // Get appropriate sender email
-    const fromEmail = process.env.EMAIL_FROM || 'VoteSure <mbas8848@gmail.com>';
-    const fromName = 'VoteSure';
+    const fromEmail = process.env.EMAIL_FROM || 'SmartBallot <mbas8848@gmail.com>';
+    const fromName = 'SmartBallot';
     
     // HTML content for the email
     const htmlContent = `
@@ -185,7 +185,7 @@ const sendVoterRejectionEmail = async (email, firstName, reason) => {
         const mailOptions = {
           from: fromEmail,
           to: email,
-          subject: 'VoteSure - Voter Registration Rejected',
+          subject: 'SmartBallot - Voter Registration Rejected',
           html: htmlContent
         };
         
@@ -200,7 +200,7 @@ const sendVoterRejectionEmail = async (email, firstName, reason) => {
           console.log('Falling back to Brevo API for sending email');
           const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
           
-          sendSmtpEmail.subject = 'VoteSure - Voter Registration Rejected';
+          sendSmtpEmail.subject = 'SmartBallot - Voter Registration Rejected';
           sendSmtpEmail.htmlContent = htmlContent;
           sendSmtpEmail.sender = { 
             name: fromName, 
@@ -220,7 +220,7 @@ const sendVoterRejectionEmail = async (email, firstName, reason) => {
       console.log('No SMTP transporter available, using Brevo API');
       const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
       
-      sendSmtpEmail.subject = 'VoteSure - Voter Registration Rejected';
+      sendSmtpEmail.subject = 'SmartBallot - Voter Registration Rejected';
       sendSmtpEmail.htmlContent = htmlContent;
       sendSmtpEmail.sender = { 
         name: fromName, 

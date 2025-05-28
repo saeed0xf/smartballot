@@ -89,7 +89,7 @@ exports.login = async (req, res) => {
     // Verify the signature
     try {
       // Recreate the message that was signed
-      const message = `VoteSure Authentication: ${nonce}`;
+      const message = `SmartBallot Authentication: ${nonce}`;
       console.log('Verifying message:', message);
       
       // Recover the address from the signature

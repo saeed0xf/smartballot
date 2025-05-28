@@ -816,12 +816,12 @@ const VerifyVote = () => {
                             </div>
                           </ListGroup.Item>
                         )}
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start">
+                        {/* <ListGroup.Item className="d-flex justify-content-between align-items-start">
                           <div className="ms-2 me-auto">
                             <div className="fw-bold">Confirmations</div>
                             {selectedVote.blockInfo.confirmations}
                           </div>
-                        </ListGroup.Item>
+                        </ListGroup.Item> */}
                       </ListGroup>
                     ) : (
                       <Alert variant="warning">

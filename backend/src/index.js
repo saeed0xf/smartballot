@@ -88,7 +88,7 @@ app.use('/api/blockchain', blockchainRoutes);
 
 // Root route
 app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to VoteSure API' });
+  res.json({ message: 'Welcome to SmartBallot API' });
 });
 
 // Connect to MongoDB

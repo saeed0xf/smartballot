@@ -1,7 +1,7 @@
-# VoteSure - Secure Blockchain-based Voting System
+# SmartBallot - Secure Blockchain-based Voting System
 
 ## Overview
-VoteSure is a comprehensive electronic voting system that leverages blockchain technology to ensure secure, transparent, and tamper-proof elections. The system combines traditional database storage with Ethereum blockchain validation to provide a robust platform for conducting various types of elections.
+SmartBallot is a comprehensive electronic voting system that leverages blockchain technology to ensure secure, transparent, and tamper-proof elections. The system combines traditional database storage with Ethereum blockchain validation to provide a robust platform for conducting various types of elections.
 
 ## Features
 - **Secure Voter Registration**: Multi-factor authentication with face verification and ID validation
@@ -21,7 +21,7 @@ VoteSure is a comprehensive electronic voting system that leverages blockchain t
 - **File Storage**: Local file system with secure access controls
 
 ## Smart Contract Management
-The VoteSure system uses a Solidity smart contract (`VoteSure.sol`) to handle blockchain operations. Below are instructions for compiling and deploying the smart contract.
+The SmartBallot system uses a Solidity smart contract (`SmartBallot.sol`) to handle blockchain operations. Below are instructions for compiling and deploying the smart contract.
 
 ### Compiling the Smart Contract
 
@@ -58,7 +58,7 @@ The VoteSure system uses a Solidity smart contract (`VoteSure.sol`) to handle bl
    ```
    ls -la build/contracts
    ```
-   You should see `VoteSure.json` among the files.
+   You should see `SmartBallot.json` among the files.
 
 ### Deploying the Smart Contract
 
@@ -232,7 +232,7 @@ npm run dev
 ## File Structure
 
 ```
-votesure/
+SmartBallot/
 ├── frontend/
 │   ├── public/
 │   └── src/

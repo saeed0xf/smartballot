@@ -11,7 +11,7 @@ const sendApprovalEmail = async (email, voter) => {
     Thank you for participating in our democratic process!
     
     Regards,
-    The VoteSure Team
+    The SmartBallot Team
   `;
   
   try {
