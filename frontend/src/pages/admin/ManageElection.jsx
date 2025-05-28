@@ -1734,7 +1734,6 @@ const ManageElection = () => {
           electionData: recordedElectionData  // Include the complete election data
         }, { headers });
         
-        console.log('Backend notified of successful blockchain recording and data stored in remote MongoDB');
         
         // Update local blockchain status tracking
         setElectionBlockchainStatus(prev => ({

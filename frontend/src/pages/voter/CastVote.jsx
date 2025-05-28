@@ -2619,7 +2619,7 @@ const CastVote = () => {
                       <p className="mb-1">Transaction hash: {blockchainTxData.txHash.substring(0, 10)}...{blockchainTxData.txHash.substring(blockchainTxData.txHash.length - 8)}</p>
                       <p className="mb-1">Block: #{blockchainTxData.blockNumber}</p>
                       <p className="mb-1">Confirmations: {blockchainTxData.confirmations}</p>
-                      <p className="mb-1">Verification code: {blockchainTxData.verificationCode}</p>
+                      {/* <p className="mb-1">Verification code: {blockchainTxData.verificationCode}</p> */}
                       <p className="mb-0">Status: <span className="text-success">Success</span></p>
                     </>
                   ) : (
