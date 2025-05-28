@@ -589,7 +589,7 @@ const VerifyVote = () => {
                                 </Badge>
                               ) : <span className="text-muted">Pending</span>}
                             </div>
-                    </Col>
+                          </Col>
                           <Col xs={12} md={4}>
                             <div className="text-muted small">STATUS</div>
                             <div className="d-flex align-items-center">
@@ -610,16 +610,16 @@ const VerifyVote = () => {
                                 <FaExternalLinkAlt size={12} />
                               </Button>
                             </div>
-                    </Col>
-                  </Row>
-                    </Col>
+                          </Col>
+                        </Row>
+                      </Col>
                       <Col xs={12} className="mt-2 d-flex justify-content-end">
                         <div className="d-flex align-items-center view-details-link">
                           <FaInfoCircle className="me-1" size={14} />
                           <span className="small">Click to view transaction details</span>
                         </div>
-                    </Col>
-                  </Row>
+                      </Col>
+                    </Row>
                   </div>
                 ))}
                 
@@ -693,10 +693,10 @@ const VerifyVote = () => {
                   <Card className="h-100 blockchain-stat-card border-0 shadow-sm">
                     <Card.Body className="d-flex flex-column justify-content-between">
                       <div className="text-muted mb-2">Latest Vote Time</div>
-                  <div>
+                      <div>
                         <h5 className="mb-1">
                           {remoteVotes[0]?.timestamp ? getTimeAgo(remoteVotes[0].timestamp) : 'Unknown'}
-                    </h5>
+                        </h5>
                         <div className="text-muted small">
                           {remoteVotes[0]?.timestamp ? 
                             new Date(remoteVotes[0].timestamp).toLocaleString() : 
@@ -790,14 +790,6 @@ const VerifyVote = () => {
                           {new Date(selectedVote.timestamp).toLocaleString()}
                         </div>
                       </ListGroup.Item>
-                      {/* {selectedVote.verificationCode && (
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start">
-                          <div className="ms-2 me-auto">
-                            <div className="fw-bold">Verification Code</div>
-                            <code>{selectedVote.verificationCode}</code>
-                          </div>
-                        </ListGroup.Item>
-                      )} */}
                       <ListGroup.Item className="d-flex justify-content-between align-items-start">
                         <div className="ms-2 me-auto">
                           <div className="fw-bold">Status</div>
@@ -832,18 +824,12 @@ const VerifyVote = () => {
                                 className="p-0"
                                 onClick={() => copyToClipboard(selectedVote.blockInfo.blockHash)}
                               >
-                                Copy <FaClipboard className="ms-1" />
+                                copy <FaClipboard className="ms-1" />
                               </Button>
                               {copiedText === selectedVote.blockInfo.blockHash && <span className="text-success ms-2">Copied!</span>}
                             </div>
                           </ListGroup.Item>
                         )}
-                        {/* <ListGroup.Item className="d-flex justify-content-between align-items-start">
-                          <div className="ms-2 me-auto">
-                            <div className="fw-bold">Confirmations</div>
-                            {selectedVote.blockInfo.confirmations}
-                          </div>
-                        </ListGroup.Item> */}
                       </ListGroup>
                     ) : (
                       <Alert variant="warning">
@@ -868,9 +854,9 @@ const VerifyVote = () => {
                         Your browser does not support the video tag.
                       </video>
                     </div>
-              </div>
-            )}
-            
+                  </div>
+                )}
+                
                 <div className="mt-4 blockchain-explorer-link text-center">
                   <p className="mb-2">View this transaction on the public blockchain explorer</p>
                   <Button 
@@ -893,7 +879,92 @@ const VerifyVote = () => {
         </Modal>
         
         {/* Add some CSS styles */}
-        <style jsx="true">{`
+        <style jsx>{`
+          /* Blockchain-inspired card headers */
+          .card-header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%) !important;
+            color: white !important;
+            position: relative;
+            overflow: hidden;
+            border-bottom: none !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          }
+          
+          /* Blockchain pattern overlay */
+          .card-header:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: none;
+            background-size: 10px 10px;
+            opacity: 0.3;
+            z-index: 1;
+          }
+          
+          /* Digital circuit pattern */
+          .card-header:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: none;
+            opacity: 0.2;
+            z-index: 1;
+          }
+          
+          /* Ensure text is above the patterns */
+          .card-header h1, 
+          .card-header h2, 
+          .card-header h3, 
+          .card-header h4, 
+          .card-header h5, 
+          .card-header h6,
+          .card-header .mb-0,
+          .card-header .d-flex {
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Blockchain badge styling */
+          .blockchain-badge {
+            background: rgba(121, 231, 230, 0.2);
+            border-radius: 12px;
+            padding: 0.5rem 0.75rem;
+            color: white;
+            font-family: monospace;
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Enhanced card styling */
+          .card {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+          }
+          
+          .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+          }
+          
+          /* Blockchain statistics cards */
+          .blockchain-stat-card {
+            transition: all 0.3s ease;
+            cursor: default;
+          }
+          
+          .blockchain-stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+          }
+          
+          /* Transaction card styling */
           .transaction-table td, .transaction-table th {
             vertical-align: middle;
           }
@@ -912,23 +983,6 @@ const VerifyVote = () => {
           .vote-transaction-row:hover {
             background-color: #f8f9fa;
             cursor: pointer;
-          }
-          .blockchain-stats .stat-box {
-            flex: 1;
-            margin-right: 10px;
-            transition: all 0.3s ease;
-          }
-          .blockchain-stats .stat-box:hover {
-            background-color: #e9ecef !important;
-            transform: translateY(-2px);
-          }
-          .blockchain-stat-card {
-            transition: all 0.3s ease;
-            cursor: default;
-          }
-          .blockchain-stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
           }
           .wallet-address-box {
             transition: all 0.2s ease;
@@ -993,6 +1047,71 @@ const VerifyVote = () => {
           }
           .transaction-details {
             margin-left: 1.2rem;
+          }
+          
+          /* Modal header styling */
+          .modal-header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%) !important;
+            color: white !important;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .modal-header:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: none;
+            background-size: 10px 10px;
+            opacity: 0.3;
+            z-index: 1;
+          }
+          
+          .modal-title {
+            position: relative;
+            z-index: 2;
+          }
+          
+          .modal-header .btn-close {
+            color: white;
+            filter: brightness(0) invert(1);
+            position: relative;
+            z-index: 2;
+          }
+          
+          /* Badge styling */
+          .badge {
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            padding: 0.5em 0.75em;
+            border-radius: 4px;
+          }
+          
+          /* Button styling */
+          .btn-primary {
+            background-color: #3949ab;
+            border-color: #3949ab;
+            box-shadow: 0 2px 4px rgba(57, 73, 171, 0.3);
+          }
+          
+          .btn-primary:hover {
+            background-color: #303f9f;
+            border-color: #283593;
+            box-shadow: 0 4px 8px rgba(57, 73, 171, 0.4);
+          }
+          
+          .btn-outline-primary {
+            color: #3949ab;
+            border-color: #3949ab;
+          }
+          
+          .btn-outline-primary:hover {
+            background-color: #3949ab;
+            border-color: #3949ab;
+            box-shadow: 0 2px 4px rgba(57, 73, 171, 0.3);
           }
         `}</style>
       </Container>

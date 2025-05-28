@@ -81,32 +81,33 @@ const Home = () => {
     <Layout>
       <Container>
         {/* Hero Section */}
-        <Row className="hero-section">
-          <Col lg={6} className="d-flex flex-column justify-content-center mb-5 mb-lg-0">
+        <Row className="hero-section align-items-center min-vh-75">
+          <Col lg={6} className="d-flex flex-column justify-content-center mb-4 mb-lg-0 order-1 order-lg-1">
             <Badge bg="primary" className="hero-badge mb-3 px-3 py-2 align-self-start">Blockchain-Powered Voting</Badge>
             <h1 className="hero-title">Secure and Transparent Elections</h1>
             <p className="hero-description">
               SmartBallot leverages <span className="d-inline-flex align-items-center"><FaEthereum className="mx-1" /> Ethereum</span> blockchain technology to ensure
               security, transparency, and integrity in the electoral process. Vote with confidence knowing your ballot is immutable and verifiable.
             </p>
-            <div className="d-flex gap-3 hero-buttons">
+            <div className="d-flex flex-column flex-sm-row gap-3 hero-buttons">
               {/* Hide Register Now button for admin and officer wallets */}
               {walletType !== 'admin' && walletType !== 'officer' && (
-                <Button as={Link} to="/register" variant="primary" size="lg" className="d-flex align-items-center px-4 py-2">
+                <Button as={Link} to="/register" variant="primary" size="lg" className="d-flex align-items-center justify-content-center px-4 py-2">
                   <FaUserPlus className="me-2" /> Register Now
                 </Button>
               )}
-              <Button as={Link} to="/login" variant="outline-light" size="lg" className="d-flex align-items-center px-4 py-2">
+              <Button as={Link} to="/login" variant="outline-light" size="lg" className="d-flex align-items-center justify-content-center px-4 py-2">
                 <FaEthereum className="me-2" /> Connect Wallet
               </Button>
             </div>
           </Col>
-          <Col lg={6}>
-            <div className="hero-image">
-              <Card className="border-0 shadow-lg overflow-hidden bg-transparent">
+          <Col lg={6} className="d-flex align-items-start order-2 order-lg-2">
+            <div className="hero-image w-100">
+              <Card className="border-0 shadow-lg overflow-hidden bg-transparent hero-image-card">
                 <Card.Img 
                   src="https://img.freepik.com/free-vector/digital-voting-abstract-concept-illustration_335657-3887.jpg" 
-                  alt="Blockchain Voting Illustration" 
+                  alt="Blockchain Voting Illustration"
+                  className="hero-image-responsive"
                 />
               </Card>
             </div>
@@ -158,41 +159,41 @@ const Home = () => {
         </Row> */}
 
         {/* How It Works Section */}
-        <Row className="features-section">
-          <Col xs={12} className="text-center mb-4">
+        <Row className="features-section py-5">
+          <Col xs={12} className="text-center mb-5">
             <Badge bg="secondary" className="section-badge mb-2 px-3 py-2">Process</Badge>
             <h2 className="section-title mb-4">How It Works</h2>
           </Col>
-          <Col md={4} className="mb-4">
+          <Col lg={4} md={6} className="mb-4">
             <Card className="feature-card h-100 p-4">
               <div className="feature-icon">
                 <FaUserPlus />
               </div>
-              <h3 className="feature-title">Register</h3>
+              <h3 className="feature-title text-center">Register</h3>
               <p className="feature-description">
                 Create an account and complete your voter registration with your personal details and voter ID.
                 Your identity is securely verified on the blockchain.
               </p>
             </Card>
           </Col>
-          <Col md={4} className="mb-4">
+          <Col lg={4} md={6} className="mb-4">
             <Card className="feature-card h-100 p-4">
               <div className="feature-icon">
                 <FaUserShield />
               </div>
-              <h3 className="feature-title">Get Verified</h3>
+              <h3 className="feature-title text-center">Get Verified</h3>
               <p className="feature-description">
                 Election officials verify your identity and approve your registration.
                 Your voter status is recorded on the blockchain for transparency.
               </p>
             </Card>
           </Col>
-          <Col md={4} className="mb-4">
+          <Col lg={4} md={12} className="mb-4">
             <Card className="feature-card h-100 p-4">
               <div className="feature-icon">
                 <FaVoteYea />
               </div>
-              <h3 className="feature-title">Cast Your Vote</h3>
+              <h3 className="feature-title text-center">Cast Your Vote</h3>
               <p className="feature-description">
                 Connect your wallet and cast your vote securely. Your vote is encrypted and
                 recorded on the Ethereum blockchain, ensuring it cannot be altered.
@@ -202,56 +203,56 @@ const Home = () => {
         </Row>
 
         {/* Benefits Section */}
-        <Row className="features-section">
-          <Col xs={12} className="text-center mb-4">
+        <Row className="features-section py-5">
+          <Col xs={12} className="text-center mb-5">
             <Badge bg="secondary" className="section-badge mb-2 px-3 py-2">Benefits</Badge>
             <h2 className="section-title mb-4">Why Choose SmartBallot?</h2>
           </Col>
-          <Col md={3} className="mb-4">
+          <Col lg={3} md={6} className="mb-4">
             <Card className="feature-card h-100 p-4">
               <div className="feature-icon">
                 <FaLock />
               </div>
-              <h3 className="feature-title">Secure</h3>
+              <h3 className="feature-title text-center">Secure</h3>
               <p className="feature-description">Blockchain technology ensures your vote is secure and tamper-proof with cryptographic protection.</p>
             </Card>
           </Col>
-          <Col md={3} className="mb-4">
+          <Col lg={3} md={6} className="mb-4">
             <Card className="feature-card h-100 p-4">
               <div className="feature-icon">
                 <FaSearch />
               </div>
-              <h3 className="feature-title">Transparent</h3>
+              <h3 className="feature-title text-center">Transparent</h3>
               <p className="feature-description">All votes are recorded on a public blockchain for maximum transparency and auditability.</p>
             </Card>
           </Col>
-          <Col md={3} className="mb-4">
+          <Col lg={3} md={6} className="mb-4">
             <Card className="feature-card h-100 p-4">
               <div className="feature-icon">
                 <FaClipboardCheck />
               </div>
-              <h3 className="feature-title">Verifiable</h3>
+              <h3 className="feature-title text-center">Verifiable</h3>
               <p className="feature-description">Voters can verify their votes have been correctly recorded and counted on the blockchain.</p>
             </Card>
           </Col>
-          <Col md={3} className="mb-4">
+          <Col lg={3} md={6} className="mb-4">
             <Card className="feature-card h-100 p-4">
               <div className="feature-icon">
                 <FaMobileAlt />
               </div>
-              <h3 className="feature-title">Accessible</h3>
+              <h3 className="feature-title text-center">Accessible</h3>
               <p className="feature-description">Vote from anywhere with an internet connection and MetaMask wallet during the election period.</p>
             </Card>
           </Col>
         </Row>
 
         {/* CTA Section */}
-        <Row className="cta-section">
+        <Row className="cta-section py-5">
           <Col xs={12}>
             <Card className="cta-card border-0">
-              <Card.Body className="p-5 text-center text-white">
-                <h2 className="cta-title">Ready to participate in secure blockchain voting?</h2>
-                <p className="cta-description">Join SmartBallot today and experience the future of democratic elections.</p>
+              <Card.Body className="p-4 p-md-5 text-center text-white ">
+                <h2 className="cta-title text-white">Ready to participate in secure blockchain voting?</h2>
+                <p className="cta-description text-white">Join SmartBallot today and experience the future of democratic elections.</p>
                 {/* Hide Register as a Voter button for admin and officer wallets */}
                 {walletType !== 'admin' && walletType !== 'officer' ? (
                   <Button as={Link} to="/register" variant="light" size="lg" className="cta-button">
@@ -267,6 +268,340 @@ const Home = () => {
           </Col>
         </Row>
       </Container>
+      
+      {/* Add responsive CSS styles */}
+      <style jsx>{`
+        /* Hero Section Styling */
+        .hero-section {
+          padding: 2rem 0;
+          min-height: 75vh;
+        }
+        
+        .min-vh-75 {
+          min-height: 75vh;
+        }
+        
+        .hero-badge {
+          font-size: 0.9rem;
+          font-weight: 600;
+          letter-spacing: 0.5px;
+          border-radius: 20px;
+          width: fit-content;
+        }
+        
+        .hero-title {
+          font-size: 3.5rem;
+          font-weight: 700;
+          line-height: 1.2;
+          margin-bottom: 1.5rem;
+          color: white;
+        }
+        
+        .hero-description {
+          font-size: 1.2rem;
+          line-height: 1.6;
+          margin-bottom: 2rem;
+          color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .hero-buttons {
+          margin-top: 1rem;
+        }
+        
+        .hero-image {
+          position: relative;
+        }
+        
+        .hero-image-card {
+          border-radius: 1rem;
+          overflow: hidden;
+          background: transparent;
+        }
+        
+        .hero-image-responsive {
+          width: 100%;
+          height: auto;
+          object-fit: cover;
+          border-radius: 1rem;
+          max-height: 400px;
+        }
+        
+        /* Section Styling */
+        .section-badge {
+          font-size: 0.85rem;
+          font-weight: 600;
+          letter-spacing: 0.5px;
+          border-radius: 15px;
+        }
+        
+        .section-title {
+          font-size: 2.5rem;
+          font-weight: 700;
+          color: white;
+          margin-bottom: 2rem;
+        }
+        
+        .features-section {
+          margin: 3rem 0;
+        }
+        
+        /* Feature Cards */
+        .feature-card {
+          background: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 1rem;
+          transition: all 0.3s ease;
+          height: 100%;
+        }
+        
+        .feature-card:hover {
+          transform: translateY(-5px);
+          background: rgba(255, 255, 255, 0.15);
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .feature-icon {
+          font-size: 3rem;
+          color: #007bff;
+          margin-bottom: 1.5rem;
+          text-align: center;
+        }
+        
+        .feature-title {
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: white;
+          margin-bottom: 1rem;
+        }
+        
+        .feature-description {
+          color: rgba(255, 255, 255, 0.8);
+          line-height: 1.6;
+          margin-bottom: 0;
+        }
+        
+        /* CTA Section */
+        .cta-section {
+          margin: 4rem 0 2rem 0;
+        }
+        
+        .cta-card {
+          background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+          border-radius: 1rem;
+        }
+        
+        .cta-title {
+          font-size: 2.2rem;
+          font-weight: 700;
+          margin-bottom: 1rem;
+        }
+        
+        .cta-description {
+          font-size: 1.1rem;
+          margin-bottom: 2rem;
+          opacity: 0.9;
+        }
+        
+        .cta-button {
+          padding: 0.75rem 2rem;
+          font-size: 1.1rem;
+          font-weight: 600;
+          border-radius: 0.5rem;
+        }
+        
+        /* Desktop Image Alignment and Sizing */
+        @media (min-width: 992px) {
+          .hero-image {
+            margin-top: 0;
+            display: flex;
+            align-items: flex-start;
+          }
+          
+          .hero-image-card {
+            width: 100%;
+            height: fit-content;
+          }
+          
+          .hero-image-responsive {
+            max-height: 450px;
+            min-height: 350px;
+            object-fit: cover;
+          }
+          
+          /* Align image top with badge */
+          .hero-section .col-lg-6:last-child {
+            padding-top: 0;
+          }
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 1199.98px) {
+          .hero-title {
+            font-size: 3rem;
+          }
+          
+          .section-title {
+            font-size: 2.2rem;
+          }
+          
+          .hero-image-responsive {
+            max-height: 380px;
+          }
+        }
+        
+        @media (max-width: 991.98px) {
+          .hero-section {
+            padding: 1.5rem 0;
+            min-height: auto;
+          }
+          
+          .hero-title {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+          }
+          
+          .hero-description {
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+          }
+          
+          .section-title {
+            font-size: 2rem;
+          }
+          
+          .hero-image {
+            margin-top: 2rem;
+          }
+          
+          .hero-image-responsive {
+            max-height: 300px;
+          }
+        }
+        
+        @media (max-width: 767.98px) {
+          .hero-section {
+            padding: 1rem 0;
+          }
+          
+          .hero-title {
+            font-size: 2rem;
+            text-align: center;
+          }
+          
+          .hero-description {
+            font-size: 1rem;
+            text-align: center;
+          }
+          
+          .hero-badge {
+            align-self: center !important;
+          }
+          
+          .hero-buttons {
+            justify-content: center;
+            align-items: center;
+          }
+          
+          .section-title {
+            font-size: 1.8rem;
+          }
+          
+          .feature-title {
+            font-size: 1.3rem;
+          }
+          
+          .cta-title {
+            font-size: 1.8rem;
+          }
+          
+          .cta-description {
+            font-size: 1rem;
+          }
+          
+          .hero-image {
+            margin-top: 2rem;
+          }
+          
+          .hero-image-responsive {
+            max-height: 250px;
+          }
+        }
+        
+        @media (max-width: 575.98px) {
+          .hero-title {
+            font-size: 1.8rem;
+          }
+          
+          .hero-description {
+            font-size: 0.95rem;
+          }
+          
+          .section-title {
+            font-size: 1.6rem;
+          }
+          
+          .feature-card {
+            padding: 1.5rem !important;
+          }
+          
+          .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+          }
+          
+          .feature-title {
+            font-size: 1.2rem;
+          }
+          
+          .feature-description {
+            font-size: 0.9rem;
+          }
+          
+          .cta-title {
+            font-size: 1.5rem;
+          }
+          
+          .cta-card .card-body {
+            padding: 2rem 1rem !important;
+          }
+          
+          .hero-image {
+            margin-top: 1.5rem;
+          }
+          
+          .hero-image-responsive {
+            max-height: 220px;
+          }
+        }
+        
+        /* Button Responsive Styling */
+        @media (max-width: 575.98px) {
+          .hero-buttons .btn {
+            width: 100%;
+            margin-bottom: 0.5rem;
+          }
+          
+          .hero-buttons .btn:last-child {
+            margin-bottom: 0;
+          }
+        }
+        
+        /* Enhanced hover effects */
+        .btn {
+          transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Smooth scrolling */
+        html {
+          scroll-behavior: smooth;
+        }
+      `}</style>
     </Layout>
   );
 };
