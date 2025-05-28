@@ -1,6 +1,6 @@
-# VoteSure Face Verification API
+# SmartBallot Face Verification API
 
-This module provides face verification capabilities for the VoteSure election system using AI-powered facial recognition. It helps verify voter identity by comparing facial images against reference images stored in the voter database.
+This module provides face verification capabilities for the SmartBallot election system using AI-powered facial recognition. It helps verify voter identity by comparing facial images against reference images stored in the voter database.
 
 ## Features
 
@@ -65,7 +65,7 @@ You can access the API documentation at http://localhost:8000/docs
 {
   "status": "ok",
   "app_info": {
-    "name": "VoteSure Face Verification API",
+    "name": "SmartBallot Face Verification API",
     "directories": {
       "root": "/path/to/app",
       "temp": "/path/to/app/temp"

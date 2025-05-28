@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 const CONTRACT_ADDRESS = import.meta.env.CONTRACT_ADDRESS || '0x1b0209326d4A985FAe8b399Ad2B743F78cffc8FD';
 const BLOCKCHAIN_RPC_URL = import.meta.env.VITE_BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:7545';
 
-// VoteSure contract ABI for voter-relevant methods
+// SmartBallot contract ABI for voter-relevant methods
 const CONTRACT_ABI = [
   // Utility view functions
   {

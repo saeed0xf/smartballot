@@ -13,7 +13,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const CONTRACT_ADDRESS = import.meta.env.CONTRACT_ADDRESS || '0x1b0209326d4A985FAe8b399Ad2B743F78cffc8FD';
 const BLOCKCHAIN_RPC_URL = import.meta.env.VITE_BLOCKCHAIN_RPC_URL || 'http://127.0.0.1:7545';
 
-// VoteSure contract ABI - includes essential functions for election management
+// SmartBallot contract ABI - includes essential functions for election management
 const CONTRACT_ABI = [
   // Admin check
   {

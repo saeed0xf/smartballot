@@ -86,7 +86,7 @@ const Home = () => {
             <Badge bg="primary" className="hero-badge mb-3 px-3 py-2 align-self-start">Blockchain-Powered Voting</Badge>
             <h1 className="hero-title">Secure and Transparent Elections</h1>
             <p className="hero-description">
-              VoteSure leverages <span className="d-inline-flex align-items-center"><FaEthereum className="mx-1" /> Ethereum</span> blockchain technology to ensure
+              SmartBallot leverages <span className="d-inline-flex align-items-center"><FaEthereum className="mx-1" /> Ethereum</span> blockchain technology to ensure
               security, transparency, and integrity in the electoral process. Vote with confidence knowing your ballot is immutable and verifiable.
             </p>
             <div className="d-flex gap-3 hero-buttons">
@@ -114,7 +114,7 @@ const Home = () => {
         </Row>
 
         {/* Stats Section */}
-        <Row className="mb-5 py-4">
+        {/* <Row className="mb-5 py-4">
           <Col xs={12} className="text-center mb-4">
             <Badge bg="secondary" className="section-badge mb-2 px-3 py-2">Statistics</Badge>
             <h2 className="section-title mb-4">Blockchain Voting Metrics</h2>
@@ -155,7 +155,7 @@ const Home = () => {
               <p className="feature-description">Tamper-Proof</p>
             </Card>
           </Col>
-        </Row>
+        </Row> */}
 
         {/* How It Works Section */}
         <Row className="features-section">
@@ -205,7 +205,7 @@ const Home = () => {
         <Row className="features-section">
           <Col xs={12} className="text-center mb-4">
             <Badge bg="secondary" className="section-badge mb-2 px-3 py-2">Benefits</Badge>
-            <h2 className="section-title mb-4">Why Choose VoteSure?</h2>
+            <h2 className="section-title mb-4">Why Choose SmartBallot?</h2>
           </Col>
           <Col md={3} className="mb-4">
             <Card className="feature-card h-100 p-4">
@@ -251,7 +251,7 @@ const Home = () => {
             <Card className="cta-card border-0">
               <Card.Body className="p-5 text-center text-white">
                 <h2 className="cta-title">Ready to participate in secure blockchain voting?</h2>
-                <p className="cta-description">Join VoteSure today and experience the future of democratic elections.</p>
+                <p className="cta-description">Join SmartBallot today and experience the future of democratic elections.</p>
                 {/* Hide Register as a Voter button for admin and officer wallets */}
                 {walletType !== 'admin' && walletType !== 'officer' ? (
                   <Button as={Link} to="/register" variant="light" size="lg" className="cta-button">

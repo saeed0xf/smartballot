@@ -1316,7 +1316,7 @@ const Reports = () => {
                     </div>
                     <p className="small text-muted mb-0">
                       All generated reports are secured with blockchain verification and can be validated
-                      using the VoteSure report verification system.
+                      using the SmartBallot report verification system.
                     </p>
                   </Card.Body>
                 </Card>

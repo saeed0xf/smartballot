@@ -40,7 +40,7 @@ const Register = () => {
                 <div className="mb-4">
                   <FaUserPlus size={80} color="#3f51b5" />
                 </div>
-                <h4 className="mb-3">Welcome to VoteSure</h4>
+                <h4 className="mb-3">Welcome to SmartBallot</h4>
                 <p className="mb-4">
                   To participate in the election, you need to register as a voter. 
                   Click the button below to start the registration process.

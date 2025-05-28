@@ -198,7 +198,7 @@ const OfficerDashboard = () => {
         </Row>
 
         {/* Quick Actions */}
-        <h4 className="mb-3">Officer Actions</h4>
+        <h4 className="mb-3 text-white">Officer Actions</h4>
         <Row className="mb-4">
           <Col md={6} lg={4} className="mb-3">
             <Card className="h-100 border-0 shadow-sm">
@@ -272,7 +272,7 @@ const OfficerDashboard = () => {
         </Row>
 
         {/* Recent Elections Section */}
-        <h4 className="mb-3">Recent Elections</h4>
+        <h4 className="mb-3 text-white">Recent Elections</h4>
         <Card className="border-0 shadow-sm mb-4">
           <Card.Body className="p-0">
             {recentElections.length > 0 ? (

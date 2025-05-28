@@ -179,7 +179,7 @@ const AppNavbar = () => {
       <Container>
         <Navbar.Brand as={Link} to={getDashboardPath()} className="d-flex align-items-center">
           <FaVoteYea className="me-2" size={24} />
-          <span>VoteSure</span>
+          <span>SmartBallot</span>
           {isAuthenticated && (
             <Badge bg="primary" className="ms-2">
               {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
