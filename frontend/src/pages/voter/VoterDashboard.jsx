@@ -505,7 +505,7 @@ const VoterDashboard = () => {
           </Card.Body>
         </Card>
         
-        <h4 className="mb-3">Quick Actions</h4>
+        <h4 className="mb-3 text-white">Quick Actions</h4>
         <Row>
           <Col md={4} className="mb-4">
             <Card className="h-100 shadow-sm dashboard-card">
