@@ -7,12 +7,15 @@ import { toast } from 'react-toastify';
 import axios from 'axios';
 import Layout from '../../components/Layout';
 import { AuthContext } from '../../context/AuthContext';
+import env from '../../utils/env';
 
 const VoterRegistration = () => {
   const { connectWallet, isMetaMaskInstalled, registerVoter } = useContext(AuthContext);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
+  const [walletType, setWalletType] = useState(null);
+  const [isCheckingWallet, setIsCheckingWallet] = useState(true);
   const navigate = useNavigate();
   
   // Webcam states
@@ -22,6 +25,48 @@ const VoterRegistration = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+
+  // Check if the current wallet is admin or officer
+  useEffect(() => {
+    const checkWalletType = async () => {
+      try {
+        if (window.ethereum) {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts && accounts.length > 0) {
+            const currentAddress = accounts[0].toLowerCase();
+            const adminAddress = (env.ADMIN_ADDRESS || '').toLowerCase();
+            
+            // Get officer addresses
+            const officerAddresses = env.OFFICER_ADDRESSES ? 
+              env.OFFICER_ADDRESSES.split(',').map(addr => addr.toLowerCase()) : 
+              [];
+            
+            if (currentAddress === adminAddress) {
+              setWalletType('admin');
+            } else if (officerAddresses.includes(currentAddress)) {
+              setWalletType('officer');
+            } else {
+              setWalletType('voter');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking wallet type:', err);
+      } finally {
+        setIsCheckingWallet(false);
+      }
+    };
+    
+    checkWalletType();
+  }, []);
+
+  // Redirect admin and officer wallets to login page
+  useEffect(() => {
+    if (!isCheckingWallet && (walletType === 'admin' || walletType === 'officer')) {
+      navigate('/login');
+      return;
+    }
+  }, [walletType, isCheckingWallet, navigate]);
 
   // Add this effect to configure non-passive event listeners for touch events
   useEffect(() => {
@@ -374,6 +419,26 @@ const VoterRegistration = () => {
       setSubmitting(false);
     }
   };
+
+  // Show loading while checking wallet type
+  if (isCheckingWallet) {
+    return (
+      <Layout>
+        <Container className="py-5">
+          <Card className="shadow-sm">
+            <Card.Body className="p-4 text-center">
+              <div className="mb-4">
+                <div className="spinner-border text-primary" role="status">
+                  <span className="visually-hidden">Loading...</span>
+                </div>
+              </div>
+              <p>Checking wallet permissions...</p>
+            </Card.Body>
+          </Card>
+        </Container>
+      </Layout>
+    );
+  }
 
   if (!isMetaMaskInstalled) {
     return (

@@ -812,12 +812,12 @@ const ElectionResults = () => {
       </Layout>
     );
   }
-
+  
   // Render elections list when no specific election ID is provided
   if (!electionId && elections.length > 0) {
-    return (
-      <Layout>
-        <Container className="py-4">
+  return (
+    <Layout>
+      <Container className="py-4">
           <div className="d-flex justify-content-between align-items-center mb-4 text-white">
             <div>
               <h1 className="mb-2">Blockchain Election Records</h1>
@@ -1472,7 +1472,7 @@ const ElectionResults = () => {
                           <th>Transaction Hash</th>
                             {/* <th>From Address</th> */}
                           <th>Timestamp</th>
-                            <th>Block #</th>
+                            {/* <th>Block #</th> */}
                             <th>Status</th>
                             <th>Explorer</th>
                         </tr>
@@ -1506,11 +1506,11 @@ const ElectionResults = () => {
                                   </small>
                                 </div>
                             </td>
-                            <td className="align-middle">
+                            {/* <td className="align-middle">
                                 <Badge bg="secondary" className="font-monospace">
                                   #{tx.blockNumber}
                                 </Badge>
-                              </td>
+                              </td> */}
                               <td className="align-middle">
                                 <Badge bg={tx.status === 'Confirmed' ? 'success' : 'warning'}>
                                   {tx.status === 'Confirmed' ? 'Confirmed' : 'Pending'}

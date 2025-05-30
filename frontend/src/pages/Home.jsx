@@ -90,13 +90,20 @@ const Home = () => {
               security, transparency, and integrity in the electoral process. Vote with confidence knowing your ballot is immutable and verifiable.
             </p>
             <div className="d-flex flex-column flex-sm-row gap-3 hero-buttons">
-              {/* Hide Register Now button for admin and officer wallets */}
-              {walletType !== 'admin' && walletType !== 'officer' && (
+              {/* Show Register Now button only for voter wallets */}
+              {walletType === 'voter' && (
                 <Button as={Link} to="/register" variant="primary" size="lg" className="d-flex align-items-center justify-content-center px-4 py-2">
                   <FaUserPlus className="me-2" /> Register Now
                 </Button>
               )}
-              <Button as={Link} to="/login" variant="outline-light" size="lg" className="d-flex align-items-center justify-content-center px-4 py-2">
+              {/* Show Connect Wallet button for all users, but redirect admin/officer to login */}
+              <Button 
+                as={Link} 
+                to={walletType === 'admin' || walletType === 'officer' ? "/login" : "/login"} 
+                variant="outline-light" 
+                size="lg" 
+                className="d-flex align-items-center justify-content-center px-4 py-2"
+              >
                 <FaEthereum className="me-2" /> Connect Wallet
               </Button>
             </div>
@@ -253,8 +260,8 @@ const Home = () => {
               <Card.Body className="p-4 p-md-5 text-center text-white ">
                 <h2 className="cta-title text-white">Ready to participate in secure blockchain voting?</h2>
                 <p className="cta-description text-white">Join SmartBallot today and experience the future of democratic elections.</p>
-                {/* Hide Register as a Voter button for admin and officer wallets */}
-                {walletType !== 'admin' && walletType !== 'officer' ? (
+                {/* Show Register as a Voter button only for voter wallets */}
+                {walletType === 'voter' ? (
                   <Button as={Link} to="/register" variant="light" size="lg" className="cta-button">
                     Register as a Voter
                   </Button>

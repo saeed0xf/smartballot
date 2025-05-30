@@ -1721,32 +1721,32 @@ exports.storeElectionInRemoteDb = async (req, res) => {
       console.log(`Creating new candidate record with unique ID: ${uniqueId}`);
       
       // Create new candidate with current data
-      const remoteCandidate = new RemoteCandidate({
-        firstName: candidate.firstName,
-        middleName: candidate.middleName,
-        lastName: candidate.lastName,
-        age: candidate.age,
-        gender: candidate.gender,
-        dateOfBirth: candidate.dateOfBirth,
-        partyName: candidate.partyName,
-        electionType: candidate.electionType,
+        const remoteCandidate = new RemoteCandidate({
+          firstName: candidate.firstName,
+          middleName: candidate.middleName,
+          lastName: candidate.lastName,
+          age: candidate.age,
+          gender: candidate.gender,
+          dateOfBirth: candidate.dateOfBirth,
+          partyName: candidate.partyName,
+          electionType: candidate.electionType,
         electionId: remoteElectionId.toString(), // Link to remote election
-        constituency: candidate.constituency,
-        pincode: candidate.pincode,
-        manifesto: candidate.manifesto,
-        education: candidate.education,
-        experience: candidate.experience,
-        criminalRecord: candidate.criminalRecord,
-        email: candidate.email,
-        voteCount: candidate.voteCount || 0,
-        photoUrl: candidate.photoUrl,
-        partySymbol: candidate.partySymbol,
-        blockchainTxHash: blockchainTxHash,
+          constituency: candidate.constituency,
+          pincode: candidate.pincode,
+          manifesto: candidate.manifesto,
+          education: candidate.education,
+          experience: candidate.experience,
+          criminalRecord: candidate.criminalRecord,
+          email: candidate.email,
+          voteCount: candidate.voteCount || 0,
+          photoUrl: candidate.photoUrl,
+          partySymbol: candidate.partySymbol,
+          blockchainTxHash: blockchainTxHash,
         originalCandidateId: uniqueId, // Use unique ID to prevent duplicates
-        recordedAt: new Date()
-      });
+          recordedAt: new Date()
+        });
       
-      return remoteCandidate.save();
+        return remoteCandidate.save();
     });
 
     // Execute all candidate save operations (all new records)

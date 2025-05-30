@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Container, Row, Col } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { FaVoteYea, FaEthereum, FaGithub, FaTwitter, FaLinkedin, FaDiscord, FaShieldAlt, FaUserShield } from 'react-icons/fa';
@@ -7,6 +7,39 @@ import env from '../utils/env';
 
 const Footer = () => {
   const { user, isAuthenticated } = useContext(AuthContext);
+  const [walletType, setWalletType] = useState(null);
+  
+  // Check if the current wallet is admin or officer
+  useEffect(() => {
+    const checkWalletType = async () => {
+      try {
+        if (window.ethereum) {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts && accounts.length > 0) {
+            const currentAddress = accounts[0].toLowerCase();
+            const adminAddress = (env.ADMIN_ADDRESS || '').toLowerCase();
+            
+            // Get officer addresses
+            const officerAddresses = env.OFFICER_ADDRESSES ? 
+              env.OFFICER_ADDRESSES.split(',').map(addr => addr.toLowerCase()) : 
+              [];
+            
+            if (currentAddress === adminAddress) {
+              setWalletType('admin');
+            } else if (officerAddresses.includes(currentAddress)) {
+              setWalletType('officer');
+            } else {
+              setWalletType('voter');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking wallet type:', err);
+      }
+    };
+    
+    checkWalletType();
+  }, []);
   
   // Truncate addresses for display
   const truncateAddress = (address) => {
@@ -18,7 +51,7 @@ const Footer = () => {
   // Get the first officer address if there are multiple
   const officerAddress = env.OFFICER_ADDRESSES ? env.OFFICER_ADDRESSES.split(',')[0] : '';
   
-  // Check if current user is admin or officer
+  // Check if current user is admin or officer (for authenticated users)
   const isAdminOrOfficer = () => {
     if (!user || !user.walletAddress) return false;
     
@@ -33,8 +66,13 @@ const Footer = () => {
   
   // Better check for hiding "Register as Voter" link
   const shouldShowRegisterLink = () => {
-    if (!isAuthenticated) return true; // Show to unauthenticated users
-    return !isAdminOrOfficer(); // Hide from admin/officer
+    // If authenticated, check user role
+    if (isAuthenticated) {
+      return !isAdminOrOfficer(); // Hide from admin/officer
+    }
+    
+    // If not authenticated, check wallet type
+    return walletType === 'voter' || walletType === null; // Show only for voter wallets or unknown
   };
 
   return (
@@ -64,7 +102,7 @@ const Footer = () => {
                   <FaVoteYea className="me-2" /> Home
                 </Link>
               </li>
-              {/* Only show Register as Voter link if not admin/officer and not authenticated */}
+              {/* Only show Register as Voter link for voter wallets */}
               {shouldShowRegisterLink() && (
                 <li className="mb-2">
                   <Link to="/register" className="text-light text-decoration-none">

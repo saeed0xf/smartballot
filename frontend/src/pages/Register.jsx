@@ -1,13 +1,50 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Container, Row, Col, Card, Button } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { AuthContext } from '../context/AuthContext';
 import { FaUserPlus } from 'react-icons/fa';
+import env from '../utils/env';
 
 const Register = () => {
   const { isAuthenticated, isAdmin, isVoter, isOfficer } = useContext(AuthContext);
   const navigate = useNavigate();
+  const [walletType, setWalletType] = useState(null);
+  const [isCheckingWallet, setIsCheckingWallet] = useState(true);
+
+  // Check if the current wallet is admin or officer
+  useEffect(() => {
+    const checkWalletType = async () => {
+      try {
+        if (window.ethereum) {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts && accounts.length > 0) {
+            const currentAddress = accounts[0].toLowerCase();
+            const adminAddress = (env.ADMIN_ADDRESS || '').toLowerCase();
+            
+            // Get officer addresses
+            const officerAddresses = env.OFFICER_ADDRESSES ? 
+              env.OFFICER_ADDRESSES.split(',').map(addr => addr.toLowerCase()) : 
+              [];
+            
+            if (currentAddress === adminAddress) {
+              setWalletType('admin');
+            } else if (officerAddresses.includes(currentAddress)) {
+              setWalletType('officer');
+            } else {
+              setWalletType('voter');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking wallet type:', err);
+      } finally {
+        setIsCheckingWallet(false);
+      }
+    };
+    
+    checkWalletType();
+  }, []);
 
   useEffect(() => {
     // Redirect if already authenticated
@@ -19,13 +56,44 @@ const Register = () => {
       } else if (isOfficer()) {
         navigate('/officer');
       }
+      return;
     }
-  }, [isAuthenticated, isAdmin, isVoter, isOfficer, navigate]);
+
+    // Redirect admin and officer wallets to login page
+    if (!isCheckingWallet && (walletType === 'admin' || walletType === 'officer')) {
+      navigate('/login');
+      return;
+    }
+  }, [isAuthenticated, isAdmin, isVoter, isOfficer, navigate, walletType, isCheckingWallet]);
 
   const handleRegisterClick = () => {
     // Navigate directly to the voter registration page
     navigate('/voter/register');
   };
+
+  // Show loading while checking wallet type
+  if (isCheckingWallet) {
+    return (
+      <Layout>
+        <Container>
+          <Row className="justify-content-center">
+            <Col md={6}>
+              <Card className="shadow-sm">
+                <Card.Body className="p-4 text-center">
+                  <div className="mb-4">
+                    <div className="spinner-border text-primary" role="status">
+                      <span className="visually-hidden">Loading...</span>
+                    </div>
+                  </div>
+                  <p>Checking wallet permissions...</p>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
+        </Container>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

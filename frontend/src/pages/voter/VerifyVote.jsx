@@ -310,8 +310,38 @@ const VerifyVote = () => {
     });
   };
   
+  // Function to check if an election is active
+  const isElectionActive = (electionId) => {
+    if (!electionId || electionId === 'unknown') return false;
+    
+    const election = electionDetails[electionId];
+    if (!election) return false;
+    
+    // Check if election is explicitly marked as active
+    if (election.hasOwnProperty('isActive')) {
+      return election.isActive;
+    }
+    
+    // Fallback: check if current time is between start and end dates
+    const now = new Date();
+    const startDate = election.startDate ? new Date(election.startDate) : null;
+    const endDate = election.endDate ? new Date(election.endDate) : null;
+    
+    if (startDate && endDate) {
+      return now >= startDate && now <= endDate;
+    }
+    
+    // If we can't determine, assume inactive for privacy
+    return false;
+  };
+  
   // Function to get candidate name from details
-  const getCandidateName = (candidateId) => {
+  const getCandidateName = (candidateId, electionId) => {
+    // Check if election is active - if not, hide candidate name for confidentiality
+    if (!isElectionActive(electionId)) {
+      return 'Hidden (Election Ended - Voter Confidentiality Protected)';
+    }
+    
     if (!candidateId || candidateId === 'none-of-the-above') {
       return 'None of the Above';
     }
@@ -557,7 +587,15 @@ const VerifyVote = () => {
                           {vote.candidateId && (
                             <div className="mb-1 transaction-candidate">
                               <span className="text-muted me-2">Candidate:</span>
-                              <span className="fw-medium">{getCandidateName(vote.candidateId)}</span>
+                              <span className="fw-medium">{getCandidateName(vote.candidateId, vote.electionId)}</span>
+                              {!isElectionActive(vote.electionId) && (
+                                <div className="mt-1">
+                                  <small className="text-muted fst-italic">
+                                    <FaInfoCircle className="me-1" size={12} />
+                                    Candidate details hidden to protect voter confidentiality
+                                  </small>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -581,15 +619,15 @@ const VerifyVote = () => {
                             </div>
                           </Col>
                           <Col xs={6} md={4} className="mb-2 mb-md-0">
-                            <div className="text-muted small">BLOCK</div>
+                            {/* <div className="text-muted small">BLOCK</div> */}
                             <div>
-                              {vote.blockInfo?.blockNumber !== 'N/A' ? (
-                                <Badge bg="dark" className="py-1 px-2">
-                                  #{vote.blockInfo?.blockNumber}
-                                </Badge>
-                              ) : <span className="text-muted">Pending</span>}
+                              {/* {vote.blockInfo?.blockNumber !== 'N/A' ? ( */}
+                                {/* <Badge bg="dark" className="py-1 px-2"> */}
+                                  {/* #{vote.blockInfo?.blockNumber} */}
+                                {/* </Badge> */}
+                              {/* ) : <span className="text-muted">Pending</span>} */}
                             </div>
-                          </Col>
+                    </Col>
                           <Col xs={12} md={4}>
                             <div className="text-muted small">STATUS</div>
                             <div className="d-flex align-items-center">
@@ -610,16 +648,16 @@ const VerifyVote = () => {
                                 <FaExternalLinkAlt size={12} />
                               </Button>
                             </div>
-                          </Col>
-                        </Row>
-                      </Col>
+                    </Col>
+                  </Row>
+                    </Col>
                       <Col xs={12} className="mt-2 d-flex justify-content-end">
                         <div className="d-flex align-items-center view-details-link">
                           <FaInfoCircle className="me-1" size={14} />
                           <span className="small">Click to view transaction details</span>
                         </div>
-                      </Col>
-                    </Row>
+                    </Col>
+                  </Row>
                   </div>
                 ))}
                 
@@ -669,8 +707,8 @@ const VerifyVote = () => {
                     </Card.Body>
                   </Card>
                 </Col>
-                <Col md={4} className="mb-3 mb-md-0">
-                  <Card className="h-100 blockchain-stat-card border-0 shadow-sm">
+                {/* <Col md={4} className="mb-3 mb-md-0"> */}
+                  {/* <Card className="h-100 blockchain-stat-card border-0 shadow-sm">
                     <Card.Body className="d-flex flex-column justify-content-between">
                       <div className="text-muted mb-2">Latest Block</div>
                       <div className="d-flex align-items-end">
@@ -687,16 +725,16 @@ const VerifyVote = () => {
                         </small>
                       </div>
                     </Card.Body>
-                  </Card>
-                </Col>
+                  </Card> */}
+                {/* </Col> */}
                 <Col md={4}>
                   <Card className="h-100 blockchain-stat-card border-0 shadow-sm">
                     <Card.Body className="d-flex flex-column justify-content-between">
                       <div className="text-muted mb-2">Latest Vote Time</div>
-                      <div>
+                  <div>
                         <h5 className="mb-1">
                           {remoteVotes[0]?.timestamp ? getTimeAgo(remoteVotes[0].timestamp) : 'Unknown'}
-                        </h5>
+                    </h5>
                         <div className="text-muted small">
                           {remoteVotes[0]?.timestamp ? 
                             new Date(remoteVotes[0].timestamp).toLocaleString() : 
@@ -750,6 +788,18 @@ const VerifyVote = () => {
                 </Modal.Title>
               </Modal.Header>
               <Modal.Body>
+                {!isElectionActive(selectedVote.electionId) && (
+                  <Alert variant="warning" className="mb-4">
+                    <div className="d-flex align-items-center">
+                      <FaInfoCircle className="me-3" size={20} />
+                      <div>
+                        <strong>Voter Confidentiality Protection</strong><br />
+                        This election has ended. Candidate names and vote recordings are hidden to protect the confidentiality of the voter.
+                      </div>
+                    </div>
+                  </Alert>
+                )}
+                
                 <div className="transaction-header mb-4 p-3 bg-light rounded">
                   <h5>Transaction Hash</h5>
                   <div className="d-flex align-items-center">
@@ -781,7 +831,7 @@ const VerifyVote = () => {
                       <ListGroup.Item className="d-flex justify-content-between align-items-start">
                         <div className="ms-2 me-auto">
                           <div className="fw-bold">Candidate</div>
-                          {getCandidateName(selectedVote.candidateId)}
+                          {getCandidateName(selectedVote.candidateId, selectedVote.electionId)}
                         </div>
                       </ListGroup.Item>
                       <ListGroup.Item className="d-flex justify-content-between align-items-start">
@@ -805,12 +855,12 @@ const VerifyVote = () => {
                     <h5 className="border-bottom pb-2">Block Information</h5>
                     {selectedVote.blockInfo ? (
                       <ListGroup variant="flush">
-                        <ListGroup.Item className="d-flex justify-content-between align-items-start">
-                          <div className="ms-2 me-auto">
+                        {/* <ListGroup.Item className="d-flex justify-content-between align-items-start"> */}
+                          {/* <div className="ms-2 me-auto">
                             <div className="fw-bold">Block Number</div>
                             {selectedVote.blockInfo.blockNumber}
-                          </div>
-                        </ListGroup.Item>
+                          </div> */}
+                        {/* </ListGroup.Item> */}
                         {selectedVote.blockInfo.blockHash && (
                           <ListGroup.Item className="d-flex justify-content-between align-items-start">
                             <div className="ms-2 me-auto">
@@ -844,16 +894,26 @@ const VerifyVote = () => {
                     <h5 className="border-bottom pb-2">
                       <FaVideo className="me-2" /> Vote Recording
                     </h5>
-                    <div className="video-container bg-light p-3 rounded">
-                      <video 
-                        controls 
-                        className="w-100" 
-                        style={{ maxHeight: '300px' }}
-                        src={`${API_URL.replace('/api', '')}${selectedVote.recordingUrl}`}
-                      >
-                        Your browser does not support the video tag.
-                      </video>
-                    </div>
+                    {isElectionActive(selectedVote.electionId) ? (
+                      <div className="video-container bg-light p-3 rounded">
+                        <video 
+                          controls 
+                          className="w-100" 
+                          style={{ maxHeight: '300px' }}
+                          src={`${API_URL.replace('/api', '')}${selectedVote.recordingUrl}`}
+                        >
+                          Your browser does not support the video tag.
+                        </video>
+                      </div>
+                    ) : (
+                      <Alert variant="info" className="d-flex align-items-center">
+                        <FaInfoCircle className="me-3" size={20} />
+                        <div>
+                          <strong>Recording Hidden</strong><br />
+                          This is to protect the confidentiality of the voter. Vote recordings are only visible while the election is active.
+                        </div>
+                      </Alert>
+                    )}
                   </div>
                 )}
                 

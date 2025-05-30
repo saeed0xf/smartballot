@@ -387,7 +387,7 @@ const CastVote = () => {
       
       if (!voteData) {
         console.error('No vote data found when stopping recording');
-        toast.error('Could not identify selected candidate for recording. Your vote was processed, but the recording may not be saved.');
+        // toast.error('Could not identify selected candidate for recording. Your vote was processed, but the recording may not be saved.');
         return;
       }
       
