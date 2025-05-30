@@ -812,12 +812,12 @@ const ElectionResults = () => {
       </Layout>
     );
   }
-
+  
   // Render elections list when no specific election ID is provided
   if (!electionId && elections.length > 0) {
-    return (
-      <Layout>
-        <Container className="py-4">
+  return (
+    <Layout>
+      <Container className="py-4">
           <div className="d-flex justify-content-between align-items-center mb-4 text-white">
             <div>
               <h1 className="mb-2">Blockchain Election Records</h1>
