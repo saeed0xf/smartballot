@@ -1472,7 +1472,7 @@ const ElectionResults = () => {
                           <th>Transaction Hash</th>
                             {/* <th>From Address</th> */}
                           <th>Timestamp</th>
-                            <th>Block #</th>
+                            {/* <th>Block #</th> */}
                             <th>Status</th>
                             <th>Explorer</th>
                         </tr>
@@ -1506,11 +1506,11 @@ const ElectionResults = () => {
                                   </small>
                                 </div>
                             </td>
-                            <td className="align-middle">
+                            {/* <td className="align-middle">
                                 <Badge bg="secondary" className="font-monospace">
                                   #{tx.blockNumber}
                                 </Badge>
-                              </td>
+                              </td> */}
                               <td className="align-middle">
                                 <Badge bg={tx.status === 'Confirmed' ? 'success' : 'warning'}>
                                   {tx.status === 'Confirmed' ? 'Confirmed' : 'Pending'}
