@@ -392,8 +392,8 @@ const ApproveVoters = () => {
               voter.id === voterId ? { ...voter, status: 'approved' } : voter
             )
           );
-          
-          toast.success('Voter was already approved on the blockchain. Database updated.');
+          // Voter was already approved on the blockchain.
+          toast.success('Voter approved on the blockchain.');
           return;
         }
         
