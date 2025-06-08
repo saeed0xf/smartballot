@@ -195,7 +195,7 @@ const CastVote = () => {
           timestamp: timestamp,
           candidateId: selectedCandidate?._id || selectedCandidate?.id,
           electionId: selectedCandidate?.electionId,
-          voterId: voterProfile?._id,
+          voterId: voterProfile?.voterId,
           uploaded: false
         };
         
@@ -421,7 +421,7 @@ const CastVote = () => {
       const timestamp = Date.now();
       const randomId = Math.floor(Math.random() * 10000);
       // Include transaction hash in the filename for easier tracking
-      const fileName = `vote-recording-${timestamp}-${randomId}-${voterProfile._id}-${voteData.electionId}-${txHash ? txHash.substring(0, 8) : 'notx'}.webm`;
+      const fileName = `vote-recording-${timestamp}-${randomId}-${voterProfile.voterId}-${voteData.electionId}-${txHash ? txHash.substring(0, 8) : 'notx'}.webm`;
       
       console.log('Creating file with name:', fileName);
       
@@ -453,7 +453,7 @@ const CastVote = () => {
       // Add all necessary data to FormData
       try {
       formData.append('recording', file);
-      formData.append('voterId', voterProfile._id);
+      formData.append('voterId', voterProfile.voterId);
         formData.append('electionId', voteData.electionId);
         formData.append('candidateId', voteData._id || voteData.id);
       formData.append('voteTimestamp', new Date().toISOString());
