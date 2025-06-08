@@ -563,11 +563,11 @@ exports.recordVoteOnBlockchain = async (req, res) => {
     const RemoteVote = remoteConnection.model('Vote', remoteDb.RemoteVoteSchema);
     
     // Check if the voter has already voted in the remote database
-    console.log(`Checking if voter ${voter._id} has already voted in election ${electionId} in remote database`);
-    const existingRemoteVote = await RemoteVote.findOne({ voterId: voter._id.toString(), electionId: electionId });
+    console.log(`Checking if voter ${voter.voterId} has already voted in election ${electionId} in remote database`);
+    const existingRemoteVote = await RemoteVote.findOne({ voterId: voter.voterId, electionId: electionId });
     
     if (existingRemoteVote) {
-      console.log(`Found existing vote in remote database for voter ${voter._id} in election ${electionId}`);
+      console.log(`Found existing vote in remote database for voter ${voter.voterId} in election ${electionId}`);
       await remoteConnection.close();
       return res.status(400).json({ message: 'You have already cast your vote in this election (recorded in blockchain)' });
     }
@@ -596,7 +596,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
           // If we found the election in the remote DB, check again with the exact remote election ID
           if (remoteElection._id.toString() !== electionId) {
             const preciseRemoteVoteCheck = await RemoteVote.findOne({ 
-              voterId: voter._id.toString(), 
+              voterId: voter.voterId, 
               electionId: remoteElection._id.toString() 
             });
             
@@ -732,7 +732,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
       
       // Create the vote transaction on the blockchain
       const blockchainVote = new RemoteVote({
-        voterId: voter._id.toString(),
+        voterId: voter.voterId,
         candidateId: isNoneOption ? 'none-of-the-above' : candidateId,
         electionId: remoteElection ? remoteElection._id.toString() : electionId,
         isNoneOption: isNoneOption || false,
@@ -940,14 +940,14 @@ exports.checkRemoteVote = async (req, res) => {
     // Create models on the remote connection
     const RemoteVote = remoteConnection.model('Vote', remoteDb.RemoteVoteSchema);
     
-    let query = { voterId: voter._id.toString() };
+    let query = { voterId: voter.voterId };
     
     // If election ID is provided, check for vote in that specific election
     if (electionId) {
-      console.log(`Checking if voter ${voter._id} has voted in specific election ${electionId}`);
+      console.log(`Checking if voter ${voter.voterId} has voted in specific election ${electionId}`);
       query.electionId = electionId;
     } else {
-      console.log(`Checking if voter ${voter._id} has voted in any election`);
+      console.log(`Checking if voter ${voter.voterId} has voted in any election`);
     }
     
     // Check if the voter has cast any votes in the remote database based on query
@@ -957,7 +957,7 @@ exports.checkRemoteVote = async (req, res) => {
     await remoteConnection.close();
     
     if (existingRemoteVote) {
-      console.log(`Found existing vote in remote database for voter ${voter._id}${electionId ? ` in election ${electionId}` : ''}`);
+      console.log(`Found existing vote in remote database for voter ${voter.voterId}${electionId ? ` in election ${electionId}` : ''}`);
       return res.json({ 
         hasVoted: true, 
         voteInfo: {
@@ -1002,7 +1002,7 @@ exports.getRemoteVotes = async (req, res) => {
       return res.status(404).json({ message: 'Voter profile not found' });
     }
     
-    console.log(`Fetching remote votes for voter ID: ${voter._id}`);
+    console.log(`Fetching remote votes for voter ID: ${voter.voterId}`);
     
     // Establish connection to remote database
     const remoteDb = require('../utils/remoteDb.util');
@@ -1013,11 +1013,11 @@ exports.getRemoteVotes = async (req, res) => {
     const RemoteVote = remoteConnection.model('Vote', remoteDb.RemoteVoteSchema);
     
     // Fetch all votes by this voter
-    const votes = await RemoteVote.find({ voterId: voter._id.toString() })
+    const votes = await RemoteVote.find({ voterId: voter.voterId })
       .sort({ timestamp: -1 }) // Sort by timestamp (newest first)
       .lean(); // Convert to plain JS objects
     
-    console.log(`Found ${votes.length} vote records for voter ${voter._id} in remote database`);
+    console.log(`Found ${votes.length} vote records for voter ${voter.voterId} in remote database`);
     
     // Close the remote connection
     await remoteConnection.close();
