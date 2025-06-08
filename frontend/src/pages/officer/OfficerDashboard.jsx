@@ -283,7 +283,7 @@ const OfficerDashboard = () => {
                     <th>Status</th>
                     <th>Period</th>
                     <th>Total Votes</th>
-                    <th>Turnout</th>
+                    {/* <th>Turnout</th> */}
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -300,7 +300,7 @@ const OfficerDashboard = () => {
                         {formatDate(election.startDate)} - {formatDate(election.endDate)}
                       </td>
                       <td>{election.totalVotes || 'N/A'}</td>
-                      <td>{election.voterTurnout || 'N/A'}</td>
+                      {/* <td>{election.voterTurnout || 'N/A'}</td> */}
                       <td>
                         <Button
                           as={Link}

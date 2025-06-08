@@ -392,8 +392,8 @@ const ApproveVoters = () => {
               voter.id === voterId ? { ...voter, status: 'approved' } : voter
             )
           );
-          
-          toast.success('Voter was already approved on the blockchain. Database updated.');
+          // Voter was already approved on the blockchain.
+          toast.success('Voter approved on the blockchain.');
           return;
         }
         
@@ -445,7 +445,7 @@ const ApproveVoters = () => {
             )
           );
           
-          toast.success('Voter was already approved on the blockchain. Database updated.');
+          toast.success('Voter approved on the blockchain.');
           return;
         }
         
@@ -467,7 +467,7 @@ const ApproveVoters = () => {
             )
           );
           
-          toast.success('Voter was already approved on the blockchain. Database updated.');
+          toast.success('Voter approved on the blockchain.');
           return;
         }
         
@@ -684,7 +684,7 @@ const ApproveVoters = () => {
         errorMessage = `MetaMask Error Code ${err.code}: ${errorMessage}`;
       }
       
-      toast.error(errorMessage);
+      // toast.error(errorMessage);
     } finally {
       setApprovingVoter(false);
     }
@@ -1070,6 +1070,45 @@ const ApproveVoters = () => {
     }
   };
 
+  // Check if both verifications are complete and successful
+  const isVerificationComplete = () => {
+    // Check if voter details verification is complete and successful
+    const isVoterDetailsVerified = verificationData && 
+      !verificationLoading && 
+      !verificationError && 
+      getMismatchedFields(selectedVoter, verificationData).length === 0;
+    
+    // Check if face verification is complete and successful
+    const isFaceVerified = faceVerificationData && 
+      !faceVerificationLoading && 
+      !faceVerificationError && 
+      faceVerificationData.verified;
+    
+    return isVoterDetailsVerified && isFaceVerified;
+  };
+
+  // Check if approve button should be enabled (all verifications successful)
+  const canApproveVoter = (voter = selectedVoter) => {
+    // For modal: use current verification states
+    if (voter === selectedVoter && showDetailsModal) {
+      return isVerificationComplete();
+    }
+    // For table: always allow if pending (verification happens in modal)
+    return voter?.status === 'pending';
+  };
+
+  // Check if reject button should be enabled (verifications attempted)
+  const canRejectVoter = (voter = selectedVoter) => {
+    // For modal: enable if any verification was attempted (successful or failed)
+    if (voter === selectedVoter && showDetailsModal) {
+      const hasAttemptedVerification = (verificationData || verificationError || !verificationLoading) &&
+                                     (faceVerificationData || faceVerificationError || !faceVerificationLoading);
+      return hasAttemptedVerification;
+    }
+    // For table: always allow if pending
+    return voter?.status === 'pending';
+  };
+
   return (
     <Layout>
       <Container className="py-4">
@@ -1178,25 +1217,25 @@ const ApproveVoters = () => {
                           
                           {voter.status === 'pending' && (
                             <>
-                              <Button 
+                              {/* <Button 
                                 variant="outline-success" 
                                 size="sm" 
                                 className="me-1"
                                 title="Approve Voter"
                                 onClick={() => approveVoter(voter.id)}
-                                disabled={approvingVoter}
+                                disabled={!canApproveVoter(voter) || approvingVoter}
                               >
                                 <FaCheck />
-                              </Button>
-                              <Button 
+                              </Button> */}
+                              {/* <Button 
                                 variant="outline-danger" 
                                 size="sm"
                                 title="Reject Voter"
                                 onClick={() => handleRejectClick(voter.id)}
-                                disabled={rejectingVoter}
+                                disabled={!canRejectVoter(voter) || rejectingVoter}
                               >
                                 <FaTimes />
-                              </Button>
+                              </Button> */}
                             </>
                           )}
                         </td>
@@ -1586,7 +1625,7 @@ const ApproveVoters = () => {
                   approveVoter(selectedVoter.id);
                   setShowDetailsModal(false);
                 }}
-                disabled={approvingVoter}
+                disabled={!canApproveVoter(selectedVoter) || approvingVoter}
               >
                 {approvingVoter ? 'Approving...' : 'Approve Voter'}
               </Button>
@@ -1596,7 +1635,7 @@ const ApproveVoters = () => {
                   handleRejectClick(selectedVoter.id);
                   setShowDetailsModal(false);
                 }}
-                disabled={rejectingVoter}
+                disabled={!canRejectVoter(selectedVoter) || rejectingVoter}
               >
                 Reject Voter
               </Button>
