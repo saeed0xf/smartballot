@@ -2429,7 +2429,7 @@ const ManageElection = () => {
           ) : (
             <>
               <Alert variant="success" className="mb-3">
-                <strong>Data Loaded!</strong> The election data has been successfully loaded from the backend.
+                <strong>Data Loaded!</strong> The election data has been successfully loaded.
               </Alert>
               
               <h5>Election Details</h5>
