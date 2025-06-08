@@ -1,11 +1,10 @@
 const mongoose = require('mongoose');
 
-// Remote MongoDB Atlas connection string
 // Include additional query parameters for connection stability
 const REMOTE_MONGO_URI = process.env.REMOTE_MONGO_URI || 
                          'mongodb://admin:secret@localhost:27018/test?authSource=admin&w=majority&readPreference=primary&retryWrites=true&directConnection=true';
 
-// Create schemas for remote database models
+// Create schemas for blockchain
 const RemoteElectionSchema = new mongoose.Schema({
   title: String,
   description: String,
@@ -85,10 +84,10 @@ const RemoteVoteSchema = new mongoose.Schema({
   }
 });
 
-// Create a connection to the remote database
+// Create a connection to the blockchain
 const createRemoteConnection = async () => {
   try {
-    console.log('Creating connection to remote MongoDB database...');
+    console.log('Creating connection to blockchain...');
     
     // Add connection options to make it more robust
     const options = {
@@ -108,48 +107,48 @@ const createRemoteConnection = async () => {
     // Wait for the connection to be established
     await new Promise((resolve, reject) => {
       remoteConnection.once('open', () => {
-        console.log('Connected to remote MongoDB database successfully');
+        console.log('Connected to blockchain successfully');
         resolve();
       });
       
       remoteConnection.once('error', (err) => {
-        console.error('Error establishing connection to remote MongoDB:', err);
+        console.error('Error establishing connection to blockchain:', err);
         reject(err);
       });
     });
     
     // Add event listeners for connection issues
     remoteConnection.on('disconnected', () => {
-      console.warn('Remote MongoDB connection disconnected');
+      console.warn('blockchain connection disconnected');
     });
     
     remoteConnection.on('reconnected', () => {
-      console.log('Remote MongoDB connection reconnected');
+      console.log('blockchain connection reconnected');
     });
     
     remoteConnection.on('error', (err) => {
-      console.error('Remote MongoDB connection error:', err);
+      console.error('blockchain connection error:', err);
     });
     
     return remoteConnection;
   } catch (error) {
-    console.error('Error connecting to remote MongoDB database:', error);
-    throw new Error(`Failed to connect to remote database: ${error.message}`);
+    console.error('Error connecting to blockchain:', error);
+    throw new Error(`Failed to connect to blockchain: ${error.message}`);
   }
 };
 
-// Update election in remote database when started
+// Update election in blockchain when started
 const updateRemoteElectionStarted = async (election, blockchainTxHash) => {
   try {
     console.log(`Updating remote election status to started for election ID: ${election._id}`);
     
-    // Create connection to remote database
+    // Create connection to blockchain
     const remoteConnection = await createRemoteConnection();
     
     // Create models on the remote connection
     const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
     
-    // Find existing election in remote database by originalElectionId
+    // Find existing election in blockchain by originalElectionId
     let remoteElection = await RemoteElection.findOne({ originalElectionId: election._id.toString() });
     
     if (remoteElection) {
@@ -162,12 +161,12 @@ const updateRemoteElectionStarted = async (election, blockchainTxHash) => {
       await remoteElection.save();
       console.log(`Updated existing remote election: ${remoteElection._id}`);
     } else {
-      console.log('No existing remote election found. This election may not have been recorded in the remote database yet.');
+      console.log('No existing remote election found. This election may not have been recorded in the blockchain yet.');
     }
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     return { success: true, remoteElectionId: remoteElection?._id };
   } catch (error) {
@@ -176,19 +175,19 @@ const updateRemoteElectionStarted = async (election, blockchainTxHash) => {
   }
 };
 
-// Update election in remote database when ended
+// Update election in blockchain when ended
 const updateRemoteElectionEnded = async (election, blockchainTxHash) => {
   try {
     console.log(`Updating remote election status to ended for election ID: ${election._id}`);
     
-    // Create connection to remote database
+    // Create connection to blockchain
     const remoteConnection = await createRemoteConnection();
     
     // Create models on the remote connection
     const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
     const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
     
-    // Find existing election in remote database by originalElectionId
+    // Find existing election in blockchain by originalElectionId
     let remoteElection = await RemoteElection.findOne({ originalElectionId: election._id.toString() });
     
     if (remoteElection) {
@@ -215,12 +214,12 @@ const updateRemoteElectionEnded = async (election, blockchainTxHash) => {
         }
       }
     } else {
-      console.log('No existing remote election found. This election may not have been recorded in the remote database yet.');
+      console.log('No existing remote election found. This election may not have been recorded in the blockchain yet.');
     }
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     return { success: true, remoteElectionId: remoteElection?._id };
   } catch (error) {
@@ -229,19 +228,19 @@ const updateRemoteElectionEnded = async (election, blockchainTxHash) => {
   }
 };
 
-// Update election in remote database when archived
+// Update election in blockchain when archived
 const updateRemoteElectionArchived = async (election) => {
   try {
     console.log(`Updating remote election status to archived for election ID: ${election._id}`);
     
-    // Create connection to remote database
+    // Create connection to blockchain
     const remoteConnection = await createRemoteConnection();
     
     // Create models on the remote connection
     const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
     const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
     
-    // Find existing election in remote database by originalElectionId
+    // Find existing election in blockchain by originalElectionId
     let remoteElection = await RemoteElection.findOne({ originalElectionId: election._id.toString() });
     
     if (remoteElection) {
@@ -264,12 +263,12 @@ const updateRemoteElectionArchived = async (election) => {
         console.log(`Updated ${updateResult.modifiedCount} remote candidates to archived status`);
       }
     } else {
-      console.log('No existing remote election found. This election may not have been recorded in the remote database yet.');
+      console.log('No existing remote election found. This election may not have been recorded in the blockchain yet.');
     }
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     return { success: true, remoteElectionId: remoteElection?._id };
   } catch (error) {

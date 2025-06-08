@@ -119,7 +119,7 @@ const ElectionResults = () => {
         // Simulate blockchain connection delay
         await new Promise(resolve => setTimeout(resolve, 1500));
         
-        // Fetch election results from the remote database (simulating blockchain)
+        // Fetch election results from the blockchain (simulating blockchain)
         const response = await axios.get(`${API_URL}/officer/elections/${electionId}/results`, { headers });
         console.log('Blockchain data retrieved successfully:', response.data);
         

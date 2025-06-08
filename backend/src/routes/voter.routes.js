@@ -39,10 +39,10 @@ router.post('/cast-vote', verifyToken, isVoter, voterController.castVote);
 // Record vote on blockchain route (protected route)
 router.post('/record-vote-blockchain', verifyToken, isVoter, voterController.recordVoteOnBlockchain);
 
-// Check if voter has already voted in the remote database (protected route)
+// Check if voter has already voted in the blockchain (protected route)
 router.get('/check-remote-vote', verifyToken, isVoter, voterController.checkRemoteVote);
 
-// Get all votes for the voter from remote database
+// Get all votes for the voter from blockchain
 router.get('/remote-votes', verifyToken, isVoter, voterController.getRemoteVotes);
 
 // Upload vote recording (protected route)

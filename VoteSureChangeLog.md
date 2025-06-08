@@ -209,8 +209,8 @@ This document summarizes the key changes made to the VoteSure election managemen
 
 ### Election Name Display Fix in Vote Transaction Ledger
 - **Enhanced vote verification page to show election names for all votes**:
-  - Added new backend endpoint `GET /elections/remote/:electionId` to fetch election details from remote database
-  - Updated `fetchElectionDetails` function in VerifyVote.jsx to prioritize remote database lookup
+  - Added new backend endpoint `GET /elections/remote/:electionId` to fetch election details from blockchain
+  - Updated `fetchElectionDetails` function in VerifyVote.jsx to prioritize blockchain lookup
   - Fixed issue where election names only appeared for active elections in Vote Transaction Ledger
   - Now displays proper election names even for completed/inactive elections
   - Improved fallback mechanism with multiple endpoint attempts for robust election data retrieval
@@ -219,14 +219,14 @@ This document summarizes the key changes made to the VoteSure election managemen
 ### Backend API Improvements
 - **New remote election endpoint**:
   - Created `getRemoteElectionDetails` function in election controller
-  - Added route `/elections/remote/:electionId` for fetching specific election details from remote database
-  - Implemented proper error handling and connection management for remote database queries
+  - Added route `/elections/remote/:electionId` for fetching specific election details from blockchain
+  - Implemented proper error handling and connection management for blockchain queries
   - Added comprehensive election data formatting with backward compatibility
   - Enhanced election data structure with additional fields (isActive, isArchived, region, etc.)
 
 ### Frontend Vote Verification Enhancements
 - **Improved election data fetching strategy**:
-  - Updated `fetchElectionDetails` function to try remote database first
+  - Updated `fetchElectionDetails` function to try blockchain first
   - Added multiple fallback mechanisms for election data retrieval
   - Enhanced error handling and logging for election data fetching
   - Improved user experience by showing proper election names instead of truncated IDs

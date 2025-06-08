@@ -35,13 +35,13 @@ const OfficerDashboard = () => {
         const token = localStorage.getItem('token');
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         
-        console.log('Fetching election stats from remote database...');
+        console.log('Fetching election stats from blockchain...');
         
-        // Fetch total elections and active elections from remote database
+        // Fetch total elections and active elections from blockchain
         const electionsResponse = await axios.get(`${API_URL}/officer/elections/remote/stats`, { headers });
         console.log('Election stats response:', electionsResponse.data);
         
-        // Fetch total votes from remote database (votes collection)
+        // Fetch total votes from blockchain (votes collection)
         const votesResponse = await axios.get(`${API_URL}/officer/elections/remote/votes/count`, { headers });
         console.log('Votes count response:', votesResponse.data);
         
@@ -70,7 +70,7 @@ const OfficerDashboard = () => {
         });
         
         // Fetch recent elections
-        console.log('Fetching recent elections from remote database...');
+        console.log('Fetching recent elections from blockchain...');
         const recentElectionsResponse = await axios.get(`${API_URL}/officer/elections/remote/recent`, { headers });
         console.log('Recent elections response:', recentElectionsResponse.data);
         

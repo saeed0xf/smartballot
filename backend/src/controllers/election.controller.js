@@ -344,29 +344,29 @@ exports.checkAndAutoEndElections = async () => {
         // Continue with next election
       }
       
-      // Update the election in the remote database - first mark as ended
+      // Update the election in the blockchain - first mark as ended
       try {
         const remoteEndResult = await updateRemoteElectionEnded(election, blockchainTxHash);
         if (remoteEndResult.success) {
-          console.log('Remote database updated successfully with ended status');
+          console.log('blockchain updated successfully with ended status');
         } else {
-          console.warn('Failed to update remote database for ended status:', remoteEndResult.error);
+          console.warn('Failed to update blockchain for ended status:', remoteEndResult.error);
         }
       } catch (remoteError) {
-        console.error('Error updating remote database for ended status:', remoteError);
+        console.error('Error updating blockchain for ended status:', remoteError);
         // Continue with next election
       }
       
-      // Then mark as archived in remote database
+      // Then mark as archived in blockchain
       try {
         const remoteArchiveResult = await updateRemoteElectionArchived(election);
         if (remoteArchiveResult.success) {
-          console.log('Remote database updated successfully with archived status');
+          console.log('blockchain updated successfully with archived status');
         } else {
-          console.warn('Failed to update remote database for archived status:', remoteArchiveResult.error);
+          console.warn('Failed to update blockchain for archived status:', remoteArchiveResult.error);
         }
       } catch (remoteError) {
-        console.error('Error updating remote database for archived status:', remoteError);
+        console.error('Error updating blockchain for archived status:', remoteError);
         // Continue with next election
       }
     }
@@ -502,17 +502,17 @@ exports.startElection = async (req, res) => {
       // Save the election with updated fields
       await election.save();
       
-      // Update the election in the remote database
+      // Update the election in the blockchain
       try {
         const remoteResult = await updateRemoteElectionStarted(election, blockchainTxHash);
         if (remoteResult.success) {
-          console.log('Remote database updated successfully with started status');
+          console.log('blockchain updated successfully with started status');
         } else {
-          console.warn('Failed to update remote database for started status:', remoteResult.error);
+          console.warn('Failed to update blockchain for started status:', remoteResult.error);
         }
       } catch (remoteError) {
-        console.error('Error updating remote database for started status:', remoteError);
-        // Continue despite remote database update failure
+        console.error('Error updating blockchain for started status:', remoteError);
+        // Continue despite blockchain update failure
       }
       
       // Associate candidates with this election and mark them as in an active election
@@ -722,30 +722,30 @@ exports.endElection = async (req, res) => {
       console.log(`Updated ${updateResult.modifiedCount} candidates to archived status`);
       console.log('Election ended and archived successfully:', election);
       
-      // Update the election in the remote database - first mark as ended
+      // Update the election in the blockchain - first mark as ended
       try {
         const remoteEndResult = await updateRemoteElectionEnded(election, blockchainTxHash);
         if (remoteEndResult.success) {
-          console.log('Remote database updated successfully with ended status');
+          console.log('blockchain updated successfully with ended status');
         } else {
-          console.warn('Failed to update remote database for ended status:', remoteEndResult.error);
+          console.warn('Failed to update blockchain for ended status:', remoteEndResult.error);
         }
       } catch (remoteError) {
-        console.error('Error updating remote database for ended status:', remoteError);
-        // Continue despite remote database update failure
+        console.error('Error updating blockchain for ended status:', remoteError);
+        // Continue despite blockchain update failure
       }
       
-      // Then mark as archived in remote database
+      // Then mark as archived in blockchain
       try {
         const remoteArchiveResult = await updateRemoteElectionArchived(election);
         if (remoteArchiveResult.success) {
-          console.log('Remote database updated successfully with archived status');
+          console.log('blockchain updated successfully with archived status');
         } else {
-          console.warn('Failed to update remote database for archived status:', remoteArchiveResult.error);
+          console.warn('Failed to update blockchain for archived status:', remoteArchiveResult.error);
         }
       } catch (remoteError) {
-        console.error('Error updating remote database for archived status:', remoteError);
-        // Continue despite remote database update failure
+        console.error('Error updating blockchain for archived status:', remoteError);
+        // Continue despite blockchain update failure
       }
       
       // Determine the appropriate message to return
@@ -1435,16 +1435,16 @@ exports.checkAndArchiveInactiveElections = async () => {
       
       console.log(`Successfully archived election: ${election.title} with ${candidates.length} candidates and ${totalVotes} votes`);
       
-      // Update the election in the remote database
+      // Update the election in the blockchain
       try {
         const remoteResult = await updateRemoteElectionArchived(election);
         if (remoteResult.success) {
-          console.log('Remote database updated successfully with archived status');
+          console.log('blockchain updated successfully with archived status');
         } else {
-          console.warn('Failed to update remote database for archived status:', remoteResult.error);
+          console.warn('Failed to update blockchain for archived status:', remoteResult.error);
         }
       } catch (remoteError) {
-        console.error('Error updating remote database for archived status:', remoteError);
+        console.error('Error updating blockchain for archived status:', remoteError);
         // Continue with the flow even if remote update fails
       }
     }
@@ -1458,10 +1458,10 @@ exports.checkAndArchiveInactiveElections = async () => {
   }
 };
 
-// Get active elections from remote database
+// Get active elections from blockchain
 exports.getActiveElectionsRemote = async (req, res) => {
   try {
-    console.log('Fetching active elections from remote database');
+    console.log('Fetching active elections from blockchain');
     
     // Import the remoteDb utility functions and schemas
     const { 
@@ -1470,7 +1470,7 @@ exports.getActiveElectionsRemote = async (req, res) => {
       createRemoteConnection 
     } = require('../utils/remoteDb.util');
     
-    // Create connection to remote database
+    // Create connection to blockchain
     const remoteConnection = await createRemoteConnection();
     
     // Create models on the remote connection
@@ -1483,7 +1483,7 @@ exports.getActiveElectionsRemote = async (req, res) => {
       isArchived: false
     });
     
-    console.log(`Found ${activeElections.length} active elections in remote database`);
+    console.log(`Found ${activeElections.length} active elections in blockchain`);
     
     // Get candidates for each election
     const electionsWithCandidates = await Promise.all(activeElections.map(async (election) => {
@@ -1524,7 +1524,7 @@ exports.getActiveElectionsRemote = async (req, res) => {
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     // Return the elections
     res.status(200).json(electionsWithCandidates);
@@ -1554,7 +1554,7 @@ exports.getRemoteCandidateDetails = async (req, res) => {
       createRemoteConnection 
     } = require('../utils/remoteDb.util');
     
-    // Create connection to remote database
+    // Create connection to blockchain
     const remoteConnection = await createRemoteConnection();
     
     // Create models on the remote connection
@@ -1600,7 +1600,7 @@ exports.getRemoteCandidateDetails = async (req, res) => {
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     res.json({ candidate: response });
   } catch (error) {
@@ -1629,7 +1629,7 @@ exports.getRemoteCandidatesByElection = async (req, res) => {
       createRemoteConnection 
     } = require('../utils/remoteDb.util');
     
-    // Create connection to remote database
+    // Create connection to blockchain
     const remoteConnection = await createRemoteConnection();
     
     // Create models on the remote connection
@@ -1686,7 +1686,7 @@ exports.getRemoteCandidatesByElection = async (req, res) => {
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     // Group candidates by election for better organization
     const electionGroup = {
@@ -1723,7 +1723,7 @@ exports.getAllRemoteCandidates = async (req, res) => {
       createRemoteConnection 
     } = require('../utils/remoteDb.util');
     
-    // Create connection to remote database
+    // Create connection to blockchain
     const remoteConnection = await createRemoteConnection();
     
     // Create models on the remote connection
@@ -1827,7 +1827,7 @@ exports.getAllRemoteCandidates = async (req, res) => {
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     res.json({ 
       candidates: formattedCandidates,
@@ -1860,7 +1860,7 @@ exports.getRemoteElectionDetails = async (req, res) => {
       createRemoteConnection 
     } = require('../utils/remoteDb.util');
     
-    // Create connection to remote database
+    // Create connection to blockchain
     const remoteConnection = await createRemoteConnection();
     
     // Create model on the remote connection
@@ -1897,7 +1897,7 @@ exports.getRemoteElectionDetails = async (req, res) => {
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     res.json({ 
       election: formattedElection,

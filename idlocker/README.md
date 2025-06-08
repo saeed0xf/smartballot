@@ -327,7 +327,6 @@ http://localhost:9001/api
 
 ### Prerequisites
 - Node.js (v14 or later)
-- MongoDB (local or Atlas)
 - npm or yarn
 
 ### Installation

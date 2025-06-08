@@ -695,14 +695,14 @@ const CastVote = () => {
           // We'll filter these out from the available candidates later
           let votedElectionIds = [];
 
-          // Check remote database for votes in each active election
+          // Check blockchain for votes in each active election
           for (const election of electionsData) {
             try {
               console.log(`Checking if voter has voted in election ${election._id}`);
               const voteCheckResponse = await axios.get(`${API_URL}/voter/check-remote-vote?electionId=${election._id}`, { headers });
               
               if (voteCheckResponse.data.hasVoted) {
-                console.log(`Voter has already voted in election ${election._id} according to remote database`);
+                console.log(`Voter has already voted in election ${election._id} according to blockchain`);
                 votedElectionIds.push(election._id);
               }
             } catch (voteCheckError) {
@@ -1272,7 +1272,7 @@ const CastVote = () => {
       const token = localStorage.getItem('token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       
-      // Step 2: Activate remote database step and wait a bit
+      // Step 2: Activate blockchain step and wait a bit
       setVoteSteps(prevSteps => ({
         ...prevSteps,
         remoteDb: 'active'

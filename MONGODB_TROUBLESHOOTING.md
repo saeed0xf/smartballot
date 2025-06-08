@@ -24,8 +24,6 @@ The application uses the connection string from `backend/.env`. Make sure it's c
 MONGODB_URI=mongodb://127.0.0.1:27017/votesure
 ```
 
-If using MongoDB Atlas or a remote server, update this URL with the correct connection string.
-
 #### Allow MongoDB Through Firewall
 If you're using a firewall, make sure port 27017 is open.
 

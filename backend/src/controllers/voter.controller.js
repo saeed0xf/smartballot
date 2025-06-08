@@ -494,7 +494,7 @@ exports.castVote = async (req, res) => {
     
     await voter.save();
     
-    // We will no longer update the remote database here - that's now handled by the /record-vote-blockchain endpoint
+    // We will no longer update the blockchain here - that's now handled by the /record-vote-blockchain endpoint
     
     res.json({
       message: 'Your vote has been successfully recorded locally',
@@ -510,7 +510,7 @@ exports.castVote = async (req, res) => {
 
 // Record a vote on the blockchain
 exports.recordVoteOnBlockchain = async (req, res) => {
-  // Variable to hold remote database connection that we'll close at the end
+  // Variable to hold blockchain connection that we'll close at the end
   let remoteConnection = null;
   
   try {
@@ -551,23 +551,23 @@ exports.recordVoteOnBlockchain = async (req, res) => {
     let election;
     let isRemoteElection = false;
     
-    // Establish connection to remote database first - we'll use it throughout the function
+    // Establish connection to blockchain first - we'll use it throughout the function
     const remoteDb = require('../utils/remoteDb.util');
-    console.log('Establishing connection to remote database...');
+    console.log('Establishing connection to blockchain...');
     remoteConnection = await remoteDb.createRemoteConnection();
-    console.log('Connection to remote database established successfully');
+    console.log('Connection to blockchain established successfully');
     
     // Create models on the remote connection
     const RemoteElection = remoteConnection.model('Election', remoteDb.RemoteElectionSchema);
     const RemoteCandidate = remoteConnection.model('Candidate', remoteDb.RemoteCandidateSchema);
     const RemoteVote = remoteConnection.model('Vote', remoteDb.RemoteVoteSchema);
     
-    // Check if the voter has already voted in the remote database
-    console.log(`Checking if voter ${voter.voterId} has already voted in election ${electionId} in remote database`);
+    // Check if the voter has already voted in the blockchain
+    console.log(`Checking if voter ${voter.voterId} has already voted in election ${electionId} in blockchain`);
     const existingRemoteVote = await RemoteVote.findOne({ voterId: voter.voterId, electionId: electionId });
     
     if (existingRemoteVote) {
-      console.log(`Found existing vote in remote database for voter ${voter.voterId} in election ${electionId}`);
+      console.log(`Found existing vote in blockchain for voter ${voter.voterId} in election ${electionId}`);
       await remoteConnection.close();
       return res.status(400).json({ message: 'You have already cast your vote in this election (recorded in blockchain)' });
     }
@@ -576,9 +576,9 @@ exports.recordVoteOnBlockchain = async (req, res) => {
       // First, try to find the election in the local database
       election = await Election.findById(electionId);
       
-      // If not found in local database, check the remote database
+      // If not found in local database, check the blockchain
       if (!election) {
-        console.log(`Election not found in local database. Checking remote database for election ID: ${electionId}`);
+        console.log(`Election not found in local database. Checking blockchain for election ID: ${electionId}`);
         
         // Try to find by direct ID first
         let remoteElection = await RemoteElection.findById(electionId);
@@ -589,7 +589,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
         }
         
         if (remoteElection) {
-          console.log(`Found election in remote database with ID: ${remoteElection._id}`);
+          console.log(`Found election in blockchain with ID: ${remoteElection._id}`);
           election = remoteElection;
           isRemoteElection = true;
           
@@ -609,7 +609,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
         } else {
           console.log(`Election not found in either database with ID: ${electionId}`);
           await remoteConnection.close();
-          return res.status(404).json({ message: 'Election not found in either local or remote database' });
+          return res.status(404).json({ message: 'Election not found in either local or blockchain' });
         }
       }
     } catch (electionLookupError) {
@@ -687,7 +687,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
     
     await voter.save();
     
-    // Record vote on the blockchain (remote database)
+    // Record vote on the blockchain (blockchain)
     try {
       console.log(`Recording vote on blockchain for voter ${voter._id} in election ${electionId}`);
       
@@ -703,7 +703,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
       
       // If no remote election exists, create one based on the local election (if available)
       if (!remoteElection && !isRemoteElection) {
-        console.log(`Election not found in remote database, creating new record for ID: ${electionId}`);
+        console.log(`Election not found in blockchain, creating new record for ID: ${electionId}`);
         
         const newRemoteElection = new RemoteElection({
           title: election.title || election.name,
@@ -720,7 +720,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
         });
         
         remoteElection = await newRemoteElection.save();
-        console.log(`Created new election in remote database with ID: ${remoteElection._id}`);
+        console.log(`Created new election in blockchain with ID: ${remoteElection._id}`);
       }
       
       // Create block data for the transaction
@@ -771,7 +771,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
           );
           
           if (remoteCandidate) {
-            console.log(`Found candidate in remote database: ${remoteCandidate._id}`);
+            console.log(`Found candidate in blockchain: ${remoteCandidate._id}`);
             console.log(`Current vote count: ${remoteCandidate.voteCount || 0}`);
             
             try {
@@ -818,7 +818,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
             }
           } else if (candidate) {
             // If remote candidate not found, create a new one with vote count of 1
-            console.log(`No matching candidate found in remote database, creating new record`);
+            console.log(`No matching candidate found in blockchain, creating new record`);
             
             const newRemoteCandidate = new RemoteCandidate({
               firstName: candidate?.firstName || '',
@@ -917,7 +917,7 @@ exports.recordVoteOnBlockchain = async (req, res) => {
   }
 };
 
-// Check if voter has cast a vote in the remote database
+// Check if voter has cast a vote in the blockchain
 exports.checkRemoteVote = async (req, res) => {
   let remoteConnection = null;
   
@@ -932,9 +932,9 @@ exports.checkRemoteVote = async (req, res) => {
       return res.status(404).json({ message: 'Voter profile not found' });
     }
     
-    // Establish connection to remote database
+    // Establish connection to blockchain
     const remoteDb = require('../utils/remoteDb.util');
-    console.log('Connecting to remote database to check votes...');
+    console.log('Connecting to blockchain to check votes...');
     remoteConnection = await remoteDb.createRemoteConnection();
     
     // Create models on the remote connection
@@ -950,14 +950,14 @@ exports.checkRemoteVote = async (req, res) => {
       console.log(`Checking if voter ${voter.voterId} has voted in any election`);
     }
     
-    // Check if the voter has cast any votes in the remote database based on query
+    // Check if the voter has cast any votes in the blockchain based on query
     const existingRemoteVote = await RemoteVote.findOne(query);
     
     // Close the remote connection
     await remoteConnection.close();
     
     if (existingRemoteVote) {
-      console.log(`Found existing vote in remote database for voter ${voter.voterId}${electionId ? ` in election ${electionId}` : ''}`);
+      console.log(`Found existing vote in blockchain for voter ${voter.voterId}${electionId ? ` in election ${electionId}` : ''}`);
       return res.json({ 
         hasVoted: true, 
         voteInfo: {
@@ -983,13 +983,13 @@ exports.checkRemoteVote = async (req, res) => {
     }
     
     res.status(500).json({ 
-      message: 'Error checking vote status in remote database',
+      message: 'Error checking vote status in blockchain',
       error: error.message
     });
   }
 };
 
-// Get all votes for a voter from the remote database
+// Get all votes for a voter from the blockchain
 exports.getRemoteVotes = async (req, res) => {
   let remoteConnection = null;
   
@@ -1004,9 +1004,9 @@ exports.getRemoteVotes = async (req, res) => {
     
     console.log(`Fetching remote votes for voter ID: ${voter.voterId}`);
     
-    // Establish connection to remote database
+    // Establish connection to blockchain
     const remoteDb = require('../utils/remoteDb.util');
-    console.log('Connecting to remote database to fetch votes...');
+    console.log('Connecting to blockchain to fetch votes...');
     remoteConnection = await remoteDb.createRemoteConnection();
     
     // Create the Vote model on the remote connection
@@ -1017,11 +1017,11 @@ exports.getRemoteVotes = async (req, res) => {
       .sort({ timestamp: -1 }) // Sort by timestamp (newest first)
       .lean(); // Convert to plain JS objects
     
-    console.log(`Found ${votes.length} vote records for voter ${voter.voterId} in remote database`);
+    console.log(`Found ${votes.length} vote records for voter ${voter.voterId} in blockchain`);
     
     // Close the remote connection
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
     
     // Return the votes
     return res.json({ 
@@ -1045,7 +1045,7 @@ exports.getRemoteVotes = async (req, res) => {
     
     res.status(500).json({ 
       success: false,
-      message: 'Error fetching vote records from remote database',
+      message: 'Error fetching vote records from blockchain',
       error: error.message
     });
   }
@@ -1128,9 +1128,9 @@ exports.uploadRecording = async (req, res) => {
           // Import the remote DB utility
           const { createRemoteConnection, RemoteVoteSchema } = require('../utils/remoteDb.util');
           
-          // Create connection to remote database
+          // Create connection to blockchain
           remoteConnection = await createRemoteConnection();
-          console.log('Connected to remote database successfully');
+          console.log('Connected to blockchain successfully');
           
           // Create model on the remote connection
           const RemoteVote = remoteConnection.model('Vote', RemoteVoteSchema);
@@ -1215,7 +1215,7 @@ exports.uploadRecording = async (req, res) => {
           // Close the remote connection
           if (remoteConnection) {
             await remoteConnection.close();
-            console.log('Remote database connection closed');
+            console.log('blockchain connection closed');
           }
           
         } catch (remoteUpdateError) {
@@ -1226,7 +1226,7 @@ exports.uploadRecording = async (req, res) => {
           if (remoteConnection) {
             try {
               await remoteConnection.close();
-              console.log('Remote database connection closed after error');
+              console.log('blockchain connection closed after error');
             } catch (closeError) {
               console.error('Error closing remote connection:', closeError);
             }
@@ -1253,7 +1253,7 @@ exports.uploadRecording = async (req, res) => {
   }
 };
 
-// Find candidate in remote database using multiple strategies
+// Find candidate in blockchain using multiple strategies
 const findRemoteCandidateForVoting = async (remoteConnection, remoteElection, candidateId, candidate) => {
   try {
     const RemoteCandidate = remoteConnection.model('Candidate', require('../utils/remoteDb.util').RemoteCandidateSchema);

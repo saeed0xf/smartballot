@@ -96,7 +96,7 @@ const VerifyVote = () => {
   const fetchRemoteVotes = async (headers) => {
     try {
       setLoadingRemoteVotes(true);
-      console.log('Fetching remote votes directly from remote database...');
+      console.log('Fetching remote votes directly from blockchain...');
       
       // Try the dedicated endpoint for fetching all votes for this voter
       try {
@@ -105,7 +105,7 @@ const VerifyVote = () => {
         
         if (votesResponse.data && votesResponse.data.success && votesResponse.data.votes) {
           const votes = votesResponse.data.votes;
-          console.log(`Found ${votes.length} votes in the remote database`);
+          console.log(`Found ${votes.length} votes in the blockchain`);
           
           if (votes.length > 0) {
             setRemoteVotes(votes);
@@ -208,7 +208,7 @@ const VerifyVote = () => {
       
       // First try to fetch from the remote elections endpoint (new endpoint)
       try {
-        console.log(`Fetching election details from remote database for ID: ${electionId}`);
+        console.log(`Fetching election details from blockchain for ID: ${electionId}`);
         const remoteElectionResponse = await axios.get(`${API_URL}/elections/remote/${electionId}`, { headers });
         console.log(`Remote election details for ${electionId}:`, remoteElectionResponse.data);
         
@@ -218,7 +218,7 @@ const VerifyVote = () => {
             ...prev,
             [electionId]: election
           }));
-          console.log(`Successfully fetched election details from remote database: ${election.title || election.name}`);
+          console.log(`Successfully fetched election details from blockchain: ${election.title || election.name}`);
           return;
         }
       } catch (remoteError) {

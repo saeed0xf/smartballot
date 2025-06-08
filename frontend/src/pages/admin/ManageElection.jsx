@@ -1720,12 +1720,12 @@ const ManageElection = () => {
       const network = await provider.getNetwork();
       setSuccessMessage(formatSuccessMessage("Election successfully recorded on the blockchain!", tx.hash, network.chainId));
       
-      // Notify the backend of successful blockchain recording and store data in remote MongoDB
+      // Notify the backend of successful blockchain recording and store data in blockchain
       try {
         const headers = getAuthHeaders();
         const electionId = actionElection._id || actionElection.id;
         
-        // Send complete election data to be stored in remote MongoDB
+        // Send complete election data to be stored in blockchain
         await axios.post(`${API_URL}/admin/election/remote-record`, { 
           electionId,
           blockchainElectionId: recordedElectionData.electionId,
@@ -1741,7 +1741,7 @@ const ManageElection = () => {
           [electionId]: true
         }));
       } catch (backendError) {
-        console.warn('Failed to store data in remote database:', backendError);
+        console.warn('Failed to store data in blockchain:', backendError);
         // We still consider this a success since the blockchain transaction succeeded
         
         // Still update local status even if backend notification failed

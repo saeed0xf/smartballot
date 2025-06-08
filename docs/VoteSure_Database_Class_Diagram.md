@@ -349,7 +349,7 @@ classDiagram
 
 #### **Monitoring & Statistics**
 - `getVoterStats()` - Get voter statistics
-- `getRemoteElectionStats()` - Get election statistics from remote database
+- `getRemoteElectionStats()` - Get election statistics from blockchain
 - `getMonitoringData()` - Get real-time election monitoring data
 - `getElectionResults()` - View election results and analytics
 - `generateReports()` - Generate official election reports

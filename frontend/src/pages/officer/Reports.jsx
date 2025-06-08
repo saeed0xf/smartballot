@@ -32,7 +32,7 @@ const Reports = () => {
   const [reportData, setReportData] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   
-  // Fetch elections from remote database and load saved reports from localStorage
+  // Fetch elections from blockchain and load saved reports from localStorage
   useEffect(() => {
     const fetchElections = async () => {
       try {

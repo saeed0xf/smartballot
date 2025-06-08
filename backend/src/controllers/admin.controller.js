@@ -981,16 +981,16 @@ exports.archiveElection = async (req, res) => {
     election.archivedAt = Date.now();
     await election.save();
     
-    // Update the election in the remote database
+    // Update the election in the blockchain
     try {
       const remoteResult = await updateRemoteElectionArchived(election);
       if (remoteResult.success) {
-        console.log('Remote database updated successfully with archived status');
+        console.log('blockchain updated successfully with archived status');
       } else {
-        console.warn('Failed to update remote database for archived status:', remoteResult.error);
+        console.warn('Failed to update blockchain for archived status:', remoteResult.error);
       }
     } catch (remoteError) {
-      console.error('Error updating remote database for archived status:', remoteError);
+      console.error('Error updating blockchain for archived status:', remoteError);
       // Continue with the flow even if remote update fails
     }
     
@@ -1098,16 +1098,16 @@ exports.startElection = async (req, res) => {
       election.blockchainStartTxHash = blockchainResult.txHash;
       await election.save();
       
-      // Update the election in the remote database
+      // Update the election in the blockchain
       try {
         const remoteResult = await updateRemoteElectionStarted(election, blockchainResult.txHash);
         if (remoteResult.success) {
-          console.log('Remote database updated successfully');
+          console.log('blockchain updated successfully');
         } else {
-          console.warn('Failed to update remote database:', remoteResult.error);
+          console.warn('Failed to update blockchain:', remoteResult.error);
         }
       } catch (remoteError) {
-        console.error('Error updating remote database:', remoteError);
+        console.error('Error updating blockchain:', remoteError);
         // Continue with the flow even if remote update fails
       }
     } else {
@@ -1215,16 +1215,16 @@ exports.endElection = async (req, res) => {
     
     await activeElection.save();
     
-    // Update the election in the remote database
+    // Update the election in the blockchain
     try {
       const remoteResult = await updateRemoteElectionEnded(activeElection, blockchainResult.txHash);
       if (remoteResult.success) {
-        console.log('Remote database updated successfully with ended status');
+        console.log('blockchain updated successfully with ended status');
       } else {
-        console.warn('Failed to update remote database for ended status:', remoteResult.error);
+        console.warn('Failed to update blockchain for ended status:', remoteResult.error);
       }
     } catch (remoteError) {
-      console.error('Error updating remote database for ended status:', remoteError);
+      console.error('Error updating blockchain for ended status:', remoteError);
       // Continue with the flow even if remote update fails
     }
     
@@ -1575,18 +1575,18 @@ exports.getVoterById = async (req, res) => {
   }
 };
 
-// Store election data in remote MongoDB Atlas database
+// Store election data in blockchain 
 exports.storeElectionInRemoteDb = async (req, res) => {
   try {
     const { electionId, blockchainElectionId, blockchainTxHash, blockchainSuccess } = req.body;
     
-    console.log(`Storing election data for ID: ${electionId} in remote MongoDB Atlas database`);
+    console.log(`Storing election data for ID: ${electionId} in blockchain`);
     console.log(`Blockchain TX Hash: ${blockchainTxHash}, Success: ${blockchainSuccess}`);
     
     if (!electionId || !blockchainTxHash) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Missing required data for remote database storage' 
+        message: 'Missing required data for blockchain storage' 
       });
     }
 
@@ -1603,17 +1603,17 @@ exports.storeElectionInRemoteDb = async (req, res) => {
     const candidates = await Candidate.find({ election: electionId });
     console.log(`Found ${candidates.length} candidates for election ${electionId}`);
 
-    // Create a new connection to remote MongoDB Atlas
+    // Create a new connection to blockchain
     const remoteMongoUri = 'mongodb://admin:secret@localhost:27018/test?authSource=admin';
     
-    // Create a new mongoose connection for the remote database
+    // Create a new mongoose connection for the blockchain
     const remoteConnection = mongoose.createConnection(remoteMongoUri, {
       useNewUrlParser: true,
       useUnifiedTopology: true
     });
 
     // Log remote connection status
-    console.log('Connected to remote MongoDB Atlas database for election storage');
+    console.log('Connected to blockchain for election storage');
 
     // Create models on the remote connection
     const RemoteElectionSchema = new mongoose.Schema({
@@ -1659,7 +1659,7 @@ exports.storeElectionInRemoteDb = async (req, res) => {
     const RemoteElection = remoteConnection.model('Election', RemoteElectionSchema);
     const RemoteCandidate = remoteConnection.model('Candidate', RemoteCandidateSchema);
 
-    // Store the election in the remote database
+    // Store the election in the blockchain
     const remoteElection = new RemoteElection({
       title: election.title || election.name,
       description: election.description,
@@ -1675,11 +1675,11 @@ exports.storeElectionInRemoteDb = async (req, res) => {
       recordedAt: new Date()
     });
 
-    // Check if the election already exists in the remote database
+    // Check if the election already exists in the blockchain
     let existingRemoteElection = await RemoteElection.findOne({ originalElectionId: electionId });
     
     if (existingRemoteElection) {
-      console.log(`Election already exists in remote database: ${existingRemoteElection._id}, updating it...`);
+      console.log(`Election already exists in blockchain: ${existingRemoteElection._id}, updating it...`);
       
       // Update existing election with new data
       existingRemoteElection.title = remoteElection.title;
@@ -1695,21 +1695,21 @@ exports.storeElectionInRemoteDb = async (req, res) => {
       existingRemoteElection.updatedAt = new Date();
       
       await existingRemoteElection.save();
-      console.log('Existing election updated in remote database');
+      console.log('Existing election updated in blockchain');
       
       // Use the existing remote election ID
       remoteElection._id = existingRemoteElection._id;
     } else {
       // Save new election if it doesn't exist
       await remoteElection.save();
-      console.log('New election saved to remote database:', remoteElection._id);
+      console.log('New election saved to blockchain:', remoteElection._id);
     }
 
     // Get the remote election ID that we'll use for all candidates
     const remoteElectionId = remoteElection._id;
     console.log(`Using remote election ID for candidate associations: ${remoteElectionId}`);
 
-    // Store all candidates in the remote database - ALWAYS CREATE NEW RECORDS
+    // Store all candidates in the blockchain - ALWAYS CREATE NEW RECORDS
     // Generate a timestamp to make each batch of candidates identifiable
     const batchTimestamp = Date.now();
     console.log(`Creating batch of new candidate records with timestamp: ${batchTimestamp}`);
@@ -1751,7 +1751,7 @@ exports.storeElectionInRemoteDb = async (req, res) => {
 
     // Execute all candidate save operations (all new records)
     const savedCandidates = await Promise.all(remoteCandidatesPromises);
-    console.log(`Remote database update complete: ${savedCandidates.length} new candidate records created`);
+    console.log(`blockchain update complete: ${savedCandidates.length} new candidate records created`);
 
     // Log the action in the activity log of the local database
     try {
@@ -1760,7 +1760,7 @@ exports.storeElectionInRemoteDb = async (req, res) => {
         action: 'REMOTE_DB_RECORD',
         entity: 'election',
         entityId: electionId,
-        details: `Election "${election.title}" recorded in remote database with blockchain transaction ${blockchainTxHash}. Created ${savedCandidates.length} new candidate records.`,
+        details: `Election "${election.title}" recorded in blockchain with blockchain transaction ${blockchainTxHash}. Created ${savedCandidates.length} new candidate records.`,
         metadata: {
           electionId,
           blockchainTxHash,
@@ -1784,20 +1784,20 @@ exports.storeElectionInRemoteDb = async (req, res) => {
 
     // Close the remote connection after saving the data
     await remoteConnection.close();
-    console.log('Remote database connection closed');
+    console.log('blockchain connection closed');
 
     return res.status(200).json({ 
       success: true, 
-      message: 'Election and candidates successfully stored in remote database',
+      message: 'Election and candidates successfully stored in blockchain',
       remoteElectionId: remoteElection._id,
       newCandidatesCreated: savedCandidates.length,
       batchTimestamp: batchTimestamp
     });
   } catch (error) {
-    console.error('Error storing election in remote database:', error);
+    console.error('Error storing election in blockchain:', error);
     return res.status(500).json({ 
       success: false, 
-      message: 'Failed to store election in remote database',
+      message: 'Failed to store election in blockchain',
       error: error.message
     });
   }

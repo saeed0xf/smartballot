@@ -173,17 +173,17 @@ exports.getVoterStats = async (req, res) => {
   }
 };
 
-// Get election statistics from remote database
+// Get election statistics from blockchain
 exports.getRemoteElectionStats = async (req, res) => {
   let remoteConnection = null;
   
   try {
     console.log('Getting remote election stats');
     
-    // Connect to remote database
+    // Connect to blockchain
     remoteConnection = await createRemoteConnection();
     if (!remoteConnection) {
-      return res.status(500).json({ message: 'Failed to connect to remote database' });
+      return res.status(500).json({ message: 'Failed to connect to blockchain' });
     }
     
     // Create models on the remote connection
@@ -207,22 +207,22 @@ exports.getRemoteElectionStats = async (req, res) => {
     // Close remote connection
     if (remoteConnection) {
       await remoteConnection.close();
-      console.log('Remote database connection closed');
+      console.log('blockchain connection closed');
     }
   }
 };
 
-// Get vote count from remote database (votes collection)
+// Get vote count from blockchain (votes collection)
 exports.getRemoteVotesCount = async (req, res) => {
   let remoteConnection = null;
   
   try {
     console.log('Getting remote votes count');
     
-    // Connect to remote database
+    // Connect to blockchain
     remoteConnection = await createRemoteConnection();
     if (!remoteConnection) {
-      return res.status(500).json({ message: 'Failed to connect to remote database' });
+      return res.status(500).json({ message: 'Failed to connect to blockchain' });
     }
     
     // Create models on the remote connection
@@ -265,22 +265,22 @@ exports.getRemoteVotesCount = async (req, res) => {
     // Close remote connection
     if (remoteConnection) {
       await remoteConnection.close();
-      console.log('Remote database connection closed');
+      console.log('blockchain connection closed');
     }
   }
 };
 
-// Get recent elections from remote database
+// Get recent elections from blockchain
 exports.getRecentElections = async (req, res) => {
   let remoteConnection = null;
   
   try {
     console.log('Getting recent elections');
     
-    // Connect to remote database
+    // Connect to blockchain
     remoteConnection = await createRemoteConnection();
     if (!remoteConnection) {
-      return res.status(500).json({ message: 'Failed to connect to remote database' });
+      return res.status(500).json({ message: 'Failed to connect to blockchain' });
     }
     
     // Create models on the remote connection
@@ -330,12 +330,12 @@ exports.getRecentElections = async (req, res) => {
     // Close remote connection
     if (remoteConnection) {
       await remoteConnection.close();
-      console.log('Remote database connection closed');
+      console.log('blockchain connection closed');
     }
   }
 };
 
-// Get election results from remote database
+// Get election results from blockchain
 exports.getElectionResults = async (req, res) => {
   let remoteConnection = null;
   
@@ -343,10 +343,10 @@ exports.getElectionResults = async (req, res) => {
     const { electionId } = req.params;
     console.log(`Getting election results for election ID: ${electionId}`);
     
-    // Connect to remote database
+    // Connect to blockchain
     remoteConnection = await createRemoteConnection();
     if (!remoteConnection) {
-      return res.status(500).json({ message: 'Failed to connect to remote database' });
+      return res.status(500).json({ message: 'Failed to connect to blockchain' });
     }
     
     // Create models on the remote connection
@@ -444,22 +444,22 @@ exports.getElectionResults = async (req, res) => {
     // Close remote connection
     if (remoteConnection) {
       await remoteConnection.close();
-      console.log('Remote database connection closed');
+      console.log('blockchain connection closed');
     }
   }
 };
 
-// Get all elections from remote database for statistics page
+// Get all elections from blockchain for statistics page
 exports.getAllElections = async (req, res) => {
   let remoteConnection = null;
   
   try {
-    console.log('Getting all elections from remote database');
+    console.log('Getting all elections from blockchain');
     
-    // Connect to remote database
+    // Connect to blockchain
     remoteConnection = await createRemoteConnection();
     if (!remoteConnection) {
-      return res.status(500).json({ message: 'Failed to connect to remote database' });
+      return res.status(500).json({ message: 'Failed to connect to blockchain' });
     }
     
     // Create models on the remote connection
@@ -498,7 +498,7 @@ exports.getAllElections = async (req, res) => {
     // Close remote connection
     if (remoteConnection) {
       await remoteConnection.close();
-      console.log('Remote database connection closed');
+      console.log('blockchain connection closed');
     }
   }
 };

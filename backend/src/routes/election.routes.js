@@ -23,7 +23,7 @@ router.post('/elections/end', verifyToken, isAdmin, electionController.endElecti
 // Get active elections
 router.get('/elections/active', electionController.getActiveElections);
 
-// Get active elections from remote database
+// Get active elections from blockchain
 router.get('/elections/remote/active', electionController.getActiveElectionsRemote);
 
 // Get remote election details by ID
